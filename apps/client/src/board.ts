@@ -139,7 +139,8 @@ export class Board {
 
     const center = hexToPixel(tile);
     const owner = playerColor(game, tile.owner);
-    const fill = owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, OWNED_FILL[tile.type]);
+    const fill =
+      owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, OWNED_FILL[tile.type]);
     const shape = view.shape;
     shape.clear();
     shape.poly(hexCorners(center, 1.5)).fill(fill);
@@ -379,18 +380,25 @@ function tileArtColors(fill: number, icon: number): ArtColors {
   };
 }
 
-/** Plowed field: a few curved furrows, kept inside the progress ring. */
+/** A crop field: staggered rows of little wheat stalks, kept inside the progress ring. */
 function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
-  const rows: [number, number][] = [
-    [-12, 13],
-    [-4, 16],
-    [4, 16],
-    [12, 13],
+  const rows: [number, number[]][] = [
+    [-6, [-12, -4, 4, 12]],
+    [5, [-8, 0, 8]],
+    [14, [-12, -4, 4, 12]],
   ];
-  for (const [y, halfWidth] of rows) {
-    g.moveTo(c.x - halfWidth, c.y + y)
-      .quadraticCurveTo(c.x, c.y + y - 3.5, c.x + halfWidth, c.y + y)
-      .stroke({ width: 2, color: art.faint, cap: 'round' });
+  for (const [baseY, xs] of rows) {
+    for (const dx of xs) {
+      const x = c.x + dx;
+      const y = c.y + baseY;
+      // Stem, a pair of leaves, and the ear on top.
+      g.moveTo(x, y).lineTo(x, y - 7);
+      g.moveTo(x, y - 2).lineTo(x - 2.5, y - 4.5);
+      g.moveTo(x, y - 2).lineTo(x + 2.5, y - 4.5);
+      g.moveTo(x, y - 4.5).lineTo(x - 2.5, y - 7);
+      g.moveTo(x, y - 4.5).lineTo(x + 2.5, y - 7);
+      g.stroke({ width: 1.4, color: art.faint, cap: 'round', join: 'round' });
+    }
   }
 }
 
