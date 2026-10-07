@@ -123,12 +123,13 @@ function showPreview(options: PreviewOptions): void {
   let generated;
   try {
     generated = freeForAll
-      ? createFreeForAllMatch({ players, seed, radius })
+      ? createFreeForAllMatch({ players, seed, radius, shape: options.shape })
       : createSymmetricMatch({
           players,
           seed,
           radius,
           symmetry: effectiveSymmetry(options) ?? undefined,
+          shape: options.shape,
         });
   } catch (error) {
     // E.g. a board too small for the players. Keep showing the last map.

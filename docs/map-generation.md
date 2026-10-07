@@ -12,6 +12,19 @@ The board is split into **orbits**: sets of tiles that map onto each other under
 
 Starting positions are matching spots one tile in from the edge of the board: left and right for 2 players, and one per quadrant for 4. Every image of a start tile under the board's symmetry is a starting city, and the symmetry groups are exactly as big as the player count, so every starting city belongs to a player and there are no spare ones. Start cities are at least 4 tiles apart, which is why boards need a radius of at least 5.
 
+## Board shape
+
+Both generators take a `shape`: `hexagon` (the default, a regular hexagonal board) or `random`. `randomShape` (`packages/shared/src/shape.ts`) builds the random outline:
+
+- **Outline:** a circle bent by three random waves, so the board has lobes and bays instead of six straight sides, with each tile's edge position jittered for a rough coast. A circle with the radius of the hexagon it stands in for holds about the same number of tiles.
+- **Tidying:** tiles that stick out as spurs (two or fewer neighbors) are removed and one-tile bays are filled, and tiny islands are dropped, so the coast is jagged but never noisy.
+- **Cutouts:** a few lakes are carved out of the inside. Each is one blob of at least 3 contiguous tiles (never a lone tile), grown compactly, and kept at least 3 tiles from the coast (so there is always room to walk around), from every starting city, and from other lakes.
+- **Checks:** the board must be one connected piece, within about 70% to 130% of the hexagon's area, and keep the room around every starting city, otherwise another shape is tried.
+- **Symmetry:** symmetric boards keep their symmetry. A tile is land if it or any of its images would be, and lakes are carved out along with all of their images, so the whole board maps onto itself.
+- **Starting cities:** protected, with two rings of land around each one.
+
+"Edge" now means a tile with a missing neighbor, whether at the coast or beside a lake. Cities never go on edge tiles, so every city has a full ring of six neighbors, and villages fill the interior before the edge.
+
 ## Tile types
 
 1. **Starting cities** as above.
@@ -34,4 +47,4 @@ Because nothing about the layout is symmetric, free-for-all boards are not perfe
 
 ## Previewing maps
 
-The menu's **Preview generated maps (dev)** link shows boards locally without a server. It can generate a 2, 3, 4 or 6 player symmetric board, or a free-for-all with 3 to 100 players, at the recommended size or a chosen radius. For 2 players there is a symmetry toggle (mirror or rotational); the other counts have it fixed and the control is locked. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities and villages. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.
+The menu's **Preview generated maps (dev)** link shows boards locally without a server, with a random shape or a plain hexagon. It can generate a 2, 3, 4 or 6 player symmetric board, or a free-for-all with 3 to 100 players, at the recommended size or a chosen radius. For 2 players there is a symmetry toggle (mirror or rotational); the other counts have it fixed and the control is locked. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities and villages. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.

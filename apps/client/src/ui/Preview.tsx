@@ -67,6 +67,13 @@ export function Preview({
           </select>
         )}
         <select
+          value={options.shape}
+          onChange={(e) => change({ shape: e.target.value as PreviewOptions['shape'] })}
+        >
+          <option value="random">Random shape</option>
+          <option value="hexagon">Hexagon</option>
+        </select>
+        <select
           value={options.radius ?? 'auto'}
           onChange={(e) =>
             change({ radius: e.target.value === 'auto' ? null : Number(e.target.value) })

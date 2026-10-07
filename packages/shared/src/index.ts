@@ -6,6 +6,7 @@ export * from './orders.js';
 export * from './protocol.js';
 export * from './resolve.js';
 export * from './rng.js';
+export * from './shape.js';
 export * from './state.js';
 export * from './tiles.js';
 export * from './visibility.js';

@@ -15,6 +15,8 @@ export interface PreviewOptions {
   radius: number | null;
   /** Only used for 2 players, where either kind of symmetry works. */
   symmetry: 'mirror' | 'rotational';
+  /** The outline of the board. */
+  shape: 'random' | 'hexagon';
 }
 
 export const DEFAULT_PREVIEW: PreviewOptions = {
@@ -22,6 +24,7 @@ export const DEFAULT_PREVIEW: PreviewOptions = {
   players: 8,
   radius: null,
   symmetry: 'mirror',
+  shape: 'random',
 };
 
 /**

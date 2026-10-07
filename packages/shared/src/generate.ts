@@ -10,6 +10,7 @@ import {
   type Hex,
 } from './hex.js';
 import { createRng, type Rng } from './rng.js';
+import { randomShape } from './shape.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
@@ -65,6 +66,18 @@ type Transform = (h: Hex) => Hex;
  */
 export type Symmetry = 'rotational' | 'mirror';
 
+/**
+ * - `hexagon`: a regular hexagonal board.
+ * - `random`: an irregular outline with a rough coast, and a few lakes cut out of the middle.
+ */
+export type BoardShape = 'hexagon' | 'random';
+
+/** Does this board have a tile at every neighbor of the hex? Tiles that do not are on the edge. */
+const edgeTest =
+  (tiles: ReadonlySet<string>) =>
+  (hex: Hex): boolean =>
+    hexNeighbors(hex).some((n) => !tiles.has(hexKey(n)));
+
 export interface SymmetricMatchOptions {
   readonly players: readonly PlayerId[];
   readonly seed: number;
@@ -72,6 +85,8 @@ export interface SymmetricMatchOptions {
   readonly radius?: number;
   /** Defaults to `mirror` for 2 and 4 players, `rotational` for 3 and 6. */
   readonly symmetry?: Symmetry;
+  /** Defaults to a regular hexagon. A random shape keeps the board's symmetry. */
+  readonly shape?: BoardShape;
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
 }
@@ -148,17 +163,17 @@ function layout(
 function placeTerrain(input: {
   startHexes: readonly Hex[];
   others: readonly (readonly Hex[])[];
-  radius: number;
+  /** Is this hex on the edge of the board (next to a tile that is not there)? */
+  isEdgeHex: (hex: Hex) => boolean;
   totalTiles: number;
   rng: Rng;
 }): Map<string, TileTypeId> {
-  const { startHexes, others, radius, totalTiles, rng } = input;
+  const { startHexes, others, isEdgeHex, totalTiles, rng } = input;
   const types = new Map<string, TileTypeId>();
   const cities: Hex[] = [...startHexes];
   for (const hex of startHexes) types.set(hexKey(hex), 'city');
-  // Symmetries preserve distance from the center, so a group is either all edge or all interior.
-  const isEdge = (orbit: readonly Hex[]): boolean =>
-    orbit.some((hex) => hexDistance(hex, { q: 0, r: 0 }) === radius);
+  // Symmetries preserve edge-ness, so a group is either all edge or all interior.
+  const isEdge = (orbit: readonly Hex[]): boolean => orbit.some(isEdgeHex);
   const interior = others.filter((orbit) => !isEdge(orbit));
   const edge = others.filter(isEdge);
 
@@ -244,7 +259,13 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
 
   // Group the board into symmetry orbits. Every hex in an orbit gets the same tile type,
   // which is what keeps the board fair.
-  const ordered = hexagonalBoard(radius).sort((a, b) => a.q - b.q || a.r - b.r);
+  const shape = options.shape ?? 'hexagon';
+  const ordered = (
+    shape === 'random'
+      ? randomShape({ radius, rng: createRng(seed ^ 0x5eed5eed), group: terrain, protect: starts })
+      : hexagonalBoard(radius)
+  ).sort((a, b) => a.q - b.q || a.r - b.r);
+  const present = new Set(ordered.map(hexKey));
   const orbits: Hex[][] = [];
   const grouped = new Set<string>();
   for (const hex of ordered) {
@@ -252,7 +273,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
     const orbit: Hex[] = [];
     for (const transform of terrain) {
       const image = transform(hex);
-      if (grouped.has(hexKey(image))) continue;
+      if (grouped.has(hexKey(image)) || !present.has(hexKey(image))) continue;
       grouped.add(hexKey(image));
       orbit.push(image);
     }
@@ -264,7 +285,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   const types = placeTerrain({
     startHexes: startOrbit,
     others,
-    radius,
+    isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
     rng: createRng(seed),
   });
@@ -294,17 +315,19 @@ export interface FreeForAllOptions {
   readonly seed: number;
   /** Board radius in hexes; by default one that suits the number of players. */
   readonly radius?: number;
+  /** Defaults to a regular hexagon. */
+  readonly shape?: BoardShape;
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
 }
 
 /**
- * Pick `count` starting hexes that are well spread out and at least one tile in from the
- * edge: many random attempts at "put each next player as far from the others as it fits",
+ * Pick `count` starting hexes from `candidates` (the tiles that are not on the edge) that are
+ * well spread out: many random attempts at "put each next player as far from the others as it fits",
  * keeping the attempt whose closest pair of players is furthest apart.
  */
-function spreadStarts(count: number, radius: number, rng: Rng): Hex[] {
-  const candidates = hexagonalBoard(radius - START_INSET);
+function spreadStarts(count: number, candidates: readonly Hex[], rng: Rng): Hex[] {
+  if (candidates.length < count) throw new Error('the board is too small for that many players');
   let best: Hex[] = [];
   let bestSpacing = -1;
   for (let attempt = 0; attempt < 12; attempt++) {
@@ -335,6 +358,40 @@ function spreadStarts(count: number, radius: number, rng: Rng): Hex[] {
 }
 
 /**
+ * The board's hexes and where everyone starts. A random shape might leave too little room for
+ * everyone, so in that case another shape is tried.
+ */
+function chooseFreeForAllLayout(
+  count: number,
+  radius: number,
+  shape: BoardShape,
+  rng: Rng,
+): { ordered: Hex[]; present: Set<string>; starts: Hex[] } {
+  for (let attempt = 0; ; attempt++) {
+    const ordered = (
+      shape === 'random'
+        ? randomShape({ radius, rng, group: [(h) => h], protect: [] })
+        : hexagonalBoard(radius)
+    ).sort((a, b) => a.q - b.q || a.r - b.r);
+    const present = new Set(ordered.map(hexKey));
+    const isEdge = edgeTest(present);
+    try {
+      const starts = shuffle(
+        spreadStarts(
+          count,
+          ordered.filter((hex) => !isEdge(hex)),
+          rng,
+        ),
+        rng,
+      );
+      return { ordered, present, starts };
+    } catch (error) {
+      if (shape !== 'random' || attempt >= 20) throw error;
+    }
+  }
+}
+
+/**
  * A free-for-all board: random terrain with no symmetry, and starting cities spread out as
  * evenly as the board allows. The same terrain rules apply as on symmetric boards.
  * Players are assigned to the starting cities at random.
@@ -351,17 +408,21 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
   if (radius < MIN_FFA_RADIUS) throw new Error(`radius must be at least ${MIN_FFA_RADIUS}`);
 
   const rng = createRng(seed);
-  const starts = shuffle(spreadStarts(players.length, radius, rng), rng);
+  const { ordered, present, starts } = chooseFreeForAllLayout(
+    players.length,
+    radius,
+    options.shape ?? 'hexagon',
+    rng,
+  );
   const startOwners = new Map<string, PlayerId>();
   starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
 
-  const ordered = hexagonalBoard(radius).sort((a, b) => a.q - b.q || a.r - b.r);
   const startKeys = new Set(starts.map(hexKey));
   const others = ordered.filter((hex) => !startKeys.has(hexKey(hex))).map((hex) => [hex]);
   const types = placeTerrain({
     startHexes: starts,
     others,
-    radius,
+    isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
     rng,
   });
