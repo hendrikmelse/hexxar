@@ -10,9 +10,15 @@ export class Hud {
   private readonly barFill = el('div', 'bar-fill');
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
+  private readonly previewLabel = el('span', 'preview-label');
+  private readonly backButton = el('button', 'dev-button');
   private game: GameView | null = null;
 
-  constructor(root: HTMLElement, onSurrender: () => void) {
+  constructor(
+    root: HTMLElement,
+    onSurrender: () => void,
+    dev: { generateMap: () => void; backToMatch: () => void },
+  ) {
     this.bar.append(this.barFill);
     const panel = el('div', 'panel');
     panel.append(this.status, this.bar);
@@ -23,12 +29,27 @@ export class Hud {
     const hint = el('div', 'hint');
     hint.textContent =
       'Drag from your tiles to queue moves  ·  Right-drag to pan  ·  Scroll to zoom  ·  Esc cancels a drag';
-    root.append(panel, this.surrender, this.banner, hint);
+    // Temporary map-generation preview controls.
+    const tools = el('div', 'dev');
+    const generate = el('button', 'dev-button');
+    generate.textContent = 'Generate new map';
+    generate.addEventListener('click', dev.generateMap);
+    this.backButton.textContent = 'Back to match';
+    this.backButton.addEventListener('click', dev.backToMatch);
+    this.backButton.hidden = true;
+    tools.append(generate, this.backButton, this.previewLabel);
+    root.append(panel, tools, this.surrender, this.banner, hint);
     const frame = (): void => {
       this.updateBar();
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
+  }
+
+  /** Show or clear the "previewing a generated map" state. */
+  setPreview(seed: number | null): void {
+    this.backButton.hidden = seed === null;
+    this.previewLabel.textContent = seed === null ? '' : `Map preview · seed ${seed}`;
   }
 
   render(game: GameView): void {

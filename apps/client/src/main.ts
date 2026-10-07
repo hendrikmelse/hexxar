@@ -1,12 +1,14 @@
-import { hexEquals, hexKey, type Hex } from '@hexxar/shared';
+import { createSymmetricMatch, hexDistance, hexEquals, hexKey, type Hex } from '@hexxar/shared';
 import { Board, playerColor } from './board.js';
-import { applyMessage, emptyGame } from './game.js';
+import { applyMessage, emptyGame, type GameView } from './game.js';
 import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 
 const game = emptyGame();
 const draft = new PathDraft();
+/** Set while looking at a locally generated map instead of the live match. */
+let preview: { seed: number } | null = null;
 
 const canPlay = (): boolean =>
   game.status === 'playing' && game.playerId !== null && !game.eliminated.includes(game.playerId);
@@ -24,6 +26,10 @@ function showDraft(): void {
 
 function render(change: ReturnType<typeof applyMessage>): void {
   if (!change) return;
+  if (preview) {
+    hud.render(game);
+    return;
+  }
   if (change.kind === 'all') board.setAll(game);
   else if (change.kind === 'tiles') board.updateTiles(change.tiles, game);
   board.drawQueue(game.queue, myColor());
@@ -37,7 +43,7 @@ function render(change: ReturnType<typeof applyMessage>): void {
 const board = await Board.create(document.getElementById('app')!, {
   // Drag from a tile you own, or from the end of your queued path, to give orders.
   canStart(hex) {
-    if (!canPlay() || !tileExists(hex)) return false;
+    if (preview || !canPlay() || !tileExists(hex)) return false;
     const end = plannedEnd();
     return (
       game.tiles[hexKey(hex)]?.owner === game.playerId || (end !== null && hexEquals(end, hex))
@@ -63,7 +69,45 @@ const board = await Board.create(document.getElementById('app')!, {
     showDraft();
   },
 });
-const hud = new Hud(document.getElementById('hud')!, () => connection.send({ type: 'surrender' }));
+/** Temporary: generate a map locally, with the current match's player count and size. */
+function generatePreview(): void {
+  const players = Array.from({ length: game.players.length || 2 }, (_, i) => `P${i + 1}`);
+  const distances = Object.values(game.tiles).map((t) => hexDistance(t, { q: 0, r: 0 }));
+  const radius = distances.length > 0 ? Math.max(...distances) : 6;
+  const seed = Math.floor(Math.random() * 2 ** 32);
+  const { state, config } = createSymmetricMatch({
+    players,
+    seed,
+    radius,
+    config: game.config ?? undefined,
+  });
+  const view: GameView = {
+    ...emptyGame(),
+    status: 'playing',
+    playerId: players[0] ?? null,
+    config,
+    players,
+    tiles: { ...state.tiles },
+  };
+  preview = { seed };
+  draft.clear();
+  showDraft();
+  board.setAll(view);
+  board.drawQueue([], 0xffffff);
+  hud.setPreview(seed);
+}
+
+function backToMatch(): void {
+  preview = null;
+  board.setAll(game);
+  board.drawQueue(game.queue, myColor());
+  hud.setPreview(null);
+}
+
+const hud = new Hud(document.getElementById('hud')!, () => connection.send({ type: 'surrender' }), {
+  generateMap: generatePreview,
+  backToMatch,
+});
 hud.render(game);
 
 const url = import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:8080`;

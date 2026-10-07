@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  hexDistance,
   hexFlipHorizontal,
   hexFlipVertical,
   hexKey,
+  hexNeighbors,
   hexRotate,
   hexagonalBoard,
   type Hex,
 } from './hex.js';
-import { createSymmetricMatch, type Symmetry } from './generate.js';
+import {
+  MIN_CITY_DISTANCE,
+  TILES_PER_CITY,
+  createSymmetricMatch,
+  type Symmetry,
+} from './generate.js';
 import { TILE_TYPES } from './tiles.js';
 import { createRng } from './rng.js';
 import { parseMatchConfig } from './config.js';
@@ -120,5 +127,102 @@ describe('createSymmetricMatch', () => {
     expect(() => make(['A', 'B', 'C', 'D'], 'rotational')).toThrow();
     expect(() => make(['A', 'B', 'C'], 'mirror')).toThrow();
     expect(() => make(['A'])).toThrow();
+  });
+});
+
+describe('terrain rules', () => {
+  const setups: { players: number; symmetry: Symmetry; radius: number }[] = [
+    { players: 2, symmetry: 'mirror', radius: 6 },
+    { players: 2, symmetry: 'rotational', radius: 8 },
+    { players: 3, symmetry: 'rotational', radius: 7 },
+    { players: 4, symmetry: 'mirror', radius: 10 },
+    { players: 6, symmetry: 'rotational', radius: 9 },
+  ];
+
+  /** The symmetry group the generator uses, for finding a tile's orbit. */
+  const group = (symmetry: Symmetry): ((h: Hex) => Hex)[] =>
+    symmetry === 'rotational'
+      ? [0, 1, 2, 3, 4, 5].map((i) => (h) => hexRotate(h, i))
+      : [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
+
+  const forEachBoard = (
+    check: (board: ReturnType<typeof boardFor>, symmetry: Symmetry) => void,
+  ) => {
+    for (const { players, symmetry, radius } of setups) {
+      for (let seed = 1; seed <= 25; seed++)
+        check(boardFor(players, symmetry, radius, seed), symmetry);
+    }
+  };
+
+  const boardFor = (n: number, symmetry: Symmetry, radius: number, seed: number) => {
+    const ids = Array.from({ length: n }, (_, i) => `P${i}`);
+    const { state } = createSymmetricMatch({ players: ids, seed, radius, symmetry });
+    const tiles = Object.values(state.tiles);
+    return {
+      tiles,
+      byKey: state.tiles,
+      cities: tiles.filter((t) => t.type === 'city'),
+      villages: tiles.filter((t) => t.type === 'village'),
+      startCities: tiles.filter((t) => t.owner !== null),
+    };
+  };
+
+  it('never puts cities closer than 4 tiles apart', () => {
+    forEachBoard(({ cities }) => {
+      for (const a of cities) {
+        for (const b of cities) {
+          if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+        }
+      }
+    });
+  });
+
+  it('keeps extra cities near one per 50 tiles', () => {
+    forEachBoard(({ tiles, cities, startCities }) => {
+      // The whole start orbit counts as starting cities, owned or not.
+      const startOrbit = cities.filter((c) =>
+        startCities.some(
+          (s) =>
+            s.owner !== null && hexDistance(s, { q: 0, r: 0 }) === hexDistance(c, { q: 0, r: 0 }),
+        ),
+      );
+      const extra = cities.length - startOrbit.length;
+      const target = tiles.length / TILES_PER_CITY;
+      expect(extra).toBeGreaterThanOrEqual(0);
+      expect(extra).toBeLessThanOrEqual(Math.ceil(target) + 6);
+    });
+  });
+
+  it('never lets villages touch', () => {
+    forEachBoard(({ villages, byKey }) => {
+      for (const v of villages) {
+        for (const n of hexNeighbors(v)) expect(byKey[hexKey(n)]?.type).not.toBe('village');
+      }
+    });
+  });
+
+  it('never lets villages border cities', () => {
+    forEachBoard(({ villages, byKey }) => {
+      for (const v of villages) {
+        for (const n of hexNeighbors(v)) expect(byKey[hexKey(n)]?.type).not.toBe('city');
+      }
+    });
+  });
+
+  it('places villages until nowhere legal is left', () => {
+    forEachBoard(({ tiles, byKey }, symmetry) => {
+      const images = group(symmetry);
+      for (const tile of tiles.filter((t) => t.type === 'farmland')) {
+        const orbit = images.map((f) => f(tile));
+        const blocked = orbit.some(
+          (hex, i) =>
+            hexNeighbors(hex).some((n) => {
+              const type = byKey[hexKey(n)]?.type;
+              return type === 'village' || type === 'city';
+            }) || orbit.slice(i + 1).some((other) => hexDistance(hex, other) === 1),
+        );
+        expect(blocked).toBe(true);
+      }
+    });
   });
 });
