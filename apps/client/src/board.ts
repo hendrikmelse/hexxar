@@ -380,12 +380,11 @@ function tileArtColors(fill: number, icon: number): ArtColors {
   };
 }
 
-/** A crop field: staggered rows of little wheat stalks, kept inside the progress ring. */
+/** A crop field: a few little wheat stalks around the troop count, kept inside the progress ring. */
 function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
   const rows: [number, number[]][] = [
-    [-6, [-12, -4, 4, 12]],
-    [5, [-8, 0, 8]],
-    [14, [-12, -4, 4, 12]],
+    [-7, [-9, 9]],
+    [13, [-9, 0, 9]],
   ];
   for (const [baseY, xs] of rows) {
     for (const dx of xs) {
