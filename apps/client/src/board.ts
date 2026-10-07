@@ -169,14 +169,17 @@ export class Board {
     // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.
     const corners = hexCorners(center, owner === null ? TILE_INSET + 1 : TILE_INSET);
     shape.poly(corners).fill(fill);
-    // Outline only the edges on the border of a group of same-owner tiles.
+    // Outline only the edges on the border of a group of same-owner tiles. The line follows the
+    // true hex boundary rather than the inset fill, so neighboring tiles' edges meet exactly
+    // at the shared corners and the group border has no breaks.
     if (owner !== null) {
+      const boundary = hexCorners(center, 0);
       EDGE_NEIGHBORS.forEach(([dq, dr], i) => {
         if (game.tiles[hexKey({ q: tile.q + dq, r: tile.r + dr })]?.owner === tile.owner) return;
         const j = (i + 1) % 6;
         shape
-          .moveTo(corners[2 * i]!, corners[2 * i + 1]!)
-          .lineTo(corners[2 * j]!, corners[2 * j + 1]!)
+          .moveTo(boundary[2 * i]!, boundary[2 * i + 1]!)
+          .lineTo(boundary[2 * j]!, boundary[2 * j + 1]!)
           .stroke({ width: 1, color: owner, cap: 'round' });
       });
     }
