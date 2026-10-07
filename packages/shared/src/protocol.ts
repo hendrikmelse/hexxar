@@ -17,5 +17,3 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   }),
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
-
-export const DEFAULT_TICK_MS = 2000;

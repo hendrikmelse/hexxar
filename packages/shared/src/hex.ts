@@ -21,6 +21,15 @@ export const hexKey = (h: Hex): string => `${h.q},${h.r}`;
 
 export const hexNeighbors = (h: Hex): Hex[] => HEX_DIRECTIONS.map((d) => hexAdd(h, d));
 
+/** Rotate around the origin by `steps` * 60 degrees. */
+export function hexRotate(h: Hex, steps: number): Hex {
+  let { q, r } = h;
+  for (let i = 0; i < ((steps % 6) + 6) % 6; i++) {
+    [q, r] = [-r, q + r];
+  }
+  return { q, r };
+}
+
 export function hexDistance(a: Hex, b: Hex): number {
   const dq = a.q - b.q;
   const dr = a.r - b.r;

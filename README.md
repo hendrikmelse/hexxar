@@ -21,13 +21,13 @@ Players command armies by placing orders into a **queue**. Orders don't execute 
   - **Duel / small match:** 2-6 players on a **symmetrical** board, so every player starts with an equal position. Duels are ranked and require an account.
   - **Royale:** up to ~100 players on a **randomly generated** board. Guests can join.
   - Board generation is seeded and deterministic: `generate(mode, playerCount, seed) -> initial state`.
-- **Map:** a grid of hexes using axial coordinates `(q, r)`. Each tile has terrain and an optional owner.
-- **Armies:** units stationed on tiles with a size/strength.
-- **Orders:** e.g. `move(armyId, toTile)`, later `attack`, `fortify`, `build`. Each player has **one global queue**, with **no length limit**. Orders are append-only: **no reordering and no cancelling**. Once queued, an order is a commitment, which is what makes the queue the central strategic element. (The server still needs a sanity cap against abuse/spam; it's an anti-abuse limit, not a game rule.)
+- **Map:** a grid of hexes using axial coordinates `(q, r)`. Each tile has a **type** (farmland, village, city; more later) with its own rules for troop generation and defensive bonus, plus an optional owner. Types are data in `packages/shared/src/tiles.ts`. Neutral tiles start with a small neutral garrison.
+- **Armies:** each tile holds one army, a troop count belonging to the tile's owner.
+- **Orders:** e.g. `move(from, to)` (all but one troop, one adjacent hex per tick), later `attack`, `fortify`, `build`. Each player has **one global queue**, with **no length limit**. Orders are append-only: **no reordering and no cancelling**. Once queued, an order is a commitment, which is what makes the queue the central strategic element. (The server still needs a sanity cap against abuse/spam; it's an anti-abuse limit, not a game rule.)
 - **Tick:** every 2s by default (configurable, see below) the server takes the head of every player's queue, validates it against the current state, and resolves all of them simultaneously.
 - **Conflict resolution:** each tick resolves in four phases: (1) commanded armies depart, (2) armies arriving on friendly territory reinforce, (3) armies arriving on hostile territory attack, (4) on each contested tile the strongest participant fights the second strongest and all others are removed. Full spec and edge cases in [`docs/tick-resolution.md`](docs/tick-resolution.md). Resolution never depends on player ordering or connection speed.
 - **Winning:** last player standing. Players may surrender at any time (an immediate message, not a queued order).
-- **Tick rate:** the tick interval is a match setting, not a constant. It defaults to 2s for all modes, but can be adjusted globally (`TICK_MS` on the server) and later per mode.
+- **Match settings:** every match carries its own config (`MatchConfig` in `packages/shared/src/config.ts`): tick interval (default 2s), troop generation speed, starting troops, fog mode. Defaults apply for anything unspecified, which is the foundation for user-created custom games. The server's `TICK_MS` is a temporary global override until matches exist.
 - **Invalid orders:** if an order is invalid at execution time (target gone, army dead), it is dropped and the tick passes without it.
 - **Fog of war:** not in the first versions, but designed in from the start. The shared package exposes `visibleState(state, playerId)`, and the server only ever sends clients the output of that function. Initially it returns the full state; later it filters by vision. Diffs are computed per player for the same reason.
 - **Replays:** because the sim is deterministic, a match is fully described by `(mode, seed, players, per-tick orders)`. Storing that gives replays for free, no recording of state needed.
@@ -99,7 +99,7 @@ hexxar/
 ## Milestones
 
 1. **Scaffold:** monorepo, TypeScript config, lint/format, CI, empty client and server that talk over WebSocket.
-2. **Shared core:** hex coordinate math, map generation, and tick resolution with tests (no networking).
+2. **Shared core:** ✅ hex math, tile types, match config, order validation, `resolveTick`, surrender, a symmetric 2/3/6-player board generator, and tests (no networking).
 3. **Playable local loop:** server ticks, one player moves one army through a queue, client renders the map and queue.
 4. **Multiplayer matches:** multiple players, simultaneous resolution, conflict rules, spawn/join flow, match lifecycle and a simple lobby. Guests can play.
 5. **Modes and maps:** symmetrical board generator for 2-6 players, random generator for royale, victory conditions.
@@ -120,7 +120,9 @@ hexxar/
 
 ## Open questions
 
-- **Tick resolution details:** move size, move distance, neutral tiles, and defender bonuses are listed in [`docs/tick-resolution.md`](docs/tick-resolution.md).
+- **Tick resolution details:** a few edge cases (what happens to a surrendered player's troops, draws) are listed at the bottom of [`docs/tick-resolution.md`](docs/tick-resolution.md).
+- **Balance:** all tile and generation numbers are placeholders.
+- **Symmetric boards for 4 and 5 players:** rotational symmetry only works for 2, 3 and 6 players on a hex grid. 4 and 5 would need mirror symmetry or a different board shape.
 - **Ranked rating system:** to be discussed when accounts are implemented.
 
 ## Getting started
