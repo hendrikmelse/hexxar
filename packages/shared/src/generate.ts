@@ -187,12 +187,17 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   const cities: Hex[] = [...startOrbit];
   for (const hex of startOrbit) types.set(hexKey(hex), 'city');
   const others = orbits.filter((orbit) => orbit !== startOrbit);
+  // Symmetries preserve distance from the center, so an orbit is either all edge or all interior.
+  const isEdge = (orbit: readonly Hex[]): boolean =>
+    orbit.some((hex) => hexDistance(hex, { q: 0, r: 0 }) === radius);
+  const interior = others.filter((orbit) => !isEdge(orbit));
+  const edge = others.filter(isEdge);
 
-  // Cities: rare, spaced apart. Add orbits (in random order) while that brings the number
-  // of extra cities closer to the target density.
+  // Cities: rare, spaced apart, and never on the edge of the board. Add orbits (in random
+  // order) while that brings the number of extra cities closer to the target density.
   const target = ordered.length / TILES_PER_CITY;
   let extraCities = 0;
-  for (const orbit of shuffle(others, rng)) {
+  for (const orbit of shuffle(interior, rng)) {
     if (Math.abs(extraCities + orbit.length - target) >= Math.abs(extraCities - target)) continue;
     if (!cityFits(orbit, cities)) continue;
     for (const hex of orbit) {
@@ -206,7 +211,8 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   // Placing one only ever removes options, so a single pass leaves nowhere legal to add more.
   const villages = new Set<string>();
   const cityKeys = new Set(cities.map(hexKey));
-  for (const orbit of shuffle(others, rng)) {
+  // Edge tiles only get villages once no interior tile can take one.
+  for (const orbit of [...shuffle(interior, rng), ...shuffle(edge, rng)]) {
     if (orbit.some((hex) => types.has(hexKey(hex)))) continue;
     if (!villageFits(orbit, villages, cityKeys)) continue;
     for (const hex of orbit) {

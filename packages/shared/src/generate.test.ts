@@ -168,11 +168,16 @@ describe('terrain rules', () => {
   };
 
   const forEachBoard = (
-    check: (board: ReturnType<typeof boardFor>, symmetry: Symmetry, players: number) => void,
+    check: (
+      board: ReturnType<typeof boardFor>,
+      symmetry: Symmetry,
+      players: number,
+      radius: number,
+    ) => void,
   ) => {
     for (const { players, symmetry, radius } of setups) {
       for (let seed = 1; seed <= 25; seed++)
-        check(boardFor(players, symmetry, radius, seed), symmetry, players);
+        check(boardFor(players, symmetry, radius, seed), symmetry, players, radius);
     }
   };
 
@@ -195,6 +200,14 @@ describe('terrain rules', () => {
         for (const b of cities) {
           if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
         }
+      }
+    });
+  });
+
+  it('never puts a city on the edge of the board', () => {
+    forEachBoard(({ cities }, _symmetry, _players, radius) => {
+      for (const city of cities) {
+        expect(hexDistance(city, { q: 0, r: 0 })).toBeLessThan(radius);
       }
     });
   });

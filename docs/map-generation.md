@@ -15,8 +15,8 @@ Starting positions are matching spots one tile in from the edge of the board: le
 ## Tile types
 
 1. **Starting cities** as above.
-2. **Other cities** are rare: about one per 50 tiles, not counting the starting cities. Orbits are tried in random order, and one is added only if it brings the number of extra cities closer to that target. Cities are never closer than **4 tiles** to any other city, starting cities included.
-3. **Villages** are placed randomly until nowhere legal is left. A village never touches another village or a city. Placing a village only removes options, so a single random pass over the orbits leaves a board where no further village fits.
+2. **Other cities** are rare: about one per 50 tiles, not counting the starting cities. Orbits are tried in random order, and one is added only if it brings the number of extra cities closer to that target. Cities are never closer than **4 tiles** to any other city, starting cities included, and are never placed on the edge of the board.
+3. **Villages** are placed randomly until nowhere legal is left. A village never touches another village or a city. Edge tiles are only considered once no interior tile can take a village. Placing a village only removes options, so a single random pass over the orbits leaves a board where no further village fits.
 4. **Farmland** is everything else.
 
 Neutral tiles start with their type's base garrison.
