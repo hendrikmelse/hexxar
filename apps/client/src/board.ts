@@ -166,7 +166,8 @@ export class Board {
       owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, OWNED_FILL[tile.type]);
     const shape = view.shape;
     shape.clear();
-    const corners = hexCorners(center, TILE_INSET);
+    // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.
+    const corners = hexCorners(center, owner === null ? TILE_INSET + 1 : TILE_INSET);
     shape.poly(corners).fill(fill);
     // Outline only the edges on the border of a group of same-owner tiles.
     if (owner !== null) {
