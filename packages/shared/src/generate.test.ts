@@ -76,7 +76,9 @@ describe('createSymmetricMatch', () => {
   it.each(mirrorSymmetries)('is mirror symmetric for %i players', (n, symmetry) => {
     const players = Array.from({ length: n }, (_, i) => `P${i}`);
     const { state } = createSymmetricMatch({ players, seed: 99, radius: 6, symmetry });
-    const maps: ((h: Hex) => Hex)[] = [hexFlipVertical, hexFlipHorizontal];
+    // Two players are only mirrored left-right; four are mirrored both ways.
+    const maps: ((h: Hex) => Hex)[] =
+      n === 2 ? [hexFlipHorizontal] : [hexFlipVertical, hexFlipHorizontal];
     for (const tile of Object.values(state.tiles)) {
       for (const map of maps) {
         const image = state.tiles[hexKey(map(tile))]!;
@@ -95,14 +97,32 @@ describe('createSymmetricMatch', () => {
     const mirrored = (n: number) => {
       const players = Array.from({ length: n }, (_, i) => `P${i}`);
       const { state } = createSymmetricMatch({ players, seed: 11 });
-      return Object.values(state.tiles).every(
-        (t) => state.tiles[hexKey(hexFlipVertical(t))]!.type === t.type,
-      );
+      const flip = n === 2 ? hexFlipHorizontal : hexFlipVertical;
+      return Object.values(state.tiles).every((t) => state.tiles[hexKey(flip(t))]!.type === t.type);
     };
     expect(mirrored(2)).toBe(true);
     expect(mirrored(4)).toBe(true);
     expect(mirrored(3)).toBe(false);
     expect(mirrored(6)).toBe(false);
+  });
+
+  it('does not mirror two-player boards top to bottom', () => {
+    const topBottomDiffers = (seed: number) => {
+      const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius: 8 });
+      return Object.values(state.tiles).some(
+        (t) => state.tiles[hexKey(hexFlipVertical(t))]!.type !== t.type,
+      );
+    };
+    expect([1, 2, 3, 4, 5].every(topBottomDiffers)).toBe(true);
+  });
+
+  it('puts two players on opposite corners', () => {
+    const { state } = createSymmetricMatch({ players: ['A', 'B'], seed: 4, radius: 6 });
+    const owned = Object.values(state.tiles).filter((t) => t.owner !== null);
+    expect(owned.map((t) => [t.q, t.r]).sort()).toEqual([
+      [-6, 0],
+      [6, 0],
+    ]);
   });
 
   it('spreads four players around the board', () => {
@@ -140,17 +160,19 @@ describe('terrain rules', () => {
   ];
 
   /** The symmetry group the generator uses, for finding a tile's orbit. */
-  const group = (symmetry: Symmetry): ((h: Hex) => Hex)[] =>
-    symmetry === 'rotational'
-      ? [0, 1, 2, 3, 4, 5].map((i) => (h) => hexRotate(h, i))
+  const group = (symmetry: Symmetry, players: number): ((h: Hex) => Hex)[] => {
+    if (symmetry === 'rotational') return [0, 1, 2, 3, 4, 5].map((i) => (h) => hexRotate(h, i));
+    return players === 2
+      ? [(h) => h, hexFlipHorizontal]
       : [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
+  };
 
   const forEachBoard = (
-    check: (board: ReturnType<typeof boardFor>, symmetry: Symmetry) => void,
+    check: (board: ReturnType<typeof boardFor>, symmetry: Symmetry, players: number) => void,
   ) => {
     for (const { players, symmetry, radius } of setups) {
       for (let seed = 1; seed <= 25; seed++)
-        check(boardFor(players, symmetry, radius, seed), symmetry);
+        check(boardFor(players, symmetry, radius, seed), symmetry, players);
     }
   };
 
@@ -210,8 +232,8 @@ describe('terrain rules', () => {
   });
 
   it('places villages until nowhere legal is left', () => {
-    forEachBoard(({ tiles, byKey }, symmetry) => {
-      const images = group(symmetry);
+    forEachBoard(({ tiles, byKey }, symmetry, players) => {
+      const images = group(symmetry, players);
       for (const tile of tiles.filter((t) => t.type === 'farmland')) {
         const orbit = images.map((f) => f(tile));
         const blocked = orbit.some(

@@ -56,8 +56,9 @@ type Transform = (h: Hex) => Hex;
 
 /**
  * - `rotational`: 6-fold rotation. Supports 2, 3 or 6 players.
- * - `mirror`: left-right and top-bottom mirrors (and so a 180 degree turn).
- *   Supports 2 or 4 players.
+ * - `mirror`: for 4 players, left-right and top-bottom mirrors (and so a 180 degree
+ *   turn). For 2 players, just the left-right mirror, so the two halves of the board
+ *   face each other but each half is not itself symmetric. Supports 2 or 4 players.
  */
 export type Symmetry = 'rotational' | 'mirror';
 
@@ -118,9 +119,12 @@ function layout(
     };
   }
   if (count === 2) {
-    // Opposite sides, mirror images of each other.
-    const start = rimHexNear(radius, 20, mirrors);
-    return { terrain: mirrors, starts: [start, hexFlipHorizontal(start)] };
+    // Left and right corners, mirror images across the vertical axis only.
+    const start: Hex = { q: radius, r: 0 };
+    return {
+      terrain: [(h) => h, hexFlipHorizontal],
+      starts: [start, hexFlipHorizontal(start)],
+    };
   }
   if (count === 4) {
     const start = rimHexNear(radius, 45, mirrors);
