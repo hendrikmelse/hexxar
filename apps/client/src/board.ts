@@ -470,15 +470,18 @@ function drawWheat(g: Graphics, x: number, y: number, bend: number, color: numbe
  * used to carve doorways.
  */
 function drawVillage(g: Graphics, c: Point, art: ArtColors, cutout: number): void {
-  // Nudged up a little so the cottages are not crowded toward the bottom of the tile.
-  const at = (x: number, y: number): [number, number] => [c.x + x, c.y + y - 2.5];
+  // Drawn smaller than a castle so the two read differently at a glance. Scaled about the
+  // art's own center, and nudged up so the cottages are not crowded toward the tile's bottom.
+  const k = 0.82;
+  const at = (x: number, y: number): [number, number] => [c.x + x * k, c.y + 3 + (y - 3) * k - 2.5];
+  const rect = (x: number, y: number, w: number, h: number) => g.rect(...at(x, y), w * k, h * k);
   // Large cottage with a chimney.
-  g.rect(...at(-5.5, -4), 2, 4).fill(art.roof);
-  g.rect(...at(-14, 3), 12, 9).fill(art.wall);
+  rect(-5.5, -4, 2, 4).fill(art.roof);
+  rect(-14, 3, 12, 9).fill(art.wall);
   g.poly([...at(-16, 3), ...at(-8, -6), ...at(0, 3)]).fill(art.roof);
-  g.rect(...at(-9, 7), 4, 5).fill(cutout);
+  rect(-9, 7, 4, 5).fill(cutout);
   // Small cottage.
-  g.rect(...at(3, 6), 10, 6).fill(art.wall);
+  rect(3, 6, 10, 6).fill(art.wall);
   g.poly([...at(1, 6), ...at(8, -1), ...at(15, 6)]).fill(art.roof);
 }
 
