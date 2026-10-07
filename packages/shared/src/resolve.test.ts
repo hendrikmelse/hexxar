@@ -182,19 +182,77 @@ describe('battles', () => {
 });
 
 describe('generation', () => {
-  it('adds troops to owned tiles on their interval, scaled by speed', () => {
-    const start = { ...row([{ owner: 'A', troops: 1, type: 'city' }]), tick: 1 };
-    // City generates every 2 ticks; next tick is 2.
-    expect(at(step(start, {}), 0).troops).toBe(2);
-    const fast = resolveTick(start, {}, parseMatchConfig({ generationSpeedPercent: 200 }));
-    expect(at(fast, 0).troops).toBe(2);
-    const still = { ...start, tick: 2 }; // next tick is 3
-    expect(at(step(still, {}), 0).troops).toBe(1);
+  const city = (troops: number, tick: number, owner: string | null = 'A') => ({
+    ...row([{ owner, troops, type: 'city' }]),
+    tick,
+  });
+
+  it('adds a troop to owned tiles every interval', () => {
+    // Cities generate every 3 ticks.
+    expect(at(step(city(5, 2), {}), 0).troops).toBe(6); // next tick is 3
+    expect(at(step(city(5, 3), {}), 0).troops).toBe(5); // next tick is 4
+  });
+
+  it('scales with the match generation speed', () => {
+    const fast = parseMatchConfig({ generationSpeedPercent: 300 });
+    expect(at(resolveTick(city(5, 0), {}, fast), 0).troops).toBe(6); // interval 1
+  });
+
+  it('stops generating at the tile cap', () => {
+    expect(at(step(city(49, 2), {}), 0).troops).toBe(50);
+    expect(at(step(city(50, 2), {}), 0).troops).toBe(50);
+    // Armies can exceed the cap through reinforcement; they just stop growing.
+    expect(at(step(city(60, 2), {}), 0).troops).toBe(60);
+  });
+
+  it('uses the per-type defaults', () => {
+    const start = row([
+      { owner: 'A', troops: 1, type: 'farmland' },
+      { owner: 'A', troops: 1, type: 'village' },
+    ]);
+    const after = (tick: number) => step({ ...start, tick }, {});
+    expect(at(after(22), 0).troops).toBe(1); // next tick 23: nothing
+    expect(at(after(22), 1).troops).toBe(1);
+    expect(at(after(23), 0).troops).toBe(2); // next tick 24: farmland (every 24)
+    expect(at(after(7), 1).troops).toBe(2); // next tick 8: village (every 8)
+    expect(at(after(7), 0).troops).toBe(1);
+  });
+
+  it('can be overridden per match', () => {
+    const custom = parseMatchConfig({
+      tileOverrides: { city: { generation: { everyTicks: 1, cap: 7 } } },
+    });
+    expect(at(resolveTick(city(5, 0), {}, custom), 0).troops).toBe(6);
+    expect(at(resolveTick(city(7, 0), {}, custom), 0).troops).toBe(7);
   });
 
   it('never generates on neutral tiles', () => {
-    const start = { ...row([{ troops: 3, type: 'city' }]), tick: 1 };
-    expect(at(step(start, {}), 0).troops).toBe(3);
+    expect(at(step(city(10, 2, null), {}), 0).troops).toBe(10);
+  });
+});
+
+describe('neutral armies', () => {
+  const neutralCity = (troops: number, tick: number) => ({
+    ...row([{ troops, type: 'city' }]),
+    tick,
+  });
+
+  it('shrinks toward the base garrison, one troop at a time', () => {
+    // Decay every 6 ticks by default; next tick 6.
+    expect(at(step(neutralCity(14, 5), {}), 0).troops).toBe(13);
+    expect(at(step(neutralCity(14, 4), {}), 0).troops).toBe(14);
+  });
+
+  it('stops shrinking at the base garrison and does not regrow below it', () => {
+    expect(at(step(neutralCity(10, 5), {}), 0).troops).toBe(10);
+    expect(at(step(neutralCity(3, 5), {}), 0).troops).toBe(3);
+  });
+
+  it('a surrendered army defends but decays back to the default', () => {
+    const start = { ...row([{ owner: 'B', troops: 14, type: 'city' }], ['A', 'B']), tick: 5 };
+    const s = surrender(start, 'B');
+    expect(at(s, 0)).toMatchObject({ owner: null, troops: 14 });
+    expect(at(step(s, {}), 0).troops).toBe(13);
   });
 });
 

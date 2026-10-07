@@ -25,10 +25,16 @@ export const hexNeighbors = (h: Hex): Hex[] => HEX_DIRECTIONS.map((d) => hexAdd(
 export function hexRotate(h: Hex, steps: number): Hex {
   let { q, r } = h;
   for (let i = 0; i < ((steps % 6) + 6) % 6; i++) {
-    [q, r] = [-r, q + r];
+    [q, r] = [0 - r, q + r];
   }
   return { q, r };
 }
+
+/** Mirror top to bottom (across the horizontal axis through the left and right corners). */
+export const hexFlipVertical = (h: Hex): Hex => ({ q: h.q + h.r, r: 0 - h.r });
+
+/** Mirror left to right (across the vertical axis through the top and bottom edges). */
+export const hexFlipHorizontal = (h: Hex): Hex => ({ q: 0 - h.q - h.r, r: h.r });
 
 export function hexDistance(a: Hex, b: Hex): number {
   const dq = a.q - b.q;

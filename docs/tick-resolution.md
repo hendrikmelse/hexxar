@@ -14,13 +14,19 @@ How the server turns the current state plus every player's next queued order int
 
 Tile types are data (`packages/shared/src/tiles.ts`). Each defines:
 
-| Property          | Meaning                                                   |
-| ----------------- | --------------------------------------------------------- |
-| `defensePercent`  | Defender strength multiplier in percent (100 = no bonus)  |
-| `neutralGarrison` | Troops on the tile at match start if neutral              |
-| `generation`      | Owned tiles gain `amount` troops every `everyTicks` ticks |
+| Property         | Meaning                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `defensePercent` | Defender strength multiplier in percent (100 = no bonus)                                 |
+| `baseGarrison`   | Size of the defensive army when neutral; neutral tiles start here and shrink back to it  |
+| `generation`     | Owned tiles gain `amount` troops every `everyTicks` ticks, and stop once at `cap` troops |
 
-Current types: **farmland**, **village**, **city** (numbers are placeholders until balancing). Adding a type means adding an entry to the table; the sim reads everything from it. Generation speed is scaled per match by `generationSpeedPercent`.
+| Type     | Base garrison | Defense | Effective defense | Generates every | Generation cap |
+| -------- | ------------- | ------- | ----------------- | --------------- | -------------- |
+| Farmland | 1             | 100%    | 1                 | 24 ticks        | 10             |
+| Village  | 4             | 125%    | 5                 | 8 ticks         | 20             |
+| City     | 10            | 150%    | 15                | 3 ticks         | 50             |
+
+Adding a type means adding an entry to the table; the sim reads everything from it. A match can override any value through `tileOverrides` in its config, and scale all generation with `generationSpeedPercent`. Generation stops at the cap but armies can exceed it through reinforcement.
 
 ## Phases
 
@@ -31,7 +37,7 @@ Current types: **farmland**, **village**, **city** (numbers are placeholders unt
    - The winner keeps the difference, converted back to troops (rounded down).
    - If nobody is left standing (a tie, or rounding down to zero), the tile keeps its owner and is left empty. A battle only changes ownership if an attacker survives.
    - An attacker arriving on an empty tile simply captures it.
-5. **Generate.** Owned tiles gain troops according to their type and the match's generation speed.
+5. **Generate and decay.** Owned tiles gain troops according to their type, cap and the match's generation speed. Neutral armies above their tile's base garrison lose one troop every `neutralDecayEveryTicks` ticks (default 6). Neutral tiles never generate, and a depleted neutral army does not regrow.
 6. **Settle.** Players who own no tiles are eliminated. When exactly one player remains, they win and the match stops resolving.
 
 Phases 2 to 4 are computed from the state after all departures, independently per destination tile, so none depends on the order armies are processed in.
@@ -47,9 +53,9 @@ Because each player has one order per tick, a player's own armies can never arri
 
 ## Surrender
 
-A player may surrender at any time. It is an immediate action, not a queued order (`surrender(state, player)`). Their tiles become neutral and keep their troops, and they are eliminated.
+A player may surrender at any time. It is an immediate action, not a queued order (`surrender(state, player)`). Their tiles become neutral and defensive-only. Their armies stay in place but shrink one troop at a time back to each tile type's base garrison, then stop. The player is eliminated.
 
 ## Open details
 
-- Whether eliminated players' armies should vanish instead of becoming neutral garrisons.
+- Whether a depleted neutral army should regrow toward its base garrison (currently it stays depleted, so sieges accumulate).
 - Whether a draw should be possible (everyone eliminated simultaneously). Currently no winner is declared if nobody is left.

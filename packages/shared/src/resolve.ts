@@ -1,8 +1,7 @@
-import type { MatchConfig } from './config.js';
+import { tileRules, type MatchConfig } from './config.js';
 import { hexKey } from './hex.js';
 import { checkOrder, type OrdersByPlayer } from './orders.js';
 import { settlePlayers, type GameState, type PlayerId, type Tile } from './state.js';
-import { tileTypeDef } from './tiles.js';
 
 /** Attackers fight at face value; defenders get their tile's percentage. */
 const ATTACKER_PERCENT = 100;
@@ -64,16 +63,23 @@ export function resolveTick(
     }
 
     // Phases 3-4: attack and battle.
-    if (hostile.length > 0) resolveBattle(tile, hostile);
+    if (hostile.length > 0)
+      resolveBattle(tile, hostile, tileRules(config, tile.type).defensePercent);
   }
 
-  // Troop generation, scaled by the match's speed setting.
+  // Generation (owned tiles, up to a cap) and decay (oversized neutral armies).
   const tick = state.tick + 1;
   for (const tile of Object.values(tiles)) {
-    if (tile.owner === null) continue;
-    const { everyTicks, amount } = tileTypeDef(tile.type).generation;
+    const rules = tileRules(config, tile.type);
+    if (tile.owner === null) {
+      if (tile.troops > rules.baseGarrison && tick % config.neutralDecayEveryTicks === 0) {
+        tile.troops -= 1;
+      }
+      continue;
+    }
+    const { everyTicks, amount, cap } = rules.generation;
     const interval = Math.max(1, Math.round((everyTicks * 100) / config.generationSpeedPercent));
-    if (tick % interval === 0) tile.troops += amount;
+    if (tile.troops < cap && tick % interval === 0) tile.troops += amount;
   }
 
   const next: GameState = { ...state, tick, tiles };
@@ -85,8 +91,11 @@ export function resolveTick(
  * removed. The winner keeps the difference. A battle needs a survivor to change
  * ownership: if nobody is left standing the tile keeps its owner and is empty.
  */
-function resolveBattle(tile: MutableTile, hostile: readonly Arrival[]): void {
-  const defensePercent = tileTypeDef(tile.type).defensePercent;
+function resolveBattle(
+  tile: MutableTile,
+  hostile: readonly Arrival[],
+  defensePercent: number,
+): void {
   const participants: Participant[] = hostile.map((a) => ({
     owner: a.player,
     strength: a.amount * ATTACKER_PERCENT,
@@ -116,7 +125,10 @@ function resolveBattle(tile: MutableTile, hostile: readonly Arrival[]): void {
   if (survivors > 0 && !top.defender) tile.owner = top.owner;
 }
 
-/** A player gives up: their tiles turn neutral (keeping their troops) and they are eliminated. */
+/**
+ * A player gives up: their tiles turn neutral and they are eliminated. Their
+ * armies stay as defensive-only garrisons that shrink back to each tile's base size.
+ */
 export function surrender(state: GameState, player: PlayerId): GameState {
   if (state.winner !== null || !state.players.includes(player)) return state;
   const tiles: Record<string, Tile> = {};
