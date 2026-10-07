@@ -16,7 +16,8 @@ export const PLAYER_COLORS = [
 ];
 
 const BACKGROUND = 0x14161c;
-const NEUTRAL_FILL = { farmland: 0x252a33, village: 0x2b3140, city: 0x333a4e } as const;
+const NEUTRAL_FILL = { farmland: 0x242932, village: 0x2f3749, city: 0x3a4360 } as const;
+const NEUTRAL_ICON = 0xaab3c8;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
 const RING_RADIUS = 21;
@@ -68,6 +69,8 @@ export class Board {
   private readonly selectionLayer = new Graphics();
   private readonly views = new Map<string, TileView>();
   private fitted = false;
+  /** Pixel density the troop labels are currently rendered at. */
+  private textResolution = window.devicePixelRatio || 1;
 
   private constructor(
     private readonly app: Application,
@@ -119,6 +122,7 @@ export class Board {
           fill: 0xffffff,
           fontFamily: 'system-ui, sans-serif',
         },
+        resolution: this.textResolution,
       });
       label.anchor.set(0.5);
       label.position.set(center.x, center.y + 4);
@@ -135,16 +139,12 @@ export class Board {
     shape.poly(hexCorners(center, 1.5)).fill(fill);
     if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 2, color: owner });
 
-    // Tile type markers: village = dot, city = diamond, farmland = none.
-    const marker = owner ?? 0x8a93a8;
-    if (tile.type === 'village') {
-      shape.circle(center.x, center.y - 13, 4).fill({ color: marker, alpha: 0.9 });
-    } else if (tile.type === 'city') {
-      const y = center.y - 13;
-      shape.poly([center.x, y - 6, center.x + 6, y, center.x, y + 6, center.x - 6, y]).fill({
-        color: marker,
-        alpha: 0.9,
-      });
+    // Tile type art: villages are a house, cities a skyline inside a second outline.
+    const iconColor = owner ?? NEUTRAL_ICON;
+    if (tile.type === 'village') drawHouse(shape, center, iconColor);
+    else if (tile.type === 'city') {
+      shape.poly(hexCorners(center, 6)).stroke({ width: 1.5, color: iconColor, alpha: 0.45 });
+      drawSkyline(shape, center, iconColor);
     }
     this.drawProgressRing(shape, tile, center, owner, game);
     view.label.text = tile.troops > 0 ? String(tile.troops) : '';
@@ -206,6 +206,18 @@ export class Board {
     }
   }
 
+  /**
+   * Troop labels are textures, so they blur when the world is scaled up. Keep their
+   * resolution matched to the zoom (in coarse steps, so this rarely re-renders them).
+   */
+  private syncTextResolution(): void {
+    const dpr = window.devicePixelRatio || 1;
+    const wanted = Math.min(dpr * 4, Math.max(dpr, Math.ceil(dpr * this.world.scale.x * 2) / 2));
+    if (wanted === this.textResolution) return;
+    this.textResolution = wanted;
+    for (const { label } of this.views.values()) label.resolution = wanted;
+  }
+
   setSelection(hex: Hex | null): void {
     const g = this.selectionLayer;
     g.clear();
@@ -222,6 +234,7 @@ export class Board {
       Math.max(MIN_ZOOM, Math.min((width * 0.9) / bounds.width, (height * 0.9) / bounds.height)),
     );
     this.world.scale.set(scale);
+    this.syncTextResolution();
     this.world.position.set(
       width / 2 - (bounds.x + bounds.width / 2) * scale,
       height / 2 - (bounds.y + bounds.height / 2) * scale,
@@ -290,6 +303,7 @@ export class Board {
           Math.max(MIN_ZOOM, this.world.scale.x * 1.1 ** -Math.sign(e.deltaY)),
         );
         this.world.scale.set(next);
+        this.syncTextResolution();
         // Keep the point under the cursor fixed while zooming.
         this.world.position.set(cursor.x - before.x * next, cursor.y - before.y * next);
       },
@@ -319,4 +333,21 @@ function drawArrow(g: Graphics, from: Hex, to: Hex, color: number, alpha: number
     end.x - ux * head * 0.4 + uy * head * 0.6,
     end.y - uy * head * 0.4 - ux * head * 0.6,
   ]).fill({ color, alpha });
+}
+
+/** A small house: a body with a pitched roof, sitting above the troop count. */
+function drawHouse(g: Graphics, center: Point, color: number): void {
+  const x = center.x;
+  const base = center.y - 6;
+  g.rect(x - 5.5, base - 6, 11, 6).fill({ color, alpha: 0.95 });
+  g.poly([x - 8.5, base - 6, x, base - 14, x + 8.5, base - 6]).fill({ color, alpha: 0.95 });
+}
+
+/** A city skyline: three buildings of different heights. */
+function drawSkyline(g: Graphics, center: Point, color: number): void {
+  const base = center.y - 6;
+  const x = center.x;
+  g.rect(x - 9, base - 8, 5, 8).fill({ color, alpha: 0.85 });
+  g.rect(x - 2.5, base - 12, 5, 12).fill({ color, alpha: 0.95 });
+  g.rect(x + 4, base - 6, 5, 6).fill({ color, alpha: 0.85 });
 }
