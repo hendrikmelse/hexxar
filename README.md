@@ -99,7 +99,7 @@ hexxar/
 ## Milestones
 
 1. **Scaffold:** monorepo, TypeScript config, lint/format, CI, empty client and server that talk over WebSocket.
-2. **Shared core:** ✅ hex math, tile types, match config, order validation, `resolveTick`, surrender, a symmetric board generator (2, 3 or 6 players rotational; 2 or 4 mirrored; 5 unsupported), and tests (no networking).
+2. **Shared core:** ✅ hex math, tile types, match config, order validation, `resolveTick`, surrender, a symmetric board generator (3 or 6 players rotational; 2 or 4 mirrored (2 can also be rotational); 5 unsupported), and tests (no networking).
 3. **Playable local loop:** server ticks, one player moves one army through a queue, client renders the map and queue.
 4. **Multiplayer matches:** multiple players, simultaneous resolution, conflict rules, spawn/join flow, match lifecycle and a simple lobby. Guests can play.
 5. **Modes and maps:** symmetrical board generator for 2-6 players, random generator for royale, victory conditions.

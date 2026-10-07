@@ -38,7 +38,12 @@ describe('createSymmetricMatch', () => {
 
   it.each([2, 3, 6])('is rotationally symmetric for %i players', (n) => {
     const players = Array.from({ length: n }, (_, i) => `P${i}`);
-    const { state } = createSymmetricMatch({ players, seed: 1234, radius: 5 });
+    const { state } = createSymmetricMatch({
+      players,
+      seed: 1234,
+      radius: 5,
+      symmetry: 'rotational',
+    });
     expect(Object.keys(state.tiles)).toHaveLength(hexagonalBoard(5).length);
     for (const tile of Object.values(state.tiles)) {
       const image = state.tiles[hexKey(hexRotate(tile, 1))]!;
@@ -77,6 +82,20 @@ describe('createSymmetricMatch', () => {
       expect(owned).toHaveLength(1);
       expect(owned[0]!.type).toBe('city');
     }
+  });
+
+  it('defaults to mirror symmetry for 2 and 4 players, rotational for 3 and 6', () => {
+    const mirrored = (n: number) => {
+      const players = Array.from({ length: n }, (_, i) => `P${i}`);
+      const { state } = createSymmetricMatch({ players, seed: 11 });
+      return Object.values(state.tiles).every(
+        (t) => state.tiles[hexKey(hexFlipVertical(t))]!.type === t.type,
+      );
+    };
+    expect(mirrored(2)).toBe(true);
+    expect(mirrored(4)).toBe(true);
+    expect(mirrored(3)).toBe(false);
+    expect(mirrored(6)).toBe(false);
   });
 
   it('spreads four players around the board', () => {

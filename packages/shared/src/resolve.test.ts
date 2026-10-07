@@ -248,11 +248,51 @@ describe('neutral armies', () => {
     expect(at(step(neutralCity(3, 5), {}), 0).troops).toBe(3);
   });
 
+  it('decays at half the generation rate of its tile type', () => {
+    const farm = (tick: number) => ({ ...row([{ troops: 5, type: 'farmland' }]), tick });
+    expect(at(step(farm(46), {}), 0).troops).toBe(5); // next tick 47
+    expect(at(step(farm(47), {}), 0).troops).toBe(4); // next tick 48 = 2 * 24
+    const village = (tick: number) => ({ ...row([{ troops: 9, type: 'village' }]), tick });
+    expect(at(step(village(15), {}), 0).troops).toBe(8); // 2 * 8
+  });
+
+  it('decay rate is configurable', () => {
+    const fast = parseMatchConfig({ neutralDecayRatePercent: 100 });
+    const start = { ...row([{ troops: 14, type: 'city' }]), tick: 2 };
+    expect(at(resolveTick(start, {}, fast), 0).troops).toBe(13); // every 3 ticks
+  });
+
   it('a surrendered army defends but decays back to the default', () => {
     const start = { ...row([{ owner: 'B', troops: 14, type: 'city' }], ['A', 'B']), tick: 5 };
     const s = surrender(start, 'B');
     expect(at(s, 0)).toMatchObject({ owner: null, troops: 14 });
     expect(at(step(s, {}), 0).troops).toBe(13);
+  });
+});
+
+describe('generation timing', () => {
+  it('a troop generated this tick fights in a battle on that tick', () => {
+    // City A at tick 2 generates on tick 3: 4 -> 5 troops (x150%) beats the 7-troop attack...
+    const start = {
+      ...row([
+        { owner: 'A', troops: 4, type: 'city' },
+        { owner: 'B', troops: 6 },
+      ]),
+      tick: 2,
+    };
+    // B sends 5 (strength 500). A defends with 4+1 = 5 * 150 = 750 => A holds with floor(250 / 150) = 1.
+    const s = step(start, { B: move(1, 0) });
+    expect(at(s, 0)).toMatchObject({ owner: 'A', troops: 1 });
+    // Without the generated troop A would have 600 vs 500 => 0 survivors.
+    const before = step({ ...start, tick: 3 }, { B: move(1, 0) });
+    expect(at(before, 0)).toMatchObject({ owner: 'A', troops: 0 });
+  });
+
+  it('a troop generated this tick can make an order valid and be moved', () => {
+    const start = { ...row([{ owner: 'A', troops: 1, type: 'city' }, { troops: 0 }]), tick: 2 };
+    const s = step(start, { A: move(0, 1) }); // generates to 2, then sends 1
+    expect(at(s, 0)).toMatchObject({ owner: 'A', troops: 1 });
+    expect(at(s, 1)).toMatchObject({ owner: 'A', troops: 1 });
   });
 });
 

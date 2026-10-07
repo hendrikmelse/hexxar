@@ -12,8 +12,11 @@ export const matchConfigSchema = z.object({
   generationSpeedPercent: z.number().int().min(10).max(1000).default(100),
   /** Troops on each player's starting tile. */
   startingTroops: z.number().int().min(1).max(1000).default(10),
-  /** A neutral army above its tile's base garrison loses one troop every this many ticks. */
-  neutralDecayEveryTicks: z.number().int().min(1).max(1000).default(6),
+  /**
+   * How fast a neutral army above its tile's base garrison shrinks, as a
+   * percentage of that tile type's generation rate (50 = half as fast).
+   */
+  neutralDecayRatePercent: z.number().int().min(1).max(1000).default(50),
   /** Override any tile type's rules for this match; unspecified values keep their defaults. */
   tileOverrides: z
     .partialRecord(

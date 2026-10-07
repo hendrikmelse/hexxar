@@ -39,7 +39,7 @@ export interface SymmetricMatchOptions {
   readonly seed: number;
   /** Board radius in hexes. */
   readonly radius?: number;
-  /** Defaults to `mirror` for 4 players and `rotational` otherwise. */
+  /** Defaults to `mirror` for 2 and 4 players, `rotational` for 3 and 6. */
   readonly symmetry?: Symmetry;
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
@@ -105,7 +105,8 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   config: MatchConfig;
 } {
   const { players, seed, radius = 6 } = options;
-  const symmetry = options.symmetry ?? (players.length === 4 ? 'mirror' : 'rotational');
+  const symmetry =
+    options.symmetry ?? (players.length === 2 || players.length === 4 ? 'mirror' : 'rotational');
   const config = parseMatchConfig(options.config);
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
   if (radius < 3) throw new Error('radius must be at least 3');

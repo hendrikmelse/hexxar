@@ -30,17 +30,17 @@ Adding a type means adding an entry to the table; the sim reads everything from 
 
 ## Phases
 
-1. **Depart.** Every commanded army leaves its tile, leaving **one troop behind**. Tile ownership is unchanged.
-2. **Reinforce.** An arriving army whose destination is owned by its own player adds its troops to the tile.
-3. **Attack.** An arriving army whose destination is not owned by its player (hostile or neutral) is an attacker.
-4. **Battle.** On each contested tile, the participants are the arriving attackers plus the tile's current troops as the defender, if any. Attackers fight at face value; the defender's strength is multiplied by the tile type's `defensePercent`. The strongest participant fights the second strongest; everyone else is removed.
+1. **Generate and decay.** Owned tiles gain troops according to their type, cap and the match's generation speed. Neutral armies above their tile's base garrison lose one troop at half the tile type's generation rate (`neutralDecayRatePercent`, default 50). Neutral tiles never generate, and a depleted neutral army does not regrow. This happens first, so a troop generated this tick can defend, and can be sent by a move order this tick. Orders are checked against the state after generation.
+2. **Depart.** Every commanded army leaves its tile, leaving **one troop behind**. Tile ownership is unchanged.
+3. **Reinforce.** An arriving army whose destination is owned by its own player adds its troops to the tile.
+4. **Attack.** An arriving army whose destination is not owned by its player (hostile or neutral) is an attacker.
+5. **Battle.** On each contested tile, the participants are the arriving attackers plus the tile's current troops as the defender, if any. Attackers fight at face value; the defender's strength is multiplied by the tile type's `defensePercent`. The strongest participant fights the second strongest; everyone else is removed.
    - The winner keeps the difference, converted back to troops (rounded down).
    - If nobody is left standing (a tie, or rounding down to zero), the tile keeps its owner and is left empty. A battle only changes ownership if an attacker survives.
    - An attacker arriving on an empty tile simply captures it.
-5. **Generate and decay.** Owned tiles gain troops according to their type, cap and the match's generation speed. Neutral armies above their tile's base garrison lose one troop every `neutralDecayEveryTicks` ticks (default 6). Neutral tiles never generate, and a depleted neutral army does not regrow.
 6. **Settle.** Players who own no tiles are eliminated. When exactly one player remains, they win and the match stops resolving.
 
-Phases 2 to 4 are computed from the state after all departures, independently per destination tile, so none depends on the order armies are processed in.
+Phases 3 to 5 are computed from the state after all departures, independently per destination tile, so none depends on the order armies are processed in.
 
 Because each player has one order per tick, a player's own armies can never arrive at the same tile together.
 
@@ -57,5 +57,4 @@ A player may surrender at any time. It is an immediate action, not a queued orde
 
 ## Open details
 
-- Whether a depleted neutral army should regrow toward its base garrison (currently it stays depleted, so sieges accumulate).
 - Whether a draw should be possible (everyone eliminated simultaneously). Currently no winner is declared if nobody is left.
