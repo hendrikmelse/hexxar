@@ -135,6 +135,6 @@ pnpm dev          # server on ws://localhost:8080, client on http://localhost:51
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm build`.
 
-Open `http://localhost:5173` in two browser tabs: the first match starts when both players have joined (each tab is its own guest). Controls: left-drag from one of your tiles across neighboring hexes to queue a path of moves (a preview is shown while you drag; moves are queued when you release, and Esc cancels). You can also start a drag from the end of your queued path to extend it. Right-drag (or middle-drag, or left-drag from anywhere you can't command) pans the map and the wheel zooms. Orders are append-only and run one per tick.
+Open `http://localhost:5173` in two browser tabs: the first match starts when both players have joined (each tab is its own guest). Controls: left-drag from one of your tiles across neighboring hexes to queue a path of moves (a preview is shown while you drag; moves are queued when you release, and Esc cancels). You can also start a drag from the end of your queued path to extend it. Right-drag (or middle-drag) pans the map and the wheel zooms; the left button never pans, so a stray drag can't queue or move anything by accident. Orders are append-only and run one per tick.
 
 Server settings (environment variables): `PLAYERS` (2, 3, 4 or 6; default 2), `RADIUS` (board size, default 6), `TICK_MS` (default 2000), `PORT` (default 8080). Set `VITE_SERVER_URL` to point the client at a different server.

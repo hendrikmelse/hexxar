@@ -45,7 +45,7 @@ interface TileView {
 
 /** What the board reports about the player's left-button drags. */
 export interface OrderDragHandlers {
-  /** Can a drag starting on this hex issue orders? If not, dragging pans the map. */
+  /** Can a left-drag starting on this hex issue orders? If not, the drag is ignored. */
   canStart(hex: Hex): boolean;
   start(hex: Hex): void;
   move(hex: Hex): void;
@@ -57,8 +57,8 @@ export interface OrderDragHandlers {
 
 /**
  * Draws the hex map and handles input: left-drag from a hex you can command draws an
- * order path, any other drag (right button, middle button, or left from elsewhere)
- * pans, and the wheel zooms.
+ * order path (left-drag from anywhere else does nothing), right or middle drag pans,
+ * and the wheel zooms.
  */
 export class Board {
   private readonly world = new Container();
@@ -247,12 +247,15 @@ export class Board {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointerdown', (e) => {
       if (mode || e.button > 2) return;
-      canvas.setPointerCapture(e.pointerId);
       const hex = this.hexAt(e);
-      if (e.button === 0 && this.handlers.canStart(hex)) {
+      if (e.button === 0) {
+        // The left button only ever gives orders, so a stray left-drag can never pan.
+        if (!this.handlers.canStart(hex)) return;
+        canvas.setPointerCapture(e.pointerId);
         mode = { kind: 'order' };
         this.handlers.start(hex);
       } else {
+        canvas.setPointerCapture(e.pointerId);
         mode = { kind: 'pan', x: e.clientX, y: e.clientY };
       }
     });
