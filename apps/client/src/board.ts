@@ -380,25 +380,32 @@ function tileArtColors(fill: number, icon: number): ArtColors {
   };
 }
 
-/** A crop field: a few little wheat stalks around the troop count, kept inside the progress ring. */
+/** A crop field: three wheat stalks across the middle, the outer two leaning outward. */
 function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
-  const rows: [number, number[]][] = [
-    [-7, [-9, 9]],
-    [13, [-9, 0, 9]],
+  const stalks: [number, number][] = [
+    [-11, -0.35],
+    [0, 0],
+    [11, 0.35],
   ];
-  for (const [baseY, xs] of rows) {
-    for (const dx of xs) {
-      const x = c.x + dx;
-      const y = c.y + baseY;
-      // Stem, a pair of leaves, and the ear on top.
-      g.moveTo(x, y).lineTo(x, y - 7);
-      g.moveTo(x, y - 2).lineTo(x - 2.5, y - 4.5);
-      g.moveTo(x, y - 2).lineTo(x + 2.5, y - 4.5);
-      g.moveTo(x, y - 4.5).lineTo(x - 2.5, y - 7);
-      g.moveTo(x, y - 4.5).lineTo(x + 2.5, y - 7);
-      g.stroke({ width: 1.4, color: art.faint, cap: 'round', join: 'round' });
-    }
+  for (const [dx, lean] of stalks) drawWheat(g, c.x + dx, c.y + 14, lean, art.faint);
+}
+
+/** One wheat stalk growing up from (x, y), leaning by `lean` radians (positive = to the right). */
+function drawWheat(g: Graphics, x: number, y: number, lean: number, color: number): void {
+  const scale = 1.6;
+  const cos = Math.cos(lean);
+  const sin = Math.sin(lean);
+  // Stalk-local coordinates (up is negative y), rotated about the base.
+  const at = (px: number, py: number): [number, number] => [
+    x + (px * cos - py * sin) * scale,
+    y + (px * sin + py * cos) * scale,
+  ];
+  g.moveTo(...at(0, 0)).lineTo(...at(0, -7));
+  for (const side of [-1, 1]) {
+    g.moveTo(...at(0, -2)).lineTo(...at(side * 2.5, -4.5));
+    g.moveTo(...at(0, -4.5)).lineTo(...at(side * 2.5, -7));
   }
+  g.stroke({ width: 1.8, color, cap: 'round', join: 'round' });
 }
 
 /**
