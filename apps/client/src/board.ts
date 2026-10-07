@@ -380,32 +380,45 @@ function tileArtColors(fill: number, icon: number): ArtColors {
   };
 }
 
-/** A crop field: three wheat stalks across the middle, the outer two leaning outward. */
+/** A crop field: a tight row of four wheat stalks that curve outward from the middle. */
 function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
+  // `bend` is how far each stalk leans away from the center: -1 is the far left, 1 the far right.
   const stalks: [number, number][] = [
-    [-11, -0.35],
-    [0, 0],
-    [11, 0.35],
+    [-9, -1],
+    [-3, -0.4],
+    [3, 0.4],
+    [9, 1],
   ];
-  for (const [dx, lean] of stalks) drawWheat(g, c.x + dx, c.y + 14, lean, art.faint);
+  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 11, bend, art.faint);
 }
 
-/** One wheat stalk growing up from (x, y), leaning by `lean` radians (positive = to the right). */
-function drawWheat(g: Graphics, x: number, y: number, lean: number, color: number): void {
-  const scale = 1.6;
-  const cos = Math.cos(lean);
-  const sin = Math.sin(lean);
-  // Stalk-local coordinates (up is negative y), rotated about the base.
-  const at = (px: number, py: number): [number, number] => [
-    x + (px * cos - py * sin) * scale,
-    y + (px * sin + py * cos) * scale,
-  ];
-  g.moveTo(...at(0, 0)).lineTo(...at(0, -7));
-  for (const side of [-1, 1]) {
-    g.moveTo(...at(0, -2)).lineTo(...at(side * 2.5, -4.5));
-    g.moveTo(...at(0, -4.5)).lineTo(...at(side * 2.5, -7));
+/**
+ * One wheat plant growing up from (x, y). The stem curves in the direction of `bend`
+ * (negative = left, positive = right) and the ear on top tilts further the same way.
+ */
+function drawWheat(g: Graphics, x: number, y: number, bend: number, color: number): void {
+  const scale = 1.05;
+  // Plant-local coordinates (up is negative y), rotated by `angle` about an origin.
+  const place =
+    (ox: number, oy: number, angle: number) =>
+    (px: number, py: number): [number, number] => [
+      ox + (px * Math.cos(angle) - py * Math.sin(angle)) * scale,
+      oy + (px * Math.sin(angle) + py * Math.cos(angle)) * scale,
+    ];
+  const lean = bend * 0.14;
+  const base = place(x, y, lean);
+  const tip = base(bend * 3.5, -12);
+  const ear = place(tip[0], tip[1], lean + bend * 0.3);
+
+  g.moveTo(x, y).quadraticCurveTo(...base(0, -6), ...tip);
+  g.stroke({ width: 1.4, color, cap: 'round', join: 'round' });
+  // The ear: tightly stacked grain pairs angled up and out, with one at the tip.
+  for (const level of [5, 2.6, 0.2, -2.2]) {
+    g.moveTo(...ear(0, level)).lineTo(...ear(-1.7, level - 3));
+    g.moveTo(...ear(0, level)).lineTo(...ear(1.7, level - 3));
   }
-  g.stroke({ width: 1.8, color, cap: 'round', join: 'round' });
+  g.moveTo(...ear(0, -3.5)).lineTo(...ear(0, -7));
+  g.stroke({ width: 2.2, color, cap: 'round', join: 'round' });
 }
 
 /**
