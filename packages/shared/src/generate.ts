@@ -76,7 +76,9 @@ export interface SymmetricMatchOptions {
   readonly config?: unknown;
 }
 
-const rotations: Transform[] = Array.from({ length: 6 }, (_, i) => (h) => hexRotate(h, i));
+/** Rotations by a whole share of a turn: 180 degrees for 2 players, 120 for 3, 60 for 6. */
+const rotationGroup = (count: number): Transform[] =>
+  Array.from({ length: count }, (_, i) => (h) => hexRotate(h, (i * 6) / count));
 const mirrors: Transform[] = [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
 
 /**
@@ -117,7 +119,7 @@ function layout(
     const corner: Hex = { q: radius - START_INSET, r: 0 };
     const stride = 6 / count;
     return {
-      terrain: rotations,
+      terrain: rotationGroup(count),
       starts: Array.from({ length: count }, (_, i) => hexRotate(corner, i * stride)),
     };
   }

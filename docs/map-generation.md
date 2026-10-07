@@ -6,11 +6,11 @@
 
 The board is split into **orbits**: sets of tiles that map onto each other under the board's symmetry. Every tile in an orbit gets the same type, so each player sees the same surroundings, rotated or mirrored.
 
-- **Rotational** (3 or 6 players, or 2): 6-fold rotation.
+- **Rotational** (3 or 6 players, or 2): the board maps onto itself when turned by 360 / players degrees: 180 degrees for 2 players, 120 for 3, 60 for 6. It is never more symmetric than the player count needs.
 - **Mirror** (2 or 4 players, the default for both). With 4 players: left-right and top-bottom mirrors, plus the 180 degree turn they imply. With 2 players: only the left-right mirror, so the two halves face each other but neither half is symmetric itself.
 - 5 players is unsupported, and mirror boards are rejected for 3 and 6 players (and rotational for 4).
 
-Starting positions are matching spots one tile in from the edge of the board: left and right for 2 players, and one per quadrant for 4. Every image of a start tile is a city, owned by a player if there is one for it (with 4 players and 2-player rotational boards that is every image; with a 2-player mirror there are exactly two). Start cities are at least 4 tiles apart, which is why boards need a radius of at least 5.
+Starting positions are matching spots one tile in from the edge of the board: left and right for 2 players, and one per quadrant for 4. Every image of a start tile under the board's symmetry is a starting city, and the symmetry groups are exactly as big as the player count, so every starting city belongs to a player and there are no spare ones. Start cities are at least 4 tiles apart, which is why boards need a radius of at least 5.
 
 ## Tile types
 

@@ -55,11 +55,27 @@ describe('createSymmetricMatch', () => {
     });
     expect(Object.keys(state.tiles)).toHaveLength(hexagonalBoard(5).length);
     for (const tile of Object.values(state.tiles)) {
-      const image = state.tiles[hexKey(hexRotate(tile, 1))]!;
+      // A turn of 360 / players degrees (180 for 2, 120 for 3, 60 for 6) maps the board onto itself.
+      const image = state.tiles[hexKey(hexRotate(tile, 6 / n))]!;
       expect(image.type).toBe(tile.type);
       // Neutral tiles must match in garrison too; start tiles are checked below.
       if (tile.owner === null && image.owner === null) expect(image.troops).toBe(tile.troops);
     }
+  });
+
+  it('only needs as much rotational symmetry as there are players', () => {
+    // Under one 60 degree step the board changes, unless there are 6 players.
+    const rotatesBy60 = (n: number, seed: number) => {
+      const players = Array.from({ length: n }, (_, i) => `P${i}`);
+      const { state } = createSymmetricMatch({ players, seed, radius: 8, symmetry: 'rotational' });
+      return Object.values(state.tiles).every(
+        (t) => state.tiles[hexKey(hexRotate(t, 1))]!.type === t.type,
+      );
+    };
+    const seeds = [1, 2, 3, 4, 5];
+    expect(seeds.every((s) => !rotatesBy60(2, s))).toBe(true);
+    expect(seeds.every((s) => !rotatesBy60(3, s))).toBe(true);
+    expect(seeds.every((s) => rotatesBy60(6, s))).toBe(true);
   });
 
   it('gives every player an identical starting city', () => {
@@ -163,7 +179,9 @@ describe('terrain rules', () => {
 
   /** The symmetry group the generator uses, for finding a tile's orbit. */
   const group = (symmetry: Symmetry, players: number): ((h: Hex) => Hex)[] => {
-    if (symmetry === 'rotational') return [0, 1, 2, 3, 4, 5].map((i) => (h) => hexRotate(h, i));
+    if (symmetry === 'rotational') {
+      return Array.from({ length: players }, (_, i) => (h) => hexRotate(h, (i * 6) / players));
+    }
     return players === 2
       ? [(h) => h, hexFlipHorizontal]
       : [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
