@@ -19,7 +19,7 @@ export interface AppState {
   winner: PlayerId | null;
   matchPlayerId: PlayerId | null;
   /** Set while looking at a generated map instead of playing. */
-  preview: { seed: number } | null;
+  preview: { seed: number; summary: string; error: string | null } | null;
 }
 
 function loadName(): string {

@@ -12,7 +12,9 @@ import {
 import {
   MIN_CITY_DISTANCE,
   TILES_PER_CITY,
+  createFreeForAllMatch,
   createSymmetricMatch,
+  recommendedRadius,
   type Symmetry,
 } from './generate.js';
 import { TILE_TYPES } from './tiles.js';
@@ -259,5 +261,103 @@ describe('terrain rules', () => {
         expect(blocked).toBe(true);
       }
     });
+  });
+});
+
+describe('free-for-all boards', () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
+  const board = (n: number, seed: number, radius?: number) =>
+    createFreeForAllMatch({ players: ids(n), seed, radius }).state;
+  const radiusOf = (hexes: { q: number; r: number }[]) =>
+    Math.max(...hexes.map((h) => hexDistance(h, { q: 0, r: 0 })));
+  const counts = [2, 3, 5, 8, 20, 100];
+
+  it('is deterministic for a seed and different for different seeds', () => {
+    expect(board(8, 5)).toEqual(board(8, 5));
+    expect(board(8, 5).tiles).not.toEqual(board(8, 6).tiles);
+  });
+
+  it('scales the board with the number of players', () => {
+    let previous = 0;
+    for (const n of counts) {
+      const radius = recommendedRadius(n, 'freeForAll');
+      expect(radius).toBeGreaterThanOrEqual(previous);
+      previous = radius;
+      const tiles = 3 * radius * (radius + 1) + 1;
+      expect(tiles / n).toBeGreaterThanOrEqual(45);
+      expect(radiusOf(Object.values(board(n, 1).tiles))).toBe(radius);
+    }
+    expect(recommendedRadius(2, 'symmetric')).toBe(7);
+  });
+
+  it('gives every player exactly one starting city, spread out and away from the edge', () => {
+    for (const n of counts) {
+      for (let seed = 1; seed <= 4; seed++) {
+        const state = board(n, seed);
+        const radius = radiusOf(Object.values(state.tiles));
+        const owned = Object.values(state.tiles).filter((t) => t.owner !== null);
+        expect(owned).toHaveLength(n);
+        expect(new Set(owned.map((t) => t.owner)).size).toBe(n);
+        for (const start of owned) {
+          expect(start.type).toBe('city');
+          expect(start.troops).toBe(10);
+          expect(hexDistance(start, { q: 0, r: 0 })).toBeLessThan(radius);
+        }
+        for (const a of owned) {
+          for (const b of owned)
+            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+        }
+      }
+    }
+  });
+
+  it('assigns players to starting spots at random', () => {
+    const spots = new Set(
+      [1, 2, 3, 4, 5, 6].map((seed) => {
+        const mine = Object.values(board(6, seed).tiles).find((t) => t.owner === 'P1')!;
+        return hexKey(mine);
+      }),
+    );
+    expect(spots.size).toBeGreaterThan(1);
+  });
+
+  it('follows the same city and village rules as symmetric boards', () => {
+    for (const n of [3, 8, 40]) {
+      for (let seed = 1; seed <= 3; seed++) {
+        const state = board(n, seed);
+        const tiles = Object.values(state.tiles);
+        const radius = radiusOf(tiles);
+        const cities = tiles.filter((t) => t.type === 'city');
+        for (const a of cities) {
+          expect(hexDistance(a, { q: 0, r: 0 })).toBeLessThan(radius);
+          for (const b of cities)
+            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+        }
+        for (const village of tiles.filter((t) => t.type === 'village')) {
+          for (const nb of hexNeighbors(village)) {
+            const type = state.tiles[hexKey(nb)]?.type;
+            expect(type === 'village' || type === 'city').toBe(false);
+          }
+        }
+        // No farmland tile could still become a village.
+        for (const farm of tiles.filter((t) => t.type === 'farmland')) {
+          const blocked = hexNeighbors(farm).some((nb) => {
+            const type = state.tiles[hexKey(nb)]?.type;
+            return type === 'village' || type === 'city';
+          });
+          expect(blocked).toBe(true);
+        }
+        const extra = cities.length - n;
+        expect(extra).toBeLessThanOrEqual(Math.ceil(tiles.length / TILES_PER_CITY));
+      }
+    }
+  });
+
+  it('rejects boards that are too small, and matches with fewer than two players', () => {
+    expect(() => createFreeForAllMatch({ players: ids(100), seed: 1, radius: 6 })).toThrow(
+      /too small/,
+    );
+    expect(() => createFreeForAllMatch({ players: ids(1), seed: 1 })).toThrow();
+    expect(() => createFreeForAllMatch({ players: ids(3), seed: 1, radius: 3 })).toThrow();
   });
 });

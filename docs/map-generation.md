@@ -1,6 +1,6 @@
 # Map generation
 
-`createSymmetricMatch` (`packages/shared/src/generate.ts`) builds fair boards for 2, 3, 4 or 6 players. Given the same options and seed it always produces the same board.
+`packages/shared/src/generate.ts` builds boards in two flavors. `createSymmetricMatch` makes fair boards for 2, 3, 4 or 6 players; `createFreeForAllMatch` makes random boards for any number of players. Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared.
 
 ## Symmetry
 
@@ -21,6 +21,17 @@ Starting positions are matching spots one tile in from the edge of the board: le
 
 Neutral tiles start with their type's base garrison.
 
+## Free-for-all boards
+
+A free-for-all board has no symmetry; the terrain is simply random, within the tile rules above.
+
+- **Size:** `recommendedRadius` picks a board with about 50 tiles per player (radius 6 for 3 players, 12 for 8, 41 for 100). Boards for symmetric games have fixed recommended sizes (radius 7 for a duel up to 10 for 6 players).
+- **Starting cities:** one per player, at least 4 tiles apart and at least one tile in from the edge, spread as evenly as the board allows. The generator tries many random layouts, each time putting the next player as far as it can from the ones already placed, and keeps the layout whose closest pair of players is furthest apart. It rejects boards too small to hold everyone 4 tiles apart.
+- **Who starts where:** players are assigned to the starting cities at random.
+- **Other cities and villages:** as above, with each tile its own group instead of a symmetry orbit. Extra cities are about one per 50 tiles on top of the starting cities.
+
+Because nothing about the layout is symmetric, free-for-all boards are not perfectly fair. The spacing and the farm rings around every producer keep it close, and we can tune it further as we play.
+
 ## Previewing maps
 
-While this is being tuned, the client has a temporary **Generate new map** button. It generates a map locally with the current match's player count and board size and shows it in place of the live match; **Back to match** returns. Neither affects the server.
+The menu's **Preview generated maps (dev)** link shows boards locally without a server. It can generate a 2, 3, 4 or 6 player symmetric board, or a free-for-all with 3 to 100 players, at the recommended size or a chosen radius. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities and villages. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.

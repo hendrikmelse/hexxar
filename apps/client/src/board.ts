@@ -21,7 +21,7 @@ const NEUTRAL_FILL = { farmland: 0x242932, village: 0x282e39, city: 0x2d3441 } a
 const NEUTRAL_ICON = 0xaab3c8;
 /** How much of the owner color is mixed into an owned tile's fill: currently the same for every type. */
 const OWNED_FILL = { farmland: 0.4, village: 0.4, city: 0.4 } as const;
-const MIN_ZOOM = 0.25;
+const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
 /** Gap between neighboring tiles is twice this. */
 const TILE_INSET = 0.5;
@@ -44,8 +44,20 @@ const MAX_RING_SEGMENTS = 36;
 
 export function playerColor(game: GameView, owner: string | null): number | null {
   if (owner === null) return null;
-  const index = game.players.indexOf(owner);
-  return PLAYER_COLORS[(index < 0 ? 0 : index) % PLAYER_COLORS.length] ?? null;
+  const index = Math.max(0, game.players.indexOf(owner));
+  const palette = PLAYER_COLORS[index];
+  if (palette !== undefined) return palette;
+  // Beyond the hand-picked palette (big free-for-alls), space hues around the color wheel.
+  return hslToHex((index * 137.508) % 360, 0.62, 0.6);
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): number {
+  const a = saturation * Math.min(lightness, 1 - lightness);
+  const channel = (n: number): number => {
+    const k = (n + hue / 30) % 12;
+    return Math.round(255 * (lightness - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+  };
+  return (channel(0) << 16) | (channel(8) << 8) | channel(4);
 }
 
 /** Blend two 0xRRGGBB colors; `amount` is how much of `b` to mix in. */
@@ -114,11 +126,11 @@ export class Board {
   }
 
   /** Rebuild everything from the full game view. */
-  setAll(game: GameView): void {
+  setAll(game: GameView, refit = false): void {
     this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.views.clear();
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
-    if (!this.fitted && this.views.size > 0) {
+    if ((refit || !this.fitted) && this.views.size > 0) {
       this.fitToBoard();
       this.fitted = true;
     }

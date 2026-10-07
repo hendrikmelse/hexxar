@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store.js';
-import type { Actions } from './App.js';
+import { DEFAULT_PREVIEW, type Actions } from './App.js';
 
 export function Menu({ actions }: { actions: Actions }) {
   const app = useApp();
@@ -40,7 +40,7 @@ export function Menu({ actions }: { actions: Actions }) {
           </button>
         </form>
         {app.error && <p className="error">{app.error}</p>}
-        <button className="link" onClick={actions.startPreview}>
+        <button className="link" onClick={() => actions.startPreview(DEFAULT_PREVIEW)}>
           Preview generated maps (dev)
         </button>
       </div>

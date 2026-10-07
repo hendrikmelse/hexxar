@@ -1,7 +1,9 @@
 import {
+  createFreeForAllMatch,
   createSymmetricMatch,
   hexEquals,
   hexKey,
+  recommendedRadius,
   type Hex,
   type RoomSettingsPatch,
 } from '@hexxar/shared';
@@ -11,7 +13,7 @@ import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { appStore, saveName } from './store.js';
-import { mountUi } from './ui/mount.js';
+import { mountUi, type PreviewOptions } from './ui/mount.js';
 
 /** The match being played. Reset whenever you are back in the menu. */
 const game = emptyGame();
@@ -111,10 +113,35 @@ const hud = new Hud(hudEl, () => connection.send({ type: 'surrender' }));
 
 // -- Map preview (temporary): generate a map locally and show it on the board ----------
 
-function showPreview(): void {
-  const players = ['P1', 'P2'];
+function showPreview(options: PreviewOptions): void {
+  const freeForAll = options.mode === 'ffa';
+  const count = freeForAll ? options.players : Number(options.mode);
+  const players = Array.from({ length: count }, (_, i) => `P${i + 1}`);
+  const radius =
+    options.radius ?? recommendedRadius(count, freeForAll ? 'freeForAll' : 'symmetric');
   const seed = Math.floor(Math.random() * 2 ** 32);
-  const { state, config } = createSymmetricMatch({ players, seed, radius: 7 });
+  let generated;
+  try {
+    generated = freeForAll
+      ? createFreeForAllMatch({ players, seed, radius })
+      : createSymmetricMatch({ players, seed, radius });
+  } catch (error) {
+    // E.g. a board too small for the players. Keep showing the last map.
+    const current = appStore.get().preview;
+    appStore.set({
+      preview: {
+        seed: current?.seed ?? seed,
+        summary: current?.summary ?? '',
+        error: error instanceof Error ? error.message : 'could not generate that map',
+      },
+    });
+    return;
+  }
+  const { state, config } = generated;
+  const tiles = Object.values(state.tiles);
+  const cities = tiles.filter((t) => t.type === 'city').length;
+  const villages = tiles.filter((t) => t.type === 'village').length;
+  const summary = `${tiles.length} tiles · radius ${radius} · ${cities} cities (${count} starting) · ${villages} villages`;
   const view: GameView = {
     ...emptyGame(),
     status: 'playing',
@@ -123,8 +150,8 @@ function showPreview(): void {
     players,
     tiles: { ...state.tiles },
   };
-  appStore.set({ preview: { seed } });
-  board.setAll(view);
+  appStore.set({ preview: { seed, summary, error: null } });
+  board.setAll(view, true);
   board.drawQueue([], 0xffffff);
   board.drawPending([]);
   board.setSelection(null);

@@ -229,15 +229,28 @@
   top: 12px;
   left: 12px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  max-width: 340px;
+  max-width: 360px;
+  padding: 10px;
+  background: rgba(30, 34, 44, 0.92);
+  border-radius: 10px;
   font-size: 12px;
   color: #8a93a8;
 }
 
-#ui .preview button {
+#ui .preview .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#ui .preview button,
+#ui .preview select {
   padding: 6px 10px;
   font-size: 13px;
+}
+
+#ui .preview .error {
+  color: #ff8f8f;
 }
