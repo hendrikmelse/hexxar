@@ -192,7 +192,7 @@ export class Board {
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
     } else if (tile.type === 'village') {
-      shape.poly(hexCorners(center, WALL_INSET)).stroke({ width: 1, color: art.border });
+      shape.poly(hexCorners(center, WALL_INSET)).stroke({ width: 1, color: art.villageBorder });
       drawVillage(shape, center, art, fill);
     } else {
       const inner = hexCorners(center, WALL_INSET);
@@ -403,8 +403,10 @@ interface ArtColors {
   readonly wall: number;
   /** Roofs, towers and other emphasized shapes. */
   readonly roof: number;
-  /** Inner border lines. */
+  /** Inner border lines on cities. */
   readonly border: number;
+  /** Inner border line on villages: fainter than the city one. */
+  readonly villageBorder: number;
   /** Flag and other highlights. */
   readonly accent: number;
 }
@@ -415,7 +417,8 @@ function tileArtColors(fill: number, icon: number, owner: number | null): ArtCol
     wall: mix(fill, icon, 0.4),
     roof: mix(fill, icon, 0.7),
     // Owned tiles keep the border in the owner's own color rather than the pale art tint.
-    border: owner === null ? mix(fill, icon, 0.5) : mix(fill, owner, 0.7),
+    border: owner === null ? mix(fill, icon, 0.62) : mix(fill, owner, 0.88),
+    villageBorder: owner === null ? mix(fill, icon, 0.38) : mix(fill, owner, 0.52),
     accent: mix(fill, icon, 0.95),
   };
 }
