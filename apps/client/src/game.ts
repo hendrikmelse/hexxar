@@ -7,12 +7,13 @@ import {
   type Tile,
 } from '@hexxar/shared';
 
-export type Status = 'connecting' | 'waiting' | 'playing' | 'over' | 'rejected';
+/** `idle` until a match snapshot arrives. */
+export type Status = 'idle' | 'playing' | 'over';
 
 /** Everything the client knows about the match, built up from server messages. */
 export interface GameView {
   status: Status;
-  /** Waiting-room or rejection text. */
+  /** A short message for the player, such as why an order was refused. */
   notice: string;
   playerId: PlayerId | null;
   config: MatchConfig | null;
@@ -30,7 +31,7 @@ export interface GameView {
 
 export function emptyGame(): GameView {
   return {
-    status: 'connecting',
+    status: 'idle',
     notice: '',
     playerId: null,
     config: null,
@@ -52,14 +53,8 @@ export type Change =
 /** Fold a server message into the view. Returns what changed, or null for nothing. */
 export function applyMessage(game: GameView, message: ServerMessage): Change | null {
   switch (message.type) {
-    case 'welcome':
-      game.playerId = message.playerId;
-      return { kind: 'status' };
-    case 'waiting':
-      game.status = 'waiting';
-      game.notice = `Waiting for players (${message.joined}/${message.needed})`;
-      return { kind: 'status' };
     case 'snapshot':
+      game.playerId = message.you;
       game.config = message.config;
       game.tiles = { ...message.state.tiles };
       game.players = message.state.players;
@@ -93,7 +88,9 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       return { kind: 'queue' };
     case 'rejected':
       game.notice = message.reason;
-      if (game.status === 'connecting') game.status = 'rejected';
       return { kind: 'status' };
+    default:
+      // Lobby messages are handled by the app, not the match view.
+      return null;
   }
 }

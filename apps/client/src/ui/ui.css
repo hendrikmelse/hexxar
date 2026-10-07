@@ -1,0 +1,243 @@
+/* Menu, lobby, results and preview screens. Flat, dark, and over the board. */
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui .screen,
+#ui .results,
+#ui .preview {
+  pointer-events: auto;
+}
+
+#ui .screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #14161c;
+  overflow-y: auto;
+}
+
+#ui .card {
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #1e222c;
+  border-radius: 12px;
+}
+
+#ui h1,
+#ui h2 {
+  margin: 0;
+  font-weight: 700;
+}
+
+#ui h1 {
+  font-size: 32px;
+  letter-spacing: 0.04em;
+}
+
+#ui h2 {
+  font-size: 20px;
+}
+
+#ui button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #2a2f3d;
+  color: #e8eaf0;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+#ui button:hover:not(:disabled) {
+  background: #343a4b;
+}
+
+#ui button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#ui button.primary {
+  background: #4f9dff;
+  color: #0e1016;
+  font-weight: 600;
+}
+
+#ui button.primary:hover:not(:disabled) {
+  background: #6aaeff;
+}
+
+#ui button.link {
+  padding: 4px;
+  background: none;
+  color: #8a93a8;
+  font-size: 13px;
+}
+
+#ui input,
+#ui select {
+  padding: 9px 10px;
+  border: 1px solid #343a4b;
+  border-radius: 8px;
+  background: #14161c;
+  color: #e8eaf0;
+  font: inherit;
+  font-size: 15px;
+  min-width: 0;
+}
+
+#ui .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #8a93a8;
+}
+
+#ui .field.row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#ui .join {
+  display: flex;
+  gap: 8px;
+}
+
+#ui .join input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#ui .error {
+  margin: 0;
+  color: #ff8f8f;
+  font-size: 14px;
+}
+
+#ui .invite {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: #14161c;
+  border-radius: 8px;
+}
+
+#ui .invite .label {
+  display: block;
+  font-size: 12px;
+  color: #8a93a8;
+}
+
+#ui .invite .code {
+  font-size: 28px;
+  letter-spacing: 0.14em;
+}
+
+#ui .players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#ui .players li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: #14161c;
+  border-radius: 8px;
+}
+
+#ui .players li em {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #2a2f3d;
+  font-size: 11px;
+  font-style: normal;
+  color: #8a93a8;
+}
+
+#ui .players li.away {
+  opacity: 0.6;
+}
+
+#ui .players li.open {
+  color: #8a93a8;
+  border: 1px dashed #343a4b;
+  background: none;
+}
+
+#ui .settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#ui .countdown {
+  margin: 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+#ui .buttons {
+  display: flex;
+  gap: 8px;
+}
+
+#ui .buttons .primary {
+  flex: 1;
+}
+
+#ui .results {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+#ui .results .card {
+  align-items: center;
+  max-width: none;
+  width: auto;
+  min-width: 260px;
+  background: rgba(30, 34, 44, 0.95);
+}
+
+#ui .preview {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  font-size: 12px;
+  color: #8a93a8;
+}
+
+#ui .preview button {
+  padding: 6px 10px;
+  font-size: 13px;
+}

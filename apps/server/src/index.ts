@@ -1,20 +1,23 @@
 import { WebSocketServer } from 'ws';
 import { DEFAULT_TICK_MS } from '@hexxar/shared';
-import { GameServer } from './game-server.js';
+import { Lobby } from './lobby.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
-const game = new GameServer({
-  players: Number(process.env.PLAYERS ?? 2),
-  radius: Number(process.env.RADIUS ?? 6),
+const lobby = new Lobby({
+  // Duels only for now; free-for-all comes with the random board generator.
+  allowedSizes: [2],
+  defaultRadius: Number(process.env.RADIUS ?? 7),
   tickMs: Number(process.env.TICK_MS ?? DEFAULT_TICK_MS),
-  restartMs: Number(process.env.RESTART_MS ?? 10_000),
+  countdownMs: Number(process.env.COUNTDOWN_MS ?? 5000),
+  afkMs: Number(process.env.AFK_MS ?? 120_000),
+  finishedLingerMs: Number(process.env.FINISHED_LINGER_MS ?? 10 * 60_000),
 });
 
 const wss = new WebSocketServer({ port: PORT, maxPayload: 16 * 1024 });
 
 wss.on('connection', (ws) => {
-  const handler = game.connect({
+  const handler = lobby.connect({
     send: (message) => ws.send(JSON.stringify(message)),
     close: () => ws.close(),
   });

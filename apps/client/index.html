@@ -79,30 +79,6 @@
         text-align: center;
         pointer-events: none;
       }
-      #hud .dev {
-        position: fixed;
-        top: 84px;
-        left: 12px;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px;
-        max-width: 320px;
-      }
-      #hud .dev-button {
-        padding: 6px 10px;
-        border: 0;
-        border-radius: 8px;
-        background: #2a2f3d;
-        color: #e8eaf0;
-        font: inherit;
-        font-size: 13px;
-        cursor: pointer;
-      }
-      #hud .preview-label {
-        font-size: 12px;
-        color: #8a93a8;
-      }
       [hidden] {
         display: none !important;
       }
@@ -111,6 +87,7 @@
   <body>
     <div id="hud"></div>
     <div id="app"></div>
+    <div id="ui"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

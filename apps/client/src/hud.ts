@@ -10,15 +10,9 @@ export class Hud {
   private readonly barFill = el('div', 'bar-fill');
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
-  private readonly previewLabel = el('span', 'preview-label');
-  private readonly backButton = el('button', 'dev-button');
   private game: GameView | null = null;
 
-  constructor(
-    root: HTMLElement,
-    onSurrender: () => void,
-    dev: { generateMap: () => void; backToMatch: () => void },
-  ) {
+  constructor(root: HTMLElement, onSurrender: () => void) {
     this.bar.append(this.barFill);
     const panel = el('div', 'panel');
     panel.append(this.status, this.bar);
@@ -29,27 +23,12 @@ export class Hud {
     const hint = el('div', 'hint');
     hint.textContent =
       'Drag from your tiles to queue moves  ·  Right-drag to pan  ·  Scroll to zoom  ·  Esc cancels a drag';
-    // Temporary map-generation preview controls.
-    const tools = el('div', 'dev');
-    const generate = el('button', 'dev-button');
-    generate.textContent = 'Generate new map';
-    generate.addEventListener('click', dev.generateMap);
-    this.backButton.textContent = 'Back to match';
-    this.backButton.addEventListener('click', dev.backToMatch);
-    this.backButton.hidden = true;
-    tools.append(generate, this.backButton, this.previewLabel);
-    root.append(panel, tools, this.surrender, this.banner, hint);
+    root.append(panel, this.surrender, this.banner, hint);
     const frame = (): void => {
       this.updateBar();
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
-  }
-
-  /** Show or clear the "previewing a generated map" state. */
-  setPreview(seed: number | null): void {
-    this.backButton.hidden = seed === null;
-    this.previewLabel.textContent = seed === null ? '' : `Map preview · seed ${seed}`;
   }
 
   render(game: GameView): void {
@@ -66,12 +45,9 @@ export class Hud {
     const eliminated = me !== null && game.eliminated.includes(me);
     this.surrender.hidden = game.status !== 'playing' || eliminated;
 
+    // The match result is shown by the results screen, not here.
     let text = '';
-    if (game.status === 'connecting') text = 'Connecting…';
-    else if (game.status === 'waiting' || game.status === 'rejected') text = game.notice;
-    else if (game.status === 'over') {
-      text = game.winner === me ? 'Victory!' : `${game.winner ?? 'Nobody'} wins`;
-    } else if (eliminated) text = 'You were eliminated';
+    if (eliminated && game.status === 'playing') text = 'You were eliminated';
     else if (game.notice) text = game.notice;
     this.banner.textContent = text;
     this.banner.hidden = text === '';

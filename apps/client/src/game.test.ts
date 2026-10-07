@@ -28,6 +28,7 @@ const snapshot = (queue: Order[] = []): ServerMessage => ({
     winner: null,
     tiles: { '0,0': tile(0, 5), '1,0': tile(1, 5) },
   },
+  you: 'P1',
   queue,
   nextTickAt: 1000,
   serverTime: 0,
@@ -36,7 +37,6 @@ const snapshot = (queue: Order[] = []): ServerMessage => ({
 describe('applyMessage', () => {
   it('builds the view from a snapshot', () => {
     const game = emptyGame();
-    applyMessage(game, { type: 'welcome', token: 't', playerId: 'P1' });
     expect(applyMessage(game, snapshot([move(0)]))).toEqual({ kind: 'all' });
     expect(game).toMatchObject({ status: 'playing', playerId: 'P1', nextTickAt: 1000 });
     expect(game.queue).toEqual([move(0)]);

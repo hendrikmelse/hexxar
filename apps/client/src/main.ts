@@ -1,17 +1,39 @@
-import { createSymmetricMatch, hexDistance, hexEquals, hexKey, type Hex } from '@hexxar/shared';
+import {
+  createSymmetricMatch,
+  hexEquals,
+  hexKey,
+  type Hex,
+  type RoomSettingsPatch,
+} from '@hexxar/shared';
 import { Board, playerColor } from './board.js';
 import { applyMessage, emptyGame, type GameView } from './game.js';
 import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
+import { appStore, saveName } from './store.js';
+import { mountUi } from './ui/mount.js';
 
+/** The match being played. Reset whenever you are back in the menu. */
 const game = emptyGame();
 const draft = new PathDraft();
-/** Set while looking at a locally generated map instead of the live match. */
-let preview: { seed: number } | null = null;
+
+const appEl = document.getElementById('app')!;
+const hudEl = document.getElementById('hud')!;
+
+const previewing = (): boolean => appStore.get().preview !== null;
+
+/** True while a match is on screen: running, or finished and showing the result. */
+const inMatch = (): boolean => {
+  const room = appStore.get().room;
+  return room !== null && (room.state === 'running' || room.state === 'finished');
+};
 
 const canPlay = (): boolean =>
-  game.status === 'playing' && game.playerId !== null && !game.eliminated.includes(game.playerId);
+  !previewing() &&
+  inMatch() &&
+  game.status === 'playing' &&
+  game.playerId !== null &&
+  !game.eliminated.includes(game.playerId);
 
 const myColor = (): number => (game.playerId && playerColor(game, game.playerId)) || 0xffffff;
 const tileExists = (hex: Hex): boolean => game.tiles[hexKey(hex)] !== undefined;
@@ -24,12 +46,14 @@ function showDraft(): void {
   board.setSelection(draft.path[0] ?? null);
 }
 
+/** The board and the match HUD are only shown during a match (or a map preview). */
+function updateVisibility(): void {
+  appEl.style.display = inMatch() || previewing() ? 'block' : 'none';
+  hudEl.hidden = !inMatch() || previewing();
+}
+
 function render(change: ReturnType<typeof applyMessage>): void {
-  if (!change) return;
-  if (preview) {
-    hud.render(game);
-    return;
-  }
+  if (!change || previewing()) return;
   if (change.kind === 'all') board.setAll(game);
   else if (change.kind === 'tiles') board.updateTiles(change.tiles, game);
   board.drawQueue(game.queue, myColor());
@@ -38,12 +62,26 @@ function render(change: ReturnType<typeof applyMessage>): void {
     showDraft();
   }
   hud.render(game);
+  if (appStore.get().winner !== game.winner || appStore.get().matchPlayerId !== game.playerId) {
+    appStore.set({ winner: game.winner, matchPlayerId: game.playerId });
+  }
 }
 
-const board = await Board.create(document.getElementById('app')!, {
+/** Forget the match: back in the menu, or in a lobby for the next one. */
+function clearMatch(): void {
+  Object.assign(game, emptyGame());
+  draft.clear();
+  showDraft();
+  board.setAll(game);
+  board.drawQueue([], 0xffffff);
+  hud.render(game);
+  appStore.set({ winner: null, matchPlayerId: null });
+}
+
+const board = await Board.create(appEl, {
   // Drag from a tile you own, or from the end of your queued path, to give orders.
   canStart(hex) {
-    if (preview || !canPlay() || !tileExists(hex)) return false;
+    if (!canPlay() || !tileExists(hex)) return false;
     const end = plannedEnd();
     return (
       game.tiles[hexKey(hex)]?.owner === game.playerId || (end !== null && hexEquals(end, hex))
@@ -69,58 +107,115 @@ const board = await Board.create(document.getElementById('app')!, {
     showDraft();
   },
 });
-/** Temporary: generate a map locally, with the current match's player count and size. */
-function generatePreview(): void {
-  const players = Array.from({ length: game.players.length || 2 }, (_, i) => `P${i + 1}`);
-  const distances = Object.values(game.tiles).map((t) => hexDistance(t, { q: 0, r: 0 }));
-  const radius = distances.length > 0 ? Math.max(...distances) : 6;
+const hud = new Hud(hudEl, () => connection.send({ type: 'surrender' }));
+
+// -- Map preview (temporary): generate a map locally and show it on the board ----------
+
+function showPreview(): void {
+  const players = ['P1', 'P2'];
   const seed = Math.floor(Math.random() * 2 ** 32);
-  const { state, config } = createSymmetricMatch({
-    players,
-    seed,
-    radius,
-    config: game.config ?? undefined,
-  });
+  const { state, config } = createSymmetricMatch({ players, seed, radius: 7 });
   const view: GameView = {
     ...emptyGame(),
     status: 'playing',
-    playerId: players[0] ?? null,
+    playerId: 'P1',
     config,
     players,
     tiles: { ...state.tiles },
   };
-  preview = { seed };
-  draft.clear();
-  showDraft();
+  appStore.set({ preview: { seed } });
   board.setAll(view);
   board.drawQueue([], 0xffffff);
-  hud.setPreview(seed);
+  board.drawPending([]);
+  board.setSelection(null);
 }
 
-function backToMatch(): void {
-  preview = null;
+function leavePreview(): void {
+  appStore.set({ preview: null });
   board.setAll(game);
-  board.drawQueue(game.queue, myColor());
-  hud.setPreview(null);
 }
 
-const hud = new Hud(document.getElementById('hud')!, () => connection.send({ type: 'surrender' }), {
-  generateMap: generatePreview,
-  backToMatch,
+// -- Server connection ----------------------------------------------------------------
+
+/** Tell the server the current name, then do something that needs it. */
+function sendName(): void {
+  const name = appStore.get().name.trim();
+  if (name) connection.send({ type: 'setName', name });
+}
+
+mountUi(document.getElementById('ui')!, {
+  setName(name) {
+    appStore.set({ name });
+    saveName(name);
+  },
+  quickPlay() {
+    appStore.set({ error: null });
+    sendName();
+    connection.send({ type: 'quickPlay', size: 2 });
+  },
+  createRoom() {
+    appStore.set({ error: null });
+    sendName();
+    connection.send({ type: 'createRoom' });
+  },
+  joinRoom(code) {
+    appStore.set({ error: null });
+    sendName();
+    connection.send({ type: 'joinRoom', code });
+  },
+  updateRoom(settings: RoomSettingsPatch) {
+    connection.send({ type: 'updateRoom', settings });
+  },
+  startGame: () => connection.send({ type: 'startGame' }),
+  leaveRoom: () => connection.send({ type: 'leaveRoom' }),
+  startPreview: showPreview,
+  newPreview: showPreview,
+  exitPreview: leavePreview,
 });
+
+appStore.subscribe(updateVisibility);
+updateVisibility();
 hud.render(game);
 
+/** An invite link (`/?join=CODE`) joins that game as soon as we are in the menu. */
+function joinFromUrl(): void {
+  const params = new URLSearchParams(location.search);
+  const code = params.get('join');
+  if (!code) return;
+  history.replaceState(null, '', location.pathname);
+  sendName();
+  connection.send({ type: 'joinRoom', code });
+}
+
 const url = import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:8080`;
-const connection = connect(url, 'guest', {
-  onOpen: () => hud.render(game),
-  onClose: () => {
-    if (game.status !== 'rejected') game.status = 'connecting';
-    hud.render(game);
-  },
+const connection = connect(url, appStore.get().name, {
+  onOpen: () => appStore.set({ connected: true }),
+  onClose: () => appStore.set({ connected: false }),
   onMessage: (message) => {
-    if (message.type === 'welcome') saveToken(message.token);
-    render(applyMessage(game, message));
+    switch (message.type) {
+      case 'welcome':
+        saveToken(message.token);
+        appStore.set({ userId: message.userId });
+        return;
+      case 'room': {
+        const previous = appStore.get().room;
+        const { room } = message;
+        appStore.set({
+          room,
+          clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,
+          error: null,
+        });
+        if (!room || previous?.id !== room.id) clearMatch();
+        if (!room) joinFromUrl();
+        return;
+      }
+      case 'rejected':
+        if (inMatch()) render(applyMessage(game, message));
+        else appStore.set({ error: message.reason });
+        return;
+      default:
+        render(applyMessage(game, message));
+    }
   },
-  // Don't hammer a server that has told us the match is full.
-  shouldReconnect: () => game.status !== 'rejected',
+  shouldReconnect: () => true,
 });

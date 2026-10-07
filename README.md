@@ -101,7 +101,7 @@ hexxar/
 1. **Scaffold:** monorepo, TypeScript config, lint/format, CI, empty client and server that talk over WebSocket.
 2. **Shared core:** ✅ hex math, tile types, match config, order validation, `resolveTick`, surrender, a symmetric board generator (3 or 6 players rotational; 2 or 4 mirrored (2 can also be rotational); 5 unsupported), and tests (no networking).
 3. **Playable local loop:** ✅ server matches with per-player queues and a tick loop; client renders the map, queued-move arrows and a tick countdown, and queues moves by clicking.
-4. **Multiplayer matches:** multiple players, simultaneous resolution, conflict rules, spawn/join flow, match lifecycle and a simple lobby. Guests can play.
+4. **Multiplayer matches:** ✅ rooms, a main menu, quick play and private games by code or link, host-start and auto-start, a countdown, reconnects with auto-surrender after two minutes away, and a results screen (duels only for now; see [`docs/lobby.md`](docs/lobby.md)). Guests can play.
 5. **Modes and maps:** symmetrical board generator for 2-6 players, random generator for royale, victory conditions.
 6. **Accounts and persistence:** auth, ranked duels, ratings, stats, match history, replay storage and a replay viewer.
 7. **Game depth:** combat, terrain, economy, and fog of war (the groundwork is already in place).
@@ -135,8 +135,8 @@ pnpm dev          # server on ws://localhost:8080, client on http://localhost:51
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm build`.
 
-Open `http://localhost:5173` in two browser tabs: the first match starts when both players have joined (each tab is its own guest). Controls: left-drag from one of your tiles across neighboring hexes to queue a path of moves (a preview is shown while you drag; moves are queued when you release, and Esc cancels). You can also start a drag from the end of your queued path to extend it. Right-drag (or middle-drag) pans the map and the wheel zooms; the left button never pans, so a stray drag can't queue or move anything by accident. Orders are append-only and run one per tick.
+Open `http://localhost:5173` in two browser tabs (each tab is its own guest) and press **Quick play** in both, or create a private game in one and join it with the code or link from the other. Controls: left-drag from one of your tiles across neighboring hexes to queue a path of moves (a preview is shown while you drag; moves are queued when you release, and Esc cancels). You can also start a drag from the end of your queued path to extend it. Right-drag (or middle-drag) pans the map and the wheel zooms; the left button never pans, so a stray drag can't queue or move anything by accident. Orders are append-only and run one per tick.
 
-The **Generate new map** button (temporary) previews generated boards locally. Rules for generation are in [`docs/map-generation.md`](docs/map-generation.md).
+The menu's **Preview generated maps** link (temporary) shows generated boards locally. Rules for generation are in [`docs/map-generation.md`](docs/map-generation.md).
 
-Server settings (environment variables): `PLAYERS` (2, 3, 4 or 6; default 2), `RADIUS` (board size, default 6), `TICK_MS` (default 2000), `PORT` (default 8080). Set `VITE_SERVER_URL` to point the client at a different server.
+Server settings (environment variables): `RADIUS` (default board size, default 7), `TICK_MS` (default 2000), `COUNTDOWN_MS` (default 5000), `AFK_MS` (time a disconnected player has before surrendering, default 120000), `FINISHED_LINGER_MS` (how long a finished game's room stays open, default 600000), `PORT` (default 8080). Set `VITE_SERVER_URL` to point the client at a different server.
