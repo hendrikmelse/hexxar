@@ -4,6 +4,7 @@ import {
   hexFlipHorizontal,
   hexFlipVertical,
   hexNeighbors,
+  hexLine,
   hexRotate,
   hexagonalBoard,
 } from './hex.js';
@@ -37,5 +38,16 @@ describe('hex math', () => {
       expect(hexFlipHorizontal(hexFlipHorizontal(h))).toEqual(h);
       expect(hexFlipVertical(hexFlipHorizontal(h))).toEqual(hexRotate(h, 3));
     }
+  });
+
+  it('draws a line of adjacent hexes between two hexes', () => {
+    const a = { q: -3, r: 2 };
+    const b = { q: 4, r: -3 };
+    const line = hexLine(a, b);
+    expect(line[0]).toEqual(a);
+    expect(line.at(-1)).toEqual(b);
+    expect(line).toHaveLength(hexDistance(a, b) + 1);
+    for (let i = 1; i < line.length; i++) expect(hexDistance(line[i - 1]!, line[i]!)).toBe(1);
+    expect(hexLine(a, a)).toEqual([a]);
   });
 });

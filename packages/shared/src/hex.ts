@@ -52,3 +52,29 @@ export function hexagonalBoard(radius: number): Hex[] {
   }
   return hexes;
 }
+
+/** Round fractional axial coordinates to the nearest hex (via cube coordinates). */
+export function hexRound(q: number, r: number): Hex {
+  const s = -q - r;
+  let rq = Math.round(q);
+  let rr = Math.round(r);
+  const rs = Math.round(s);
+  const dq = Math.abs(rq - q);
+  const dr = Math.abs(rr - r);
+  const ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq + 0, r: rr + 0 };
+}
+
+/** The hexes on the straight line from `a` to `b`, inclusive of both ends. */
+export function hexLine(a: Hex, b: Hex): Hex[] {
+  const n = hexDistance(a, b);
+  const line: Hex[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = n === 0 ? 0 : i / n;
+    // The tiny nudge keeps points on an edge between hexes from rounding unpredictably.
+    line.push(hexRound(a.q + (b.q - a.q) * t + 1e-6, a.r + (b.r - a.r) * t + 2e-6));
+  }
+  return line;
+}

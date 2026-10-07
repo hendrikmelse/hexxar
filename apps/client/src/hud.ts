@@ -20,7 +20,10 @@ export class Hud {
     this.surrender.addEventListener('click', () => {
       if (confirm('Surrender this match?')) onSurrender();
     });
-    root.append(panel, this.surrender, this.banner);
+    const hint = el('div', 'hint');
+    hint.textContent =
+      'Drag from your tiles to queue moves  ·  Right-drag to pan  ·  Scroll to zoom  ·  Esc cancels a drag';
+    root.append(panel, this.surrender, this.banner, hint);
     const frame = (): void => {
       this.updateBar();
       requestAnimationFrame(frame);

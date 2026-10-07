@@ -1,50 +1,68 @@
-import { hexDistance, hexKey, type Hex } from '@hexxar/shared';
+import { hexEquals, hexKey, type Hex } from '@hexxar/shared';
 import { Board, playerColor } from './board.js';
 import { applyMessage, emptyGame } from './game.js';
 import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
+import { PathDraft } from './path.js';
 
 const game = emptyGame();
-let selected: Hex | null = null;
+const draft = new PathDraft();
 
 const canPlay = (): boolean =>
   game.status === 'playing' && game.playerId !== null && !game.eliminated.includes(game.playerId);
 
-function onHexClick(hex: Hex): void {
-  if (!canPlay() || !game.tiles[hexKey(hex)]) return;
-  const tile = game.tiles[hexKey(hex)]!;
+const myColor = (): number => (game.playerId && playerColor(game, game.playerId)) || 0xffffff;
+const tileExists = (hex: Hex): boolean => game.tiles[hexKey(hex)] !== undefined;
 
-  if (selected && hexDistance(selected, hex) === 1) {
-    // Queue a move; the destination becomes the new selection so paths can be chained.
-    connection.send({ type: 'order', order: { type: 'move', from: selected, to: hex } });
-    selected = hex;
-  } else if (tile.owner === game.playerId) {
-    selected = selected && hexKey(selected) === hexKey(hex) ? null : hex;
-  } else {
-    selected = null;
-  }
-  board.setSelection(selected);
+/** Where your queued moves will leave an army, so a drag can carry on from there. */
+const plannedEnd = (): Hex | null => game.queue.at(-1)?.to ?? null;
+
+function showDraft(): void {
+  board.drawPending(draft.path);
+  board.setSelection(draft.path[0] ?? null);
 }
 
 function render(change: ReturnType<typeof applyMessage>): void {
   if (!change) return;
-  if (change.kind === 'all') {
-    selected = null;
-    board.setAll(game);
-    board.setSelection(null);
-  } else if (change.kind === 'tiles') {
-    board.updateTiles(change.tiles, game);
-  }
-  const color = (game.playerId && playerColor(game, game.playerId)) || 0xffffff;
-  board.drawQueue(game.queue, color);
-  if (!canPlay()) {
-    selected = null;
-    board.setSelection(null);
+  if (change.kind === 'all') board.setAll(game);
+  else if (change.kind === 'tiles') board.updateTiles(change.tiles, game);
+  board.drawQueue(game.queue, myColor());
+  if (draft.active && (change.kind === 'all' || !canPlay())) {
+    draft.clear();
+    showDraft();
   }
   hud.render(game);
 }
 
-const board = await Board.create(document.getElementById('app')!, onHexClick);
+const board = await Board.create(document.getElementById('app')!, {
+  // Drag from a tile you own, or from the end of your queued path, to give orders.
+  canStart(hex) {
+    if (!canPlay() || !tileExists(hex)) return false;
+    const end = plannedEnd();
+    return (
+      game.tiles[hexKey(hex)]?.owner === game.playerId || (end !== null && hexEquals(end, hex))
+    );
+  },
+  start(hex) {
+    draft.begin(hex);
+    showDraft();
+  },
+  move(hex) {
+    draft.extendTo(hex, tileExists);
+    showDraft();
+  },
+  end() {
+    if (canPlay()) {
+      for (const order of draft.moves()) connection.send({ type: 'order', order });
+    }
+    draft.clear();
+    showDraft();
+  },
+  cancel() {
+    draft.clear();
+    showDraft();
+  },
+});
 const hud = new Hud(document.getElementById('hud')!, () => connection.send({ type: 'surrender' }));
 hud.render(game);
 

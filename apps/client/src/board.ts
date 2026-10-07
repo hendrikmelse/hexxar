@@ -19,7 +19,6 @@ const BACKGROUND = 0x14161c;
 const NEUTRAL_FILL = { farmland: 0x252a33, village: 0x2b3140, city: 0x333a4e } as const;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
-const DRAG_THRESHOLD = 5;
 const RING_RADIUS = 21;
 const MAX_RING_SEGMENTS = 36;
 
@@ -44,25 +43,42 @@ interface TileView {
   readonly label: Text;
 }
 
-/** Draws the hex map and handles pan, zoom and clicks. */
+/** What the board reports about the player's left-button drags. */
+export interface OrderDragHandlers {
+  /** Can a drag starting on this hex issue orders? If not, dragging pans the map. */
+  canStart(hex: Hex): boolean;
+  start(hex: Hex): void;
+  move(hex: Hex): void;
+  /** Button released: commit the path. */
+  end(): void;
+  /** Escape pressed or the pointer was lost: discard the path. */
+  cancel(): void;
+}
+
+/**
+ * Draws the hex map and handles input: left-drag from a hex you can command draws an
+ * order path, any other drag (right button, middle button, or left from elsewhere)
+ * pans, and the wheel zooms.
+ */
 export class Board {
   private readonly world = new Container();
   private readonly tileLayer = new Container();
   private readonly queueLayer = new Graphics();
+  private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
   private readonly views = new Map<string, TileView>();
   private fitted = false;
 
   private constructor(
     private readonly app: Application,
-    private readonly onHexClick: (hex: Hex) => void,
+    private readonly handlers: OrderDragHandlers,
   ) {
-    this.world.addChild(this.tileLayer, this.queueLayer, this.selectionLayer);
+    this.world.addChild(this.tileLayer, this.queueLayer, this.pendingLayer, this.selectionLayer);
     app.stage.addChild(this.world);
     this.attachInput();
   }
 
-  static async create(host: HTMLElement, onHexClick: (hex: Hex) => void): Promise<Board> {
+  static async create(host: HTMLElement, handlers: OrderDragHandlers): Promise<Board> {
     const app = new Application();
     await app.init({
       resizeTo: window,
@@ -72,7 +88,7 @@ export class Board {
       autoDensity: true,
     });
     host.appendChild(app.canvas);
-    return new Board(app, onHexClick);
+    return new Board(app, handlers);
   }
 
   /** Rebuild everything from the full game view. */
@@ -173,28 +189,21 @@ export class Board {
     const g = this.queueLayer;
     g.clear();
     queue.slice(0, 300).forEach((order, i) => {
-      const from = hexToPixel(order.from);
-      const to = hexToPixel(order.to);
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const length = Math.hypot(dx, dy) || 1;
-      const ux = dx / length;
-      const uy = dy / length;
-      const alpha = i === 0 ? 1 : 0.55;
-      // Run from the middle of the source hex to just short of the target's center.
-      const start = { x: from.x + ux * HEX_SIZE * 0.2, y: from.y + uy * HEX_SIZE * 0.2 };
-      const end = { x: to.x - ux * HEX_SIZE * 0.25, y: to.y - uy * HEX_SIZE * 0.25 };
-      g.moveTo(start.x, start.y).lineTo(end.x, end.y).stroke({ width: 3, color, alpha });
-      const head = 8;
-      g.poly([
-        end.x + ux * head,
-        end.y + uy * head,
-        end.x - ux * head * 0.4 - uy * head * 0.6,
-        end.y - uy * head * 0.4 + ux * head * 0.6,
-        end.x - ux * head * 0.4 + uy * head * 0.6,
-        end.y - uy * head * 0.4 - ux * head * 0.6,
-      ]).fill({ color, alpha });
+      drawArrow(g, order.from, order.to, color, i === 0 ? 1 : 0.55);
     });
+  }
+
+  /** Draw the path being dragged out, before it is committed. */
+  drawPending(path: readonly Hex[]): void {
+    const g = this.pendingLayer;
+    g.clear();
+    for (let i = 1; i < path.length; i++) {
+      drawArrow(g, path[i - 1]!, path[i]!, 0xffffff, 0.9);
+    }
+    const end = path.at(-1);
+    if (end && path.length > 1) {
+      g.poly(hexCorners(hexToPixel(end), 3)).stroke({ width: 2, color: 0xffffff, alpha: 0.6 });
+    }
   }
 
   setSelection(hex: Hex | null): void {
@@ -219,32 +228,52 @@ export class Board {
     );
   }
 
+  private hexAt(e: PointerEvent): Hex {
+    const rect = this.app.canvas.getBoundingClientRect();
+    const local = this.world.toLocal({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    return pixelToHex(local as Point);
+  }
+
   private attachInput(): void {
     const canvas = this.app.canvas;
-    let drag: { x: number; y: number; moved: boolean } | null = null;
+    let mode: { kind: 'order' } | { kind: 'pan'; x: number; y: number } | null = null;
 
+    const cancelOrder = (): void => {
+      if (mode?.kind !== 'order') return;
+      mode = null;
+      this.handlers.cancel();
+    };
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointerdown', (e) => {
-      drag = { x: e.clientX, y: e.clientY, moved: false };
+      if (mode || e.button > 2) return;
       canvas.setPointerCapture(e.pointerId);
+      const hex = this.hexAt(e);
+      if (e.button === 0 && this.handlers.canStart(hex)) {
+        mode = { kind: 'order' };
+        this.handlers.start(hex);
+      } else {
+        mode = { kind: 'pan', x: e.clientX, y: e.clientY };
+      }
     });
     canvas.addEventListener('pointermove', (e) => {
-      if (!drag) return;
-      const dx = e.clientX - drag.x;
-      const dy = e.clientY - drag.y;
-      if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      drag.moved = true;
-      this.world.position.x += dx;
-      this.world.position.y += dy;
-      drag.x = e.clientX;
-      drag.y = e.clientY;
+      if (mode?.kind === 'order') {
+        this.handlers.move(this.hexAt(e));
+      } else if (mode?.kind === 'pan') {
+        this.world.position.x += e.clientX - mode.x;
+        this.world.position.y += e.clientY - mode.y;
+        mode.x = e.clientX;
+        mode.y = e.clientY;
+      }
     });
-    canvas.addEventListener('pointerup', (e) => {
-      const wasDrag = drag?.moved ?? true;
-      drag = null;
-      if (wasDrag) return;
-      const rect = canvas.getBoundingClientRect();
-      const local = this.world.toLocal({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-      this.onHexClick(pixelToHex(local as Point));
+    canvas.addEventListener('pointerup', () => {
+      const finished = mode;
+      mode = null;
+      if (finished?.kind === 'order') this.handlers.end();
+    });
+    canvas.addEventListener('pointercancel', cancelOrder);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') cancelOrder();
     });
     canvas.addEventListener(
       'wheel',
@@ -264,4 +293,27 @@ export class Board {
       { passive: false },
     );
   }
+}
+
+/** An arrow from the middle of one hex to just short of the center of the next. */
+function drawArrow(g: Graphics, from: Hex, to: Hex, color: number, alpha: number): void {
+  const a = hexToPixel(from);
+  const b = hexToPixel(to);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const start = { x: a.x + ux * HEX_SIZE * 0.2, y: a.y + uy * HEX_SIZE * 0.2 };
+  const end = { x: b.x - ux * HEX_SIZE * 0.25, y: b.y - uy * HEX_SIZE * 0.25 };
+  g.moveTo(start.x, start.y).lineTo(end.x, end.y).stroke({ width: 3, color, alpha });
+  const head = 8;
+  g.poly([
+    end.x + ux * head,
+    end.y + uy * head,
+    end.x - ux * head * 0.4 - uy * head * 0.6,
+    end.y - uy * head * 0.4 + ux * head * 0.6,
+    end.x - ux * head * 0.4 + uy * head * 0.6,
+    end.y - uy * head * 0.4 - ux * head * 0.6,
+  ]).fill({ color, alpha });
 }
