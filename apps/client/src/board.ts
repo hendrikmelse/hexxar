@@ -18,8 +18,8 @@ export const PLAYER_COLORS = [
 const BACKGROUND = 0x14161c;
 const NEUTRAL_FILL = { farmland: 0x242932, village: 0x282e39, city: 0x2d3441 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
-/** How much of the owner color is mixed into an owned tile's fill: richer for more valuable tiles. */
-const OWNED_FILL = { farmland: 0.4, village: 0.55, city: 0.7 } as const;
+/** How much of the owner color is mixed into an owned tile's fill: currently the same for every type. */
+const OWNED_FILL = { farmland: 0.55, village: 0.55, city: 0.55 } as const;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
 /** Gap between neighboring tiles is twice this. */
