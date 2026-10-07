@@ -12,11 +12,8 @@ export const matchConfigSchema = z.object({
   generationSpeedPercent: z.number().int().min(10).max(1000).default(100),
   /** Troops on each player's starting tile. */
   startingTroops: z.number().int().min(1).max(1000).default(10),
-  /**
-   * How fast a neutral army above its tile's base garrison shrinks, as a
-   * percentage of that tile type's generation rate (50 = half as fast).
-   */
-  neutralDecayRatePercent: z.number().int().min(1).max(1000).default(50),
+  /** A neutral army above its tile's base garrison loses one troop every this many ticks. */
+  neutralDecayEveryTicks: z.number().int().min(1).max(1000).default(12),
   /** Override any tile type's rules for this match; unspecified values keep their defaults. */
   tileOverrides: z
     .partialRecord(
@@ -27,7 +24,8 @@ export const matchConfigSchema = z.object({
           baseGarrison: z.number().int().min(0).max(1000),
           generation: z
             .object({
-              everyTicks: z.number().int().min(1).max(10_000),
+              // Ticks per troop for 0 to 6 owned neighboring farms.
+              everyTicks: z.array(z.number().int().min(1).max(10_000)).length(7),
               amount: z.number().int().min(0).max(100),
               cap: z.number().int().min(0).max(100_000),
             })
@@ -59,7 +57,8 @@ export function tileRules(config: MatchConfig, id: TileTypeId): TileTypeDef {
     name: base.name,
     defensePercent: override.defensePercent ?? base.defensePercent,
     baseGarrison: override.baseGarrison ?? base.baseGarrison,
-    generation: {
+    // Farmland has no generation to override.
+    generation: base.generation && {
       everyTicks: override.generation?.everyTicks ?? base.generation.everyTicks,
       amount: override.generation?.amount ?? base.generation.amount,
       cap: override.generation?.cap ?? base.generation.cap,

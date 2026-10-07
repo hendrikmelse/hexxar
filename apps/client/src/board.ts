@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Text } from 'pixi.js';
 import {
   generationInterval,
   hexKey,
+  ownedFarmNeighbors,
   isGenerationPaused,
   type Hex,
   type Order,
@@ -220,12 +221,13 @@ export class Board {
   ): void {
     // Only the owner sees a tile's generation timing.
     if (owner === null || tile.owner !== game.playerId || !game.config) return;
-    const total = generationInterval(game.config, tile.type);
-    if (total < 2) return;
+    // Only cities and villages produce troops, and the cycle shortens with each owned farm around them.
+    const total = generationInterval(game.config, tile.type, ownedFarmNeighbors(game.tiles, tile));
+    if (total === null || total < 2) return;
     const paused = isGenerationPaused(game.config, tile);
     // Very long cycles collapse into a fixed number of chunks.
     const segments = Math.min(total, MAX_RING_SEGMENTS);
-    const filled = Math.floor((tile.progress * segments) / total);
+    const filled = Math.floor((Math.min(tile.progress, total) * segments) / total);
     const step = (Math.PI * 2) / segments;
     const gap = Math.min(0.12, step * 0.3);
     for (let i = 0; i < segments; i++) {

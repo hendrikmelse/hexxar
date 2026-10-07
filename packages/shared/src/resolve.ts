@@ -1,5 +1,5 @@
 import { tileRules, type MatchConfig } from './config.js';
-import { stepTile } from './generation.js';
+import { ownedFarmNeighbors, stepTile } from './generation.js';
 import { hexKey } from './hex.js';
 import { checkOrder, type Order, type OrdersByPlayer } from './orders.js';
 import { settlePlayers, type GameState, type PlayerId, type Tile } from './state.js';
@@ -41,7 +41,7 @@ export function resolveTick(
 
   // Phase 1: generation and decay, per tile. Troops generated this tick can fight and move this tick.
   for (const tile of Object.values(tiles)) {
-    const { troops, progress } = stepTile(config, tile);
+    const { troops, progress } = stepTile(config, tile, ownedFarmNeighbors(tiles, tile));
     tile.troops = troops;
     tile.progress = progress;
   }

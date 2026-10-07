@@ -34,7 +34,7 @@ const move = (from: number, to: number): Order => ({
 
 const at = (state: GameState, q: number): Tile => state.tiles[hexKey({ q, r: 0 })]!;
 
-// Tiles start with zero generation progress and farmland needs 24 ticks per troop, so
+// Tiles start with zero generation progress, and cities take at least 2 ticks per troop, so
 // single steps in the tests below never trigger generation by accident.
 const step = (state: GameState, orders: OrdersByPlayer) => resolveTick(state, orders, config);
 
@@ -213,61 +213,110 @@ describe('battles', () => {
 });
 
 describe('generation', () => {
+  // A single city has no farm neighbors, so its cycle is the base 6 ticks.
   const city = (troops: number, progress: number, owner: string | null = 'A') =>
-    row([{ owner, troops, type: 'city', progress }]);
+    row([{ owner, troops, type: 'city', progress }], ['A']);
 
-  it('adds a troop when a tile completes its cycle, then restarts the cycle', () => {
-    // Cities need 3 ticks of progress.
-    expect(at(step(city(5, 1), {}), 0)).toMatchObject({ troops: 5, progress: 2 });
-    expect(at(step(city(5, 2), {}), 0)).toMatchObject({ troops: 6, progress: 0 });
+  it('adds a troop when a producer completes its cycle, then restarts the cycle', () => {
+    expect(at(step(city(5, 4), {}), 0)).toMatchObject({ troops: 5, progress: 5 });
+    expect(at(step(city(5, 5), {}), 0)).toMatchObject({ troops: 6, progress: 0 });
   });
 
-  it('keeps each tile on its own schedule', () => {
+  it('keeps each producer on its own schedule', () => {
+    // Two cities with neutral farmland between them: no farm bonus for either.
     const start = row(
       [
-        { owner: 'A', troops: 1, type: 'farmland', progress: 23 },
-        { owner: 'A', troops: 1, type: 'farmland', progress: 22 },
+        { owner: 'A', troops: 5, type: 'city', progress: 5 },
+        { troops: 1 },
+        { troops: 1 },
+        { owner: 'A', troops: 5, type: 'city', progress: 4 },
       ],
       ['A'],
     );
     const one = step(start, {});
-    expect(at(one, 0)).toMatchObject({ troops: 2, progress: 0 });
-    expect(at(one, 1)).toMatchObject({ troops: 1, progress: 23 });
+    expect(at(one, 0)).toMatchObject({ troops: 6, progress: 0 });
+    expect(at(one, 3)).toMatchObject({ troops: 5, progress: 5 });
     const two = step(one, {});
-    expect(at(two, 0)).toMatchObject({ troops: 2, progress: 1 });
-    expect(at(two, 1)).toMatchObject({ troops: 2, progress: 0 });
+    expect(at(two, 0)).toMatchObject({ troops: 6, progress: 1 });
+    expect(at(two, 3)).toMatchObject({ troops: 6, progress: 0 });
+  });
+
+  it('owned farmland speeds up the neighboring city', () => {
+    // City with one owned farm next to it: cycle 5 instead of 6.
+    const withFarm = row(
+      [
+        { owner: 'A', troops: 5, type: 'city', progress: 4 },
+        { owner: 'A', troops: 1 },
+      ],
+      ['A'],
+    );
+    expect(at(step(withFarm, {}), 0)).toMatchObject({ troops: 6, progress: 0 });
+    // The same farm owned by someone else, or by nobody, does not count.
+    for (const owner of [null, 'B']) {
+      const without = row(
+        [
+          { owner: 'A', troops: 5, type: 'city', progress: 4 },
+          { owner, troops: 1 },
+        ],
+        ['A', 'B'],
+      );
+      expect(at(step(without, {}), 0)).toMatchObject({ troops: 5, progress: 5 });
+    }
+  });
+
+  it('uses the farm count from before the tick', () => {
+    // A captures the farm this tick; the city only benefits from next tick on.
+    const start = row(
+      [
+        { owner: 'A', troops: 5, type: 'city', progress: 4 },
+        { troops: 1 },
+        { owner: 'A', troops: 5 },
+      ],
+      ['A'],
+    );
+    const s = step(start, { A: move(2, 1) });
+    expect(at(s, 1).owner).toBe('A');
+    expect(at(s, 0)).toMatchObject({ troops: 5, progress: 5 });
+    expect(at(step(s, {}), 0)).toMatchObject({ troops: 6, progress: 0 });
+  });
+
+  it('owned farmland produces nothing', () => {
+    const start = row([{ owner: 'A', troops: 3, type: 'farmland', progress: 0 }], ['A']);
+    let s = start;
+    for (let i = 0; i < 60; i++) s = step(s, {});
+    expect(at(s, 0)).toMatchObject({ troops: 3, progress: 0 });
   });
 
   it('scales with the match generation speed', () => {
     const fast = parseMatchConfig({ generationSpeedPercent: 300 });
-    expect(at(resolveTick(city(5, 0), {}, fast), 0).troops).toBe(6); // interval 1
+    expect(at(resolveTick(city(5, 1), {}, fast), 0).troops).toBe(6); // cycle 2
   });
 
   it('pauses at the cap and keeps its progress', () => {
-    expect(at(step(city(49, 2), {}), 0)).toMatchObject({ troops: 50, progress: 0 });
-    expect(at(step(city(50, 2), {}), 0)).toMatchObject({ troops: 50, progress: 2 });
+    expect(at(step(city(49, 5), {}), 0)).toMatchObject({ troops: 50, progress: 0 });
+    expect(at(step(city(50, 3), {}), 0)).toMatchObject({ troops: 50, progress: 3 });
     // Armies can exceed the cap through reinforcement; they just stop growing.
     expect(at(step(city(60, 1), {}), 0)).toMatchObject({ troops: 60, progress: 1 });
   });
 
-  it('a full tile only loses a tick when its army passes through, not its progress', () => {
+  it('a full producer only loses a tick when its army passes through, not its progress', () => {
     const start = row(
       [
-        { owner: 'A', troops: 10, type: 'farmland', progress: 5 },
-        { owner: 'A', troops: 1, type: 'farmland', progress: 7 },
+        { owner: 'A', troops: 50, type: 'city', progress: 3 },
+        { owner: 'A', troops: 1 },
       ],
       ['A'],
     );
     const s = step(start, { A: move(0, 1) });
-    // Tile 0 was full, so it paused at 5; it left 1 troop behind and resumes next tick.
-    expect(at(s, 0)).toMatchObject({ troops: 1, progress: 5 });
-    expect(at(step(s, {}), 0)).toMatchObject({ troops: 1, progress: 6 });
+    // The city was full, so it paused at 3; it left 1 troop behind and resumes next tick.
+    expect(at(s, 0)).toMatchObject({ troops: 1, progress: 3 });
+    expect(at(step(s, {}), 0)).toMatchObject({ troops: 1, progress: 4 });
   });
 
   it('starts a captured tile at zero progress', () => {
     const start = row([
       { owner: 'A', troops: 9 },
-      { owner: 'B', troops: 1, progress: 17 },
+      { owner: 'B', troops: 1, type: 'city', progress: 4 },
       { troops: 1, progress: 0 },
     ]);
     const s = step(start, { A: move(0, 1) });
@@ -276,16 +325,16 @@ describe('generation', () => {
 
   it('keeps progress when the owner holds a tile through an attack', () => {
     const start = row([
-      { owner: 'A', troops: 3, progress: 9 },
+      { owner: 'A', troops: 3, type: 'city', progress: 2 },
       { owner: 'B', troops: 3 },
     ]);
-    const s = step(start, { B: move(1, 0) }); // 2 attackers vs 3 defenders
-    expect(at(s, 0)).toMatchObject({ owner: 'A', progress: 10 });
+    const s = step(start, { B: move(1, 0) }); // 2 attackers vs 3 defenders at 150%
+    expect(at(s, 0)).toMatchObject({ owner: 'A', progress: 3 });
   });
 
   it('can be overridden per match', () => {
     const custom = parseMatchConfig({
-      tileOverrides: { city: { generation: { everyTicks: 1, cap: 7 } } },
+      tileOverrides: { city: { generation: { everyTicks: [1, 1, 1, 1, 1, 1, 1], cap: 7 } } },
     });
     expect(at(resolveTick(city(5, 0), {}, custom), 0).troops).toBe(6);
     expect(at(resolveTick(city(7, 0), {}, custom), 0).troops).toBe(7);
@@ -300,14 +349,11 @@ describe('neutral armies', () => {
   const neutral = (troops: number, progress: number, type: TileTypeId = 'city') =>
     row([{ troops, type, progress }]);
 
-  it('shrinks toward the base garrison at half the generation rate', () => {
-    // City: generation 3 ticks, decay 6.
-    expect(at(step(neutral(14, 4), {}), 0)).toMatchObject({ troops: 14, progress: 5 });
-    expect(at(step(neutral(14, 5), {}), 0)).toMatchObject({ troops: 13, progress: 0 });
-    // Farmland: 48. Village: 16.
-    expect(at(step(neutral(5, 46, 'farmland'), {}), 0).troops).toBe(5);
-    expect(at(step(neutral(5, 47, 'farmland'), {}), 0).troops).toBe(4);
-    expect(at(step(neutral(9, 15, 'village'), {}), 0).troops).toBe(8);
+  it('shrinks toward the base garrison, one troop per 12 ticks, for every tile type', () => {
+    for (const type of ['farmland', 'village', 'city'] as const) {
+      expect(at(step(neutral(14, 10, type), {}), 0)).toMatchObject({ troops: 14, progress: 11 });
+      expect(at(step(neutral(14, 11, type), {}), 0)).toMatchObject({ troops: 13, progress: 0 });
+    }
   });
 
   it('stops shrinking at the base garrison and does not regrow below it', () => {
@@ -316,15 +362,15 @@ describe('neutral armies', () => {
   });
 
   it('decay rate is configurable', () => {
-    const fast = parseMatchConfig({ neutralDecayRatePercent: 100 });
-    expect(at(resolveTick(neutral(14, 2), {}, fast), 0).troops).toBe(13); // every 3 ticks
+    const fast = parseMatchConfig({ neutralDecayEveryTicks: 3 });
+    expect(at(resolveTick(neutral(14, 2), {}, fast), 0).troops).toBe(13);
   });
 
   it('a surrendered army defends but decays back to the default', () => {
     const start = row([{ owner: 'B', troops: 14, type: 'city', progress: 2 }], ['A', 'B']);
     let s = surrender(start, 'B');
     expect(at(s, 0)).toMatchObject({ owner: null, troops: 14, progress: 0 });
-    for (let i = 0; i < 6; i++) s = step(s, {});
+    for (let i = 0; i < 12; i++) s = step(s, {});
     expect(at(s, 0).troops).toBe(13);
   });
 });
@@ -332,7 +378,7 @@ describe('neutral armies', () => {
 describe('generation timing', () => {
   it('a troop generated this tick fights in a battle on that tick', () => {
     const start = row([
-      { owner: 'A', troops: 4, type: 'city', progress: 2 }, // generates this tick: 4 -> 5
+      { owner: 'A', troops: 4, type: 'city', progress: 5 }, // produces this tick: 4 -> 5
       { owner: 'B', troops: 6 },
     ]);
     // B sends 5 (500) against 5 * 150% = 750: A loses floor(500/150) = 3 and keeps 2.
@@ -346,8 +392,8 @@ describe('generation timing', () => {
   });
 
   it('a troop generated this tick can make an order valid and be moved', () => {
-    const start = row([{ owner: 'A', troops: 1, type: 'city', progress: 2 }, { troops: 0 }]);
-    const s = step(start, { A: move(0, 1) }); // generates to 2, then sends 1
+    const start = row([{ owner: 'A', troops: 1, type: 'city', progress: 5 }, { troops: 0 }]);
+    const s = step(start, { A: move(0, 1) }); // produces to 2, then sends 1
     expect(at(s, 0)).toMatchObject({ owner: 'A', troops: 1 });
     expect(at(s, 1)).toMatchObject({ owner: 'A', troops: 1 });
   });
