@@ -302,7 +302,7 @@ describe('free-for-all boards', () => {
       expect(radius).toBeGreaterThanOrEqual(previous);
       previous = radius;
       const tiles = 3 * radius * (radius + 1) + 1;
-      expect(tiles / n).toBeGreaterThanOrEqual(45);
+      expect(tiles / n).toBeGreaterThanOrEqual(36);
       expect(radiusOf(Object.values(board(n, 1).tiles))).toBe(radius);
     }
     expect(recommendedRadius(2, 'symmetric')).toBe(7);
@@ -365,8 +365,8 @@ describe('free-for-all boards', () => {
           });
           expect(blocked).toBe(true);
         }
-        const extra = cities.length - n;
-        expect(extra).toBeLessThanOrEqual(Math.ceil(tiles.length / TILES_PER_CITY));
+        // Free-for-all boards have no cities beyond the starting ones.
+        expect(cities).toHaveLength(n);
       }
     }
   });

@@ -17,7 +17,7 @@ import type { TileTypeId } from './tiles.js';
 /** Roughly one extra city per this many tiles. The starting cities are not counted. */
 export const TILES_PER_CITY = 50;
 /** Cities are never closer than this to each other, starting cities included. */
-export const MIN_CITY_DISTANCE = 4;
+export const MIN_CITY_DISTANCE = 3;
 
 /** Starting cities sit this many tiles in from the edge of the board. */
 const START_INSET = 1;
@@ -166,9 +166,11 @@ function placeTerrain(input: {
   /** Is this hex on the edge of the board (next to a tile that is not there)? */
   isEdgeHex: (hex: Hex) => boolean;
   totalTiles: number;
+  /** Add cities beyond the starting ones? Free-for-all boards do not. */
+  extraCities: boolean;
   rng: Rng;
 }): Map<string, TileTypeId> {
-  const { startHexes, others, isEdgeHex, totalTiles, rng } = input;
+  const { startHexes, others, isEdgeHex, totalTiles, extraCities: wantExtra, rng } = input;
   const types = new Map<string, TileTypeId>();
   const cities: Hex[] = [...startHexes];
   for (const hex of startHexes) types.set(hexKey(hex), 'city');
@@ -179,7 +181,7 @@ function placeTerrain(input: {
 
   // Cities: rare, spaced apart, and never on the edge of the board. Add groups (in random
   // order) while that brings the number of extra cities closer to the target density.
-  const target = totalTiles / TILES_PER_CITY;
+  const target = wantExtra ? totalTiles / TILES_PER_CITY : 0;
   let extraCities = 0;
   for (const orbit of shuffle(interior, rng)) {
     if (Math.abs(extraCities + orbit.length - target) >= Math.abs(extraCities - target)) continue;
@@ -287,6 +289,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
     others,
     isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
+    extraCities: true,
     rng: createRng(seed),
   });
   const tiles = buildTiles(ordered, types, startOwners, config);
@@ -297,10 +300,14 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   };
 }
 
-/** About how many tiles each player gets on a free-for-all board. */
-const FFA_TILES_PER_PLAYER = 50;
+/**
+ * How many tiles each player gets on a free-for-all board: as few as keep every player room
+ * of their own. Starting cities end up about 6 tiles apart, with farmland for a full ring
+ * around each city and space for a few villages.
+ */
+const FFA_TILES_PER_PLAYER = 36;
 
-/** A sensible board radius for a game: roomy enough for everyone to expand. */
+/** The board radius for a game. Free-for-all boards are always the smallest that gives each player their share. */
 export function recommendedRadius(players: number, kind: 'symmetric' | 'freeForAll'): number {
   if (kind === 'symmetric')
     return ({ 2: 7, 3: 8, 4: 9, 6: 10 } as Record<number, number>)[players] ?? 8;
@@ -424,6 +431,7 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
     others,
     isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
+    extraCities: false,
     rng,
   });
   return {

@@ -117,8 +117,10 @@ function showPreview(options: PreviewOptions): void {
   const freeForAll = options.mode === 'ffa';
   const count = freeForAll ? options.players : Number(options.mode);
   const players = Array.from({ length: count }, (_, i) => `P${i + 1}`);
-  const radius =
-    options.radius ?? recommendedRadius(count, freeForAll ? 'freeForAll' : 'symmetric');
+  // Free-for-all boards are always as small as they can be; only symmetric ones have a size choice.
+  const radius = freeForAll
+    ? recommendedRadius(count, 'freeForAll')
+    : (options.radius ?? recommendedRadius(count, 'symmetric'));
   const seed = Math.floor(Math.random() * 2 ** 32);
   let generated;
   try {

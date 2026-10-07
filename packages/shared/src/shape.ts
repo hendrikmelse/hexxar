@@ -86,9 +86,37 @@ function tryShape({ radius, rng, group, protect }: RandomShapeInput): Hex[] | nu
     }
   }
 
-  // -- Tidy the edge: no spurs, no one-tile bays. Each step looks at the board as it was
-  // before the step (not tile by tile), so the result does not depend on the order tiles
-  // are visited in and symmetry is preserved.
+  tidy(land, candidates, protectedKeys);
+
+  // -- Drop tiny islands; what is left must be one piece.
+  for (const piece of components(land)) {
+    if (piece.length < 6) for (const key of piece) land.delete(key);
+  }
+  if (components(land).length !== 1) return null;
+
+  carveCutouts(land, { rng, group, protect });
+  // Carving can leave a tile stranded between a lake and the coast; tidy up again.
+  tidy(land, candidates, protectedKeys);
+  if (components(land).length !== 1) return null;
+  for (const key of protectedKeys) if (!land.has(key)) return null;
+
+  // -- Not much bigger or smaller than the hexagon it stands in for.
+  const hexagonSize = 3 * radius * (radius + 1) + 1;
+  if (land.size < hexagonSize * 0.72 || land.size > hexagonSize * 1.3) return null;
+
+  return [...land.values()].sort(byPosition);
+}
+
+/**
+ * Tidy the edge: no spurs, no one-tile bays. Each step looks at the board as it was before
+ * the step (not tile by tile), so the result does not depend on the order tiles are visited
+ * in and symmetry is preserved.
+ */
+function tidy(
+  land: Map<string, Hex>,
+  candidates: readonly Hex[],
+  protectedKeys: ReadonlySet<string>,
+): void {
   const landNeighbors = (hex: Hex): number => neighborKeys(hex).filter((n) => land.has(n)).length;
   for (let pass = 0; pass < 3; pass++) {
     const spurs = [...land].filter(
@@ -98,22 +126,6 @@ function tryShape({ radius, rng, group, protect }: RandomShapeInput): Hex[] | nu
     const bays = candidates.filter((hex) => !land.has(hexKey(hex)) && landNeighbors(hex) >= 5);
     for (const hex of bays) land.set(hexKey(hex), hex);
   }
-
-  // -- Drop tiny islands; what is left must be one piece.
-  for (const piece of components(land)) {
-    if (piece.length < 6) for (const key of piece) land.delete(key);
-  }
-  if (components(land).length !== 1) return null;
-
-  carveCutouts(land, { rng, group, protect });
-  if (components(land).length !== 1) return null;
-  for (const key of protectedKeys) if (!land.has(key)) return null;
-
-  // -- Not much bigger or smaller than the hexagon it stands in for.
-  const hexagonSize = 3 * radius * (radius + 1) + 1;
-  if (land.size < hexagonSize * 0.72 || land.size > hexagonSize * 1.3) return null;
-
-  return [...land.values()].sort(byPosition);
 }
 
 /** The connected pieces of a set of tiles, as lists of keys. */
@@ -180,7 +192,8 @@ function carveCutouts(
   const depth = depthFromCoast(land);
   const area = land.size;
   const count = rng.int(Math.max(1, Math.round(area / 140)) + 1);
-  const maxSize = Math.min(28, Math.max(4, Math.round(area / 45)));
+  const minSize = 5;
+  const maxSize = Math.min(60, Math.max(10, Math.round(area / 30)));
   const cut = new Set<string>();
   const cutHexes: Hex[] = [];
   const tooClose = (hex: Hex, others: readonly Hex[], distance: number): boolean =>
@@ -195,7 +208,7 @@ function carveCutouts(
     );
     if (centers.length === 0) break;
     const center = centers[rng.int(centers.length)]!;
-    const size = 3 + rng.int(maxSize - 2);
+    const size = minSize + rng.int(maxSize - minSize + 1);
     const blob = growBlob(center, size, rng, (hex) => {
       const key = hexKey(hex);
       return (
@@ -206,7 +219,7 @@ function carveCutouts(
         !tooClose(hex, cutHexes, 3)
       );
     });
-    if (blob.length < 3) continue;
+    if (blob.length < 4) continue;
 
     // Carve every image of the blob, as long as the images stay clear of each other.
     const images = group.map((image) => blob.map(image));

@@ -73,19 +73,21 @@ export function Preview({
           <option value="random">Random shape</option>
           <option value="hexagon">Hexagon</option>
         </select>
-        <select
-          value={options.radius ?? 'auto'}
-          onChange={(e) =>
-            change({ radius: e.target.value === 'auto' ? null : Number(e.target.value) })
-          }
-        >
-          <option value="auto">Recommended size</option>
-          {RADII.map((r) => (
-            <option key={r} value={r}>
-              Radius {r}
-            </option>
-          ))}
-        </select>
+        {options.mode !== 'ffa' && (
+          <select
+            value={options.radius ?? 'auto'}
+            onChange={(e) =>
+              change({ radius: e.target.value === 'auto' ? null : Number(e.target.value) })
+            }
+          >
+            <option value="auto">Recommended size</option>
+            {RADII.map((r) => (
+              <option key={r} value={r}>
+                Radius {r}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="row">
         <button onClick={() => actions.newPreview(options)}>Generate new map</button>
