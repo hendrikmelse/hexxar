@@ -117,15 +117,17 @@ export class Board {
       const label = new Text({
         text: '',
         style: {
-          fontSize: 15,
-          fontWeight: '600',
+          fontSize: 16,
+          fontWeight: '700',
           fill: 0xffffff,
+          // A dark outline keeps the number readable on top of the tile art.
+          stroke: { color: 0x0e1016, width: 3.5, join: 'round' },
           fontFamily: 'system-ui, sans-serif',
         },
         resolution: this.textResolution,
       });
       label.anchor.set(0.5);
-      label.position.set(center.x, center.y + 4);
+      label.position.set(center.x, center.y + 1);
       view = { shape: new Graphics(), label };
       this.tileLayer.addChild(view.shape, view.label);
       this.views.set(key, view);
@@ -139,12 +141,18 @@ export class Board {
     shape.poly(hexCorners(center, 1.5)).fill(fill);
     if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 2, color: owner });
 
-    // Tile type art: villages are a house, cities a skyline inside a second outline.
+    // Tile type art sits behind the troop count: villages are a pair of cottages, cities
+    // a castle inside a second, riveted border. Farmland is left plain.
     const iconColor = owner ?? NEUTRAL_ICON;
-    if (tile.type === 'village') drawHouse(shape, center, iconColor);
-    else if (tile.type === 'city') {
-      shape.poly(hexCorners(center, 6)).stroke({ width: 1.5, color: iconColor, alpha: 0.45 });
-      drawSkyline(shape, center, iconColor);
+    if (tile.type === 'village') {
+      drawVillage(shape, center, iconColor, fill);
+    } else if (tile.type === 'city') {
+      const inner = hexCorners(center, 6);
+      shape.poly(inner).stroke({ width: 1.5, color: iconColor, alpha: 0.5 });
+      for (let i = 0; i < inner.length; i += 2) {
+        shape.circle(inner[i]!, inner[i + 1]!, 1.9).fill({ color: iconColor, alpha: 0.7 });
+      }
+      drawCastle(shape, center, iconColor, fill);
     }
     this.drawProgressRing(shape, tile, center, owner, game);
     view.label.text = tile.troops > 0 ? String(tile.troops) : '';
@@ -335,19 +343,69 @@ function drawArrow(g: Graphics, from: Hex, to: Hex, color: number, alpha: number
   ]).fill({ color, alpha });
 }
 
-/** A small house: a body with a pitched roof, sitting above the troop count. */
-function drawHouse(g: Graphics, center: Point, color: number): void {
-  const x = center.x;
-  const base = center.y - 6;
-  g.rect(x - 5.5, base - 6, 11, 6).fill({ color, alpha: 0.95 });
-  g.poly([x - 8.5, base - 6, x, base - 14, x + 8.5, base - 6]).fill({ color, alpha: 0.95 });
+/** Fill levels for tile art: walls are faint so the troop count on top stays readable. */
+const WALL_ALPHA = 0.4;
+const ROOF_ALPHA = 0.7;
+
+/**
+ * Two cottages with steep gabled roofs, one with a chimney. Coordinates are offsets from
+ * the hex center and stay within the progress ring. `cutout` is the tile's fill color,
+ * used to carve doorways.
+ */
+function drawVillage(g: Graphics, c: Point, color: number, cutout: number): void {
+  const at = (x: number, y: number): [number, number] => [c.x + x, c.y + y];
+  const poly = (points: [number, number][], alpha: number): void => {
+    g.poly(points.flatMap(([x, y]) => at(x, y))).fill({ color, alpha });
+  };
+  // Large cottage with a chimney.
+  g.rect(...at(-5.5, -4), 2, 4).fill({ color, alpha: ROOF_ALPHA });
+  g.rect(...at(-14, 3), 12, 9).fill({ color, alpha: WALL_ALPHA });
+  poly(
+    [
+      [-16, 3],
+      [-8, -6],
+      [0, 3],
+    ],
+    ROOF_ALPHA,
+  );
+  g.rect(...at(-9, 7), 4, 5).fill(cutout);
+  // Small cottage.
+  g.rect(...at(3, 6), 10, 6).fill({ color, alpha: WALL_ALPHA });
+  poly(
+    [
+      [1, 6],
+      [8, -1],
+      [15, 6],
+    ],
+    ROOF_ALPHA,
+  );
 }
 
-/** A city skyline: three buildings of different heights. */
-function drawSkyline(g: Graphics, center: Point, color: number): void {
-  const base = center.y - 6;
-  const x = center.x;
-  g.rect(x - 9, base - 8, 5, 8).fill({ color, alpha: 0.85 });
-  g.rect(x - 2.5, base - 12, 5, 12).fill({ color, alpha: 0.95 });
-  g.rect(x + 4, base - 6, 5, 6).fill({ color, alpha: 0.85 });
+/**
+ * A castle: a crenellated keep with a gate and flag between two towers with pointed
+ * roofs. Offsets are from the hex center and stay within the progress ring.
+ */
+function drawCastle(g: Graphics, c: Point, color: number, cutout: number): void {
+  const at = (x: number, y: number): [number, number] => [c.x + x, c.y + y];
+  const wall = { color, alpha: WALL_ALPHA };
+  const roof = { color, alpha: ROOF_ALPHA };
+  // Curtain wall joining keep and towers.
+  g.rect(...at(-10, 2), 20, 10).fill(wall);
+  // Side towers with pointed roofs.
+  for (const side of [-1, 1]) {
+    const x0 = side < 0 ? -15 : 9;
+    g.rect(...at(x0, -6), 6, 18).fill(wall);
+    g.poly([...at(x0 - 1, -6), ...at(x0 + 3, -14), ...at(x0 + 7, -6)]).fill(roof);
+  }
+  // Keep with battlements.
+  g.rect(...at(-7, -3), 14, 15).fill(wall);
+  for (const x of [-7, -1.5, 4]) g.rect(...at(x, -6), 3, 3).fill(wall);
+  // Gate arch.
+  g.rect(...at(-2.5, 6), 5, 6).fill(cutout);
+  g.circle(...at(0, 6), 2.5).fill(cutout);
+  // Flag.
+  g.moveTo(...at(0, -6))
+    .lineTo(...at(0, -15))
+    .stroke({ width: 1.2, color, alpha: ROOF_ALPHA });
+  g.poly([...at(0, -15), ...at(6, -12.5), ...at(0, -10)]).fill({ color, alpha: 0.95 });
 }
