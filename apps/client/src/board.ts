@@ -18,6 +18,8 @@ export const PLAYER_COLORS = [
 const BACKGROUND = 0x14161c;
 const NEUTRAL_FILL = { farmland: 0x242932, village: 0x282e39, city: 0x2d3441 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
+/** How much of the owner color is mixed into an owned tile's fill: richer for more valuable tiles. */
+const OWNED_FILL = { farmland: 0.4, village: 0.55, city: 0.7 } as const;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
 const RING_RADIUS = 20.5;
@@ -137,7 +139,7 @@ export class Board {
 
     const center = hexToPixel(tile);
     const owner = playerColor(game, tile.owner);
-    const fill = owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, 0.55);
+    const fill = owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, OWNED_FILL[tile.type]);
     const shape = view.shape;
     shape.clear();
     shape.poly(hexCorners(center, 1.5)).fill(fill);
@@ -145,7 +147,8 @@ export class Board {
 
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
-    const iconColor = owner ?? NEUTRAL_ICON;
+    // On owned tiles the art is a pale tint of the owner color so it stands out from the fill.
+    const iconColor = owner === null ? NEUTRAL_ICON : mix(owner, 0xffffff, 0.65);
     const art = tileArtColors(fill, iconColor);
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
