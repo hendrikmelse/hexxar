@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_PREVIEW, type Actions, type PreviewOptions } from './App.js';
+import { DEFAULT_PREVIEW, effectiveSymmetry, type Actions, type PreviewOptions } from './App.js';
 
 const MODES: { value: PreviewOptions['mode']; label: string }[] = [
   { value: '2', label: 'Duel (2 players)' },
@@ -28,6 +28,8 @@ export function Preview({
     actions.newPreview(next);
   };
 
+  const symmetry = effectiveSymmetry(options);
+
   return (
     <div className="preview">
       <div className="row">
@@ -51,6 +53,17 @@ export function Preview({
                 {n} players
               </option>
             ))}
+          </select>
+        )}
+        {symmetry !== null && (
+          <select
+            value={symmetry}
+            disabled={options.mode !== '2'}
+            title={options.mode === '2' ? 'Symmetry' : 'Fixed for this number of players'}
+            onChange={(e) => change({ symmetry: e.target.value as PreviewOptions['symmetry'] })}
+          >
+            <option value="mirror">Mirror symmetry</option>
+            <option value="rotational">Rotational symmetry</option>
           </select>
         )}
         <select

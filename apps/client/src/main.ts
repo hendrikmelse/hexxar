@@ -13,7 +13,7 @@ import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { appStore, saveName } from './store.js';
-import { mountUi, type PreviewOptions } from './ui/mount.js';
+import { effectiveSymmetry, mountUi, type PreviewOptions } from './ui/mount.js';
 
 /** The match being played. Reset whenever you are back in the menu. */
 const game = emptyGame();
@@ -124,7 +124,12 @@ function showPreview(options: PreviewOptions): void {
   try {
     generated = freeForAll
       ? createFreeForAllMatch({ players, seed, radius })
-      : createSymmetricMatch({ players, seed, radius });
+      : createSymmetricMatch({
+          players,
+          seed,
+          radius,
+          symmetry: effectiveSymmetry(options) ?? undefined,
+        });
   } catch (error) {
     // E.g. a board too small for the players. Keep showing the last map.
     const current = appStore.get().preview;

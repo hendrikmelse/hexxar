@@ -13,9 +13,34 @@ export interface PreviewOptions {
   players: number;
   /** Board radius, or `null` for the recommended size. */
   radius: number | null;
+  /** Only used for 2 players, where either kind of symmetry works. */
+  symmetry: 'mirror' | 'rotational';
 }
 
-export const DEFAULT_PREVIEW: PreviewOptions = { mode: '2', players: 8, radius: null };
+export const DEFAULT_PREVIEW: PreviewOptions = {
+  mode: '2',
+  players: 8,
+  radius: null,
+  symmetry: 'mirror',
+};
+
+/**
+ * The symmetry a symmetric board will use: a choice for 2 players, but fixed for the other
+ * counts (3 and 6 rotate, 4 mirrors). Free-for-all boards have none.
+ */
+export function effectiveSymmetry(options: PreviewOptions): 'mirror' | 'rotational' | null {
+  switch (options.mode) {
+    case '2':
+      return options.symmetry;
+    case '3':
+    case '6':
+      return 'rotational';
+    case '4':
+      return 'mirror';
+    default:
+      return null;
+  }
+}
 
 /** Everything the screens can ask the app to do. */
 export interface Actions {

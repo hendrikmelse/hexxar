@@ -34,4 +34,4 @@ Because nothing about the layout is symmetric, free-for-all boards are not perfe
 
 ## Previewing maps
 
-The menu's **Preview generated maps (dev)** link shows boards locally without a server. It can generate a 2, 3, 4 or 6 player symmetric board, or a free-for-all with 3 to 100 players, at the recommended size or a chosen radius. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities and villages. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.
+The menu's **Preview generated maps (dev)** link shows boards locally without a server. It can generate a 2, 3, 4 or 6 player symmetric board, or a free-for-all with 3 to 100 players, at the recommended size or a chosen radius. For 2 players there is a symmetry toggle (mirror or rotational); the other counts have it fixed and the control is locked. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities and villages. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.
