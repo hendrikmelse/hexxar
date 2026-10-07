@@ -218,7 +218,8 @@ export class Board {
     owner: number | null,
     game: GameView,
   ): void {
-    if (owner === null || !game.config) return;
+    // Only the owner sees a tile's generation timing.
+    if (owner === null || tile.owner !== game.playerId || !game.config) return;
     const total = generationInterval(game.config, tile.type);
     if (total < 2) return;
     const paused = isGenerationPaused(game.config, tile);

@@ -48,7 +48,7 @@ describe('applyTickDiff', () => {
     const { state: initial, config: matchConfig } = createSymmetricMatch({
       players: ['A', 'B'],
       seed: 21,
-      radius: 4,
+      radius: 5,
       config: fast,
     });
     const rng = createRng(77);

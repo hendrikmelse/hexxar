@@ -35,7 +35,7 @@ class FakeClient implements Connection {
   }
 }
 
-const options = { players: 2, radius: 4, tickMs: 1000, restartMs: 5000 };
+const options = { players: 2, radius: 5, tickMs: 1000, restartMs: 5000 };
 
 describe('GameServer', () => {
   let server: GameServer;

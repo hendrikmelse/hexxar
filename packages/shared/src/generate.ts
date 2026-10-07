@@ -18,6 +18,9 @@ export const TILES_PER_CITY = 50;
 /** Cities are never closer than this to each other, starting cities included. */
 export const MIN_CITY_DISTANCE = 4;
 
+/** Starting cities sit this many tiles in from the edge of the board. */
+const START_INSET = 1;
+
 /** Fisher-Yates shuffle driven by the seeded rng, so boards are reproducible. */
 function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   const result = [...items];
@@ -77,14 +80,14 @@ const rotations: Transform[] = Array.from({ length: 6 }, (_, i) => (h) => hexRot
 const mirrors: Transform[] = [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
 
 /**
- * A rim hex in the lower-right quadrant closest to the given angle (0 = right, 90 = down)
+ * A hex on the given ring (distance from the center) in the lower-right quadrant closest to the given angle (0 = right, 90 = down)
  * whose symmetric images are all at least `MIN_CITY_DISTANCE` apart, since they all become cities.
  */
-function rimHexNear(radius: number, degrees: number, images: readonly Transform[]): Hex {
+function ringHexNear(ring: number, degrees: number, images: readonly Transform[]): Hex {
   let best: Hex | null = null;
   let bestDiff = Infinity;
-  for (const hex of hexagonalBoard(radius)) {
-    if (hexDistance(hex, { q: 0, r: 0 }) !== radius) continue;
+  for (const hex of hexagonalBoard(ring)) {
+    if (hexDistance(hex, { q: 0, r: 0 }) !== ring) continue;
     const x = Math.sqrt(3) * (hex.q + hex.r / 2);
     const y = 1.5 * hex.r;
     if (x <= 0 || y <= 0) continue;
@@ -111,7 +114,7 @@ function layout(
 ): { terrain: Transform[]; starts: Hex[] } {
   if (symmetry === 'rotational') {
     if (![2, 3, 6].includes(count)) throw new Error('rotational boards support 2, 3 or 6 players');
-    const corner: Hex = { q: radius, r: 0 };
+    const corner: Hex = { q: radius - START_INSET, r: 0 };
     const stride = 6 / count;
     return {
       terrain: rotations,
@@ -120,14 +123,14 @@ function layout(
   }
   if (count === 2) {
     // Left and right corners, mirror images across the vertical axis only.
-    const start: Hex = { q: radius, r: 0 };
+    const start: Hex = { q: radius - START_INSET, r: 0 };
     return {
       terrain: [(h) => h, hexFlipHorizontal],
       starts: [start, hexFlipHorizontal(start)],
     };
   }
   if (count === 4) {
-    const start = rimHexNear(radius, 45, mirrors);
+    const start = ringHexNear(radius - START_INSET, 45, mirrors);
     const [, flipV, flipH, turn] = mirrors as [Transform, Transform, Transform, Transform];
     return { terrain: mirrors, starts: [start, flipV(start), flipH(start), turn(start)] };
   }
@@ -148,7 +151,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
     options.symmetry ?? (players.length === 2 || players.length === 4 ? 'mirror' : 'rotational');
   const config = parseMatchConfig(options.config);
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
-  if (radius < 4) throw new Error('radius must be at least 4');
+  if (radius < 5) throw new Error('radius must be at least 5');
 
   const { terrain, starts } = layout(players.length, symmetry, radius);
   const startOwners = new Map<string, PlayerId>();

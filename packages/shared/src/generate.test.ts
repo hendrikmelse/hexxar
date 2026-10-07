@@ -116,12 +116,12 @@ describe('createSymmetricMatch', () => {
     expect([1, 2, 3, 4, 5].every(topBottomDiffers)).toBe(true);
   });
 
-  it('puts two players on opposite corners', () => {
+  it('puts two players on opposite sides, one tile in from the edge', () => {
     const { state } = createSymmetricMatch({ players: ['A', 'B'], seed: 4, radius: 6 });
     const owned = Object.values(state.tiles).filter((t) => t.owner !== null);
     expect(owned.map((t) => [t.q, t.r]).sort()).toEqual([
-      [-6, 0],
-      [6, 0],
+      [-5, 0],
+      [5, 0],
     ]);
   });
 
