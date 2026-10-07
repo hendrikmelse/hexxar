@@ -389,7 +389,7 @@ function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
     [3, 0.4],
     [9, 1],
   ];
-  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 11, bend, art.faint);
+  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 10, bend, art.faint);
 }
 
 /**
@@ -397,7 +397,7 @@ function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
  * (negative = left, positive = right) and the ear on top tilts further the same way.
  */
 function drawWheat(g: Graphics, x: number, y: number, bend: number, color: number): void {
-  const scale = 1.05;
+  const scale = 0.88;
   // Plant-local coordinates (up is negative y), rotated by `angle` about an origin.
   const place =
     (ox: number, oy: number, angle: number) =>
