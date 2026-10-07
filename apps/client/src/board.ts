@@ -16,7 +16,7 @@ export const PLAYER_COLORS = [
 ];
 
 const BACKGROUND = 0x14161c;
-const NEUTRAL_FILL = { farmland: 0x242932, village: 0x2f3749, city: 0x3a4360 } as const;
+const NEUTRAL_FILL = { farmland: 0x242932, village: 0x282e39, city: 0x2d3441 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
@@ -141,12 +141,12 @@ export class Board {
     const shape = view.shape;
     shape.clear();
     shape.poly(hexCorners(center, 1.5)).fill(fill);
-    if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 2, color: owner });
+    if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 1.5, color: owner });
 
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
     const iconColor = owner ?? NEUTRAL_ICON;
-    const art = tileArtColors(fill, iconColor, owner !== null);
+    const art = tileArtColors(fill, iconColor);
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
     } else if (tile.type === 'village') {
@@ -366,13 +366,12 @@ interface ArtColors {
   readonly accent: number;
 }
 
-function tileArtColors(fill: number, icon: number, owned: boolean): ArtColors {
+function tileArtColors(fill: number, icon: number): ArtColors {
   return {
     faint: mix(fill, icon, 0.2),
     wall: mix(fill, icon, 0.4),
     roof: mix(fill, icon, 0.7),
-    // Owned tiles already have a bright outline, so their wall border is quieter.
-    border: mix(fill, icon, owned ? 0.3 : 0.5),
+    border: mix(fill, icon, 0.5),
     accent: mix(fill, icon, 0.95),
   };
 }
