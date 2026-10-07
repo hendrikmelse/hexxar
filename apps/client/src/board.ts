@@ -22,6 +22,20 @@ const NEUTRAL_ICON = 0xaab3c8;
 const OWNED_FILL = { farmland: 0.4, village: 0.55, city: 0.7 } as const;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
+/** Gap between neighboring tiles is twice this. */
+const TILE_INSET = 0.5;
+/**
+ * Axial offsets of the neighbor across each hex edge. Edge i runs from corner i to corner
+ * i + 1 (see `hexCorners`) and faces the angle 60 * i degrees, with y pointing down.
+ */
+const EDGE_NEIGHBORS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [0, -1],
+  [1, -1],
+];
 const RING_RADIUS = 20.5;
 /** Inset of the inner wall border from the hex edge: far enough out to clear the progress ring. */
 const WALL_INSET = 4.5;
@@ -110,7 +124,16 @@ export class Board {
   }
 
   updateTiles(tiles: readonly Tile[], game: GameView): void {
-    for (const tile of tiles) this.updateTile(tile, game);
+    // A tile's outline depends on its neighbors' owners, so redraw those as well.
+    const keys = new Set<string>();
+    for (const tile of tiles) {
+      keys.add(hexKey(tile));
+      for (const [dq, dr] of EDGE_NEIGHBORS) keys.add(hexKey({ q: tile.q + dq, r: tile.r + dr }));
+    }
+    for (const key of keys) {
+      const tile = game.tiles[key];
+      if (tile) this.updateTile(tile, game);
+    }
   }
 
   private updateTile(tile: Tile, game: GameView): void {
@@ -143,8 +166,19 @@ export class Board {
       owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, OWNED_FILL[tile.type]);
     const shape = view.shape;
     shape.clear();
-    shape.poly(hexCorners(center, 1.5)).fill(fill);
-    if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 1, color: owner });
+    const corners = hexCorners(center, TILE_INSET);
+    shape.poly(corners).fill(fill);
+    // Outline only the edges on the border of a group of same-owner tiles.
+    if (owner !== null) {
+      EDGE_NEIGHBORS.forEach(([dq, dr], i) => {
+        if (game.tiles[hexKey({ q: tile.q + dq, r: tile.r + dr })]?.owner === tile.owner) return;
+        const j = (i + 1) % 6;
+        shape
+          .moveTo(corners[2 * i]!, corners[2 * i + 1]!)
+          .lineTo(corners[2 * j]!, corners[2 * j + 1]!)
+          .stroke({ width: 1, color: owner, cap: 'round' });
+      });
+    }
 
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
