@@ -100,7 +100,7 @@ hexxar/
 
 1. **Scaffold:** monorepo, TypeScript config, lint/format, CI, empty client and server that talk over WebSocket.
 2. **Shared core:** ✅ hex math, tile types, match config, order validation, `resolveTick`, surrender, a symmetric board generator (3 or 6 players rotational; 2 or 4 mirrored (2 can also be rotational); 5 unsupported), and tests (no networking).
-3. **Playable local loop:** server ticks, one player moves one army through a queue, client renders the map and queue.
+3. **Playable local loop:** ✅ server matches with per-player queues and a tick loop; client renders the map, queued-move arrows and a tick countdown, and queues moves by clicking.
 4. **Multiplayer matches:** multiple players, simultaneous resolution, conflict rules, spawn/join flow, match lifecycle and a simple lobby. Guests can play.
 5. **Modes and maps:** symmetrical board generator for 2-6 players, random generator for royale, victory conditions.
 6. **Accounts and persistence:** auth, ranked duels, ratings, stats, match history, replay storage and a replay viewer.
@@ -135,4 +135,6 @@ pnpm dev          # server on ws://localhost:8080, client on http://localhost:51
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm build`.
 
-The current scaffold is a placeholder: the server broadcasts a tick every 2s over WebSocket, and the client draws an empty hex board and shows the tick number. Set `VITE_SERVER_URL` to point the client at a different server.
+Open `http://localhost:5173` in two browser tabs: the first match starts when both players have joined (each tab is its own guest). Click one of your tiles, then an adjacent tile to queue a move; keep clicking adjacent tiles to chain a path. Drag to pan, scroll to zoom. Orders are append-only and run one per tick.
+
+Server settings (environment variables): `PLAYERS` (2, 3, 4 or 6; default 2), `RADIUS` (board size, default 6), `TICK_MS` (default 2000), `PORT` (default 8080). Set `VITE_SERVER_URL` to point the client at a different server.

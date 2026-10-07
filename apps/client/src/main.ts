@@ -1,55 +1,64 @@
-import { Application, Graphics } from 'pixi.js';
-import { hexagonalBoard, serverMessageSchema, type Hex } from '@hexxar/shared';
+import { hexDistance, hexKey, type Hex } from '@hexxar/shared';
+import { Board, playerColor } from './board.js';
+import { applyMessage, emptyGame } from './game.js';
+import { Hud } from './hud.js';
+import { connect, saveToken } from './net.js';
 
-const HEX_SIZE = 24;
-const hud = document.getElementById('hud')!;
+const game = emptyGame();
+let selected: Hex | null = null;
 
-/** Axial -> pixel for pointy-top hexes. */
-function hexToPixel({ q, r }: Hex): { x: number; y: number } {
-  return {
-    x: HEX_SIZE * Math.sqrt(3) * (q + r / 2),
-    y: HEX_SIZE * 1.5 * r,
-  };
-}
+const canPlay = (): boolean =>
+  game.status === 'playing' && game.playerId !== null && !game.eliminated.includes(game.playerId);
 
-async function initRenderer(): Promise<void> {
-  const app = new Application();
-  await app.init({ resizeTo: window, background: '#14161c', antialias: true });
-  document.getElementById('app')!.appendChild(app.canvas);
+function onHexClick(hex: Hex): void {
+  if (!canPlay() || !game.tiles[hexKey(hex)]) return;
+  const tile = game.tiles[hexKey(hex)]!;
 
-  const board = new Graphics();
-  for (const hex of hexagonalBoard(6)) {
-    const { x, y } = hexToPixel(hex);
-    const points: number[] = [];
-    for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI / 180) * (60 * i - 30);
-      points.push(x + (HEX_SIZE - 1) * Math.cos(angle), y + (HEX_SIZE - 1) * Math.sin(angle));
-    }
-    board.poly(points).fill(0x2a2f3d);
+  if (selected && hexDistance(selected, hex) === 1) {
+    // Queue a move; the destination becomes the new selection so paths can be chained.
+    connection.send({ type: 'order', order: { type: 'move', from: selected, to: hex } });
+    selected = hex;
+  } else if (tile.owner === game.playerId) {
+    selected = selected && hexKey(selected) === hexKey(hex) ? null : hex;
+  } else {
+    selected = null;
   }
-  board.position.set(app.screen.width / 2, app.screen.height / 2);
-  app.stage.addChild(board);
-  app.renderer.on('resize', (w, h) => board.position.set(w / 2, h / 2));
+  board.setSelection(selected);
 }
 
-function connect(): void {
-  const url = import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:8080`;
-  const ws = new WebSocket(url);
-  ws.onopen = () => {
-    hud.textContent = 'connected';
-    ws.send(JSON.stringify({ type: 'hello', name: 'guest' }));
-  };
-  ws.onclose = () => {
-    hud.textContent = 'disconnected, retrying…';
-    setTimeout(connect, 2000);
-  };
-  ws.onmessage = (event) => {
-    const result = serverMessageSchema.safeParse(JSON.parse(event.data as string));
-    if (result.success && result.data.type === 'tick') {
-      hud.textContent = `tick ${result.data.tick}`;
-    }
-  };
+function render(change: ReturnType<typeof applyMessage>): void {
+  if (!change) return;
+  if (change.kind === 'all') {
+    selected = null;
+    board.setAll(game);
+    board.setSelection(null);
+  } else if (change.kind === 'tiles') {
+    board.updateTiles(change.tiles, game);
+  }
+  const color = (game.playerId && playerColor(game, game.playerId)) || 0xffffff;
+  board.drawQueue(game.queue, color);
+  if (!canPlay()) {
+    selected = null;
+    board.setSelection(null);
+  }
+  hud.render(game);
 }
 
-await initRenderer();
-connect();
+const board = await Board.create(document.getElementById('app')!, onHexClick);
+const hud = new Hud(document.getElementById('hud')!, () => connection.send({ type: 'surrender' }));
+hud.render(game);
+
+const url = import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:8080`;
+const connection = connect(url, 'guest', {
+  onOpen: () => hud.render(game),
+  onClose: () => {
+    if (game.status !== 'rejected') game.status = 'connecting';
+    hud.render(game);
+  },
+  onMessage: (message) => {
+    if (message.type === 'welcome') saveToken(message.token);
+    render(applyMessage(game, message));
+  },
+  // Don't hammer a server that has told us the match is full.
+  shouldReconnect: () => game.status !== 'rejected',
+});

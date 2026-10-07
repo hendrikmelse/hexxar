@@ -52,3 +52,20 @@ export function settlePlayers(
   const winner = state.players.length > 1 && alive.length === 1 ? (alive[0] ?? null) : null;
   return { eliminated, winner };
 }
+
+/** Tiles in `next` that differ from (or are missing in) `previous`. */
+export function diffTiles(previous: GameState, next: GameState): Tile[] {
+  const changed: Tile[] = [];
+  for (const [key, tile] of Object.entries(next.tiles)) {
+    const before = previous.tiles[key];
+    if (
+      !before ||
+      before.type !== tile.type ||
+      before.owner !== tile.owner ||
+      before.troops !== tile.troops
+    ) {
+      changed.push(tile);
+    }
+  }
+  return changed;
+}
