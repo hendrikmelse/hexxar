@@ -400,7 +400,8 @@ function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
  * used to carve doorways.
  */
 function drawVillage(g: Graphics, c: Point, art: ArtColors, cutout: number): void {
-  const at = (x: number, y: number): [number, number] => [c.x + x, c.y + y];
+  // Nudged up a little so the cottages are not crowded toward the bottom of the tile.
+  const at = (x: number, y: number): [number, number] => [c.x + x, c.y + y - 2.5];
   // Large cottage with a chimney.
   g.rect(...at(-5.5, -4), 2, 4).fill(art.roof);
   g.rect(...at(-14, 3), 12, 9).fill(art.wall);
