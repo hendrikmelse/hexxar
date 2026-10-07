@@ -15,6 +15,11 @@ export interface Tile {
   /** `null` means neutral. */
   readonly owner: PlayerId | null;
   readonly troops: number;
+  /**
+   * Ticks of progress toward the next generation (owned tiles) or decay step
+   * (oversized neutral armies). Resets when the tile is captured.
+   */
+  readonly progress: number;
 }
 
 export interface GameState {
@@ -53,7 +58,10 @@ export function settlePlayers(
   return { eliminated, winner };
 }
 
-/** Tiles in `next` that differ from (or are missing in) `previous`. */
+/**
+ * Tiles in `next` that differ from (or are missing in) `previous`. Changes to
+ * `progress` alone are ignored: clients predict them with `applyTickDiff`.
+ */
 export function diffTiles(previous: GameState, next: GameState): Tile[] {
   const changed: Tile[] = [];
   for (const [key, tile] of Object.entries(next.tiles)) {

@@ -1,5 +1,12 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { hexKey, type Hex, type Order, type Tile } from '@hexxar/shared';
+import {
+  generationInterval,
+  hexKey,
+  isGenerationPaused,
+  type Hex,
+  type Order,
+  type Tile,
+} from '@hexxar/shared';
 import type { GameView } from './game.js';
 import { HEX_SIZE, hexCorners, hexToPixel, pixelToHex, type Point } from './layout.js';
 
@@ -13,6 +20,8 @@ const NEUTRAL_FILL = { farmland: 0x252a33, village: 0x2b3140, city: 0x333a4e } a
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
 const DRAG_THRESHOLD = 5;
+const RING_RADIUS = 21;
+const MAX_RING_SEGMENTS = 36;
 
 export function playerColor(game: GameView, owner: string | null): number | null {
   if (owner === null) return null;
@@ -121,7 +130,42 @@ export class Board {
         alpha: 0.9,
       });
     }
+    this.drawProgressRing(shape, tile, center, owner, game);
     view.label.text = tile.troops > 0 ? String(tile.troops) : '';
+  }
+
+  /**
+   * A ring of segments around an owned tile, one per tick of its generation cycle.
+   * Filled segments are progress; when the tile is at its troop cap the progress is
+   * kept but shown dimmed, since it is paused.
+   */
+  private drawProgressRing(
+    shape: Graphics,
+    tile: Tile,
+    center: Point,
+    owner: number | null,
+    game: GameView,
+  ): void {
+    if (owner === null || !game.config) return;
+    const total = generationInterval(game.config, tile.type);
+    if (total < 2) return;
+    const paused = isGenerationPaused(game.config, tile);
+    // Very long cycles collapse into a fixed number of chunks.
+    const segments = Math.min(total, MAX_RING_SEGMENTS);
+    const filled = Math.floor((tile.progress * segments) / total);
+    const step = (Math.PI * 2) / segments;
+    const gap = Math.min(0.12, step * 0.3);
+    for (let i = 0; i < segments; i++) {
+      const start = -Math.PI / 2 + i * step + gap / 2;
+      const end = start + step - gap;
+      const on = i < filled;
+      const color = on && paused ? 0xffffff : owner;
+      const alpha = on ? (paused ? 0.4 : 1) : 0.22;
+      shape
+        .moveTo(center.x + RING_RADIUS * Math.cos(start), center.y + RING_RADIUS * Math.sin(start))
+        .arc(center.x, center.y, RING_RADIUS, start, end)
+        .stroke({ width: 3, color, alpha });
+    }
   }
 
   /** Draw the player's queued moves as arrows. */

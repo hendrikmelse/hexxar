@@ -1,4 +1,11 @@
-import type { MatchConfig, Order, PlayerId, ServerMessage, Tile } from '@hexxar/shared';
+import {
+  applyTickDiff,
+  type MatchConfig,
+  type Order,
+  type PlayerId,
+  type ServerMessage,
+  type Tile,
+} from '@hexxar/shared';
 
 export type Status = 'connecting' | 'waiting' | 'playing' | 'over' | 'rejected';
 
@@ -66,7 +73,10 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       game.notice = '';
       return { kind: 'all' };
     case 'tick': {
-      for (const tile of message.changed) game.tiles[`${tile.q},${tile.r}`] = tile;
+      // The diff leaves out progress-only changes; applyTickDiff predicts them.
+      const touched = game.config
+        ? applyTickDiff(game.tiles, message.changed, game.config)
+        : message.changed;
       game.tick = message.tick;
       game.nextTickAt = message.nextTickAt;
       game.clockOffset = message.serverTime - Date.now();
@@ -76,7 +86,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       if (message.winner !== null) game.status = 'over';
       // Queues are append-only, so what remains is always the newest orders.
       game.queue = message.queueLength === 0 ? [] : game.queue.slice(-message.queueLength);
-      return { kind: 'tiles', tiles: message.changed };
+      return { kind: 'tiles', tiles: touched };
     }
     case 'queued':
       game.queue.push(message.order);

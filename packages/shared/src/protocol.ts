@@ -9,6 +9,7 @@ export const tileSchema = z.object({
   type: z.enum(TILE_TYPE_IDS),
   owner: z.string().nullable(),
   troops: z.number().int().nonnegative(),
+  progress: z.number().int().nonnegative(),
 });
 
 export const gameStateSchema = z.object({

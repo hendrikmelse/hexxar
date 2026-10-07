@@ -139,6 +139,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
         r: image.r,
         type,
         owner,
+        progress: 0,
         troops: owner === null ? tileRules(config, type).baseGarrison : config.startingTroops,
       };
     }

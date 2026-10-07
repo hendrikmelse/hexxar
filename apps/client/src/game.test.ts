@@ -14,6 +14,7 @@ const tile = (q: number, troops: number): Tile => ({
   type: 'farmland',
   owner: 'P1',
   troops,
+  progress: 0,
 });
 
 const snapshot = (queue: Order[] = []): ServerMessage => ({

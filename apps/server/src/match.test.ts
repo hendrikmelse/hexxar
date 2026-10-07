@@ -13,6 +13,7 @@ function lineState(): GameState {
       type: 'farmland',
       owner,
       troops: owner ? 20 : 1,
+      progress: 0,
     };
   });
   return { tick: 0, players: ['A', 'B'], eliminated: [], winner: null, tiles };

@@ -1,7 +1,7 @@
 import { tileRules, type MatchConfig } from './config.js';
+import { stepTile } from './generation.js';
 import { hexKey } from './hex.js';
 import { checkOrder, type Order, type OrdersByPlayer } from './orders.js';
-import type { TileTypeId } from './tiles.js';
 import { settlePlayers, type GameState, type PlayerId, type Tile } from './state.js';
 
 /** Attackers fight at face value; defenders get their tile's percentage. */
@@ -18,22 +18,10 @@ interface Arrival {
 
 interface Participant {
   readonly owner: PlayerId | null;
+  readonly troops: number;
   /** Strength in percent-troops (troops * percent), keeps the math integer. */
   readonly strength: number;
   readonly defender: boolean;
-}
-
-/** Ticks between generation events for a tile type, after the match's speed scale. */
-function generationInterval(config: MatchConfig, type: TileTypeId): number {
-  const { everyTicks } = tileRules(config, type).generation;
-  return Math.max(1, Math.round((everyTicks * 100) / config.generationSpeedPercent));
-}
-
-/** Ticks between decay steps for an oversized neutral army: a fraction of the generation rate. */
-function decayInterval(config: MatchConfig, type: TileTypeId): number {
-  const { everyTicks } = tileRules(config, type).generation;
-  const scale = config.generationSpeedPercent * config.neutralDecayRatePercent;
-  return Math.max(1, Math.round((everyTicks * 10_000) / scale));
 }
 
 /**
@@ -51,19 +39,11 @@ export function resolveTick(
   const tiles: Record<string, MutableTile> = {};
   for (const [key, tile] of Object.entries(state.tiles)) tiles[key] = { ...tile };
 
-  // Phase 1: generation and decay. Troops generated this tick can fight and move this tick.
+  // Phase 1: generation and decay, per tile. Troops generated this tick can fight and move this tick.
   for (const tile of Object.values(tiles)) {
-    const rules = tileRules(config, tile.type);
-    if (tile.owner === null) {
-      if (tile.troops > rules.baseGarrison && tick % decayInterval(config, tile.type) === 0) {
-        tile.troops -= 1;
-      }
-    } else if (
-      tile.troops < rules.generation.cap &&
-      tick % generationInterval(config, tile.type) === 0
-    ) {
-      tile.troops += rules.generation.amount;
-    }
+    const { troops, progress } = stepTile(config, tile);
+    tile.troops = troops;
+    tile.progress = progress;
   }
 
   // Phase 2: every commanded army departs, leaving one troop behind.
@@ -110,7 +90,7 @@ export function resolveTick(
 
 /**
  * The strongest participant fights the second strongest and everyone else is
- * removed. The winner keeps the difference. A battle needs a survivor to change
+ * removed. A battle needs a survivor to change
  * ownership: if nobody is left standing the tile keeps its owner and is empty.
  */
 function resolveBattle(
@@ -120,12 +100,14 @@ function resolveBattle(
 ): void {
   const participants: Participant[] = hostile.map((a) => ({
     owner: a.player,
+    troops: a.amount,
     strength: a.amount * ATTACKER_PERCENT,
     defender: false,
   }));
   if (tile.troops > 0) {
     participants.push({
       owner: tile.owner,
+      troops: tile.troops,
       strength: tile.troops * defensePercent,
       defender: true,
     });
@@ -137,14 +119,26 @@ function resolveBattle(
   if (!second) {
     // Unopposed: walk onto an empty tile.
     tile.owner = top.owner;
+    tile.progress = 0;
     tile.troops = top.strength / ATTACKER_PERCENT;
     return;
   }
 
+  // The loser is wiped out. The winner loses troops worth the loser's strength at the
+  // winner's own rate, so a defender's bonus makes each of its troops cost more to kill
+  // and each attacker troop cost one full troop to lose. Rounding favors the defense:
+  // defender losses round down, attacker losses round up.
   const percent = top.defender ? defensePercent : ATTACKER_PERCENT;
-  const survivors = Math.floor((top.strength - second.strength) / percent);
+  const loss = top.defender
+    ? Math.floor(second.strength / percent)
+    : Math.ceil(second.strength / percent);
+  const tied = top.strength === second.strength;
+  const survivors = tied ? 0 : Math.max(0, top.troops - loss);
   tile.troops = survivors;
-  if (survivors > 0 && !top.defender) tile.owner = top.owner;
+  if (survivors > 0 && !top.defender) {
+    tile.owner = top.owner;
+    tile.progress = 0;
+  }
 }
 
 /**
@@ -155,7 +149,7 @@ export function surrender(state: GameState, player: PlayerId): GameState {
   if (state.winner !== null || !state.players.includes(player)) return state;
   const tiles: Record<string, Tile> = {};
   for (const [key, tile] of Object.entries(state.tiles)) {
-    tiles[key] = tile.owner === player ? { ...tile, owner: null } : tile;
+    tiles[key] = tile.owner === player ? { ...tile, owner: null, progress: 0 } : tile;
   }
   const next: GameState = { ...state, tiles };
   return { ...next, ...settlePlayers(next, [player]) };
