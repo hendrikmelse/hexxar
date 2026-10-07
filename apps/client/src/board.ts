@@ -144,13 +144,13 @@ export class Board {
     const shape = view.shape;
     shape.clear();
     shape.poly(hexCorners(center, 1.5)).fill(fill);
-    if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 1.5, color: owner });
+    if (owner !== null) shape.poly(hexCorners(center, 1.5)).stroke({ width: 1, color: owner });
 
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
     // On owned tiles the art is a pale tint of the owner color so it stands out from the fill.
     const iconColor = owner === null ? NEUTRAL_ICON : mix(owner, 0xffffff, 0.65);
-    const art = tileArtColors(fill, iconColor);
+    const art = tileArtColors(fill, iconColor, owner);
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
     } else if (tile.type === 'village') {
@@ -370,12 +370,13 @@ interface ArtColors {
   readonly accent: number;
 }
 
-function tileArtColors(fill: number, icon: number): ArtColors {
+function tileArtColors(fill: number, icon: number, owner: number | null): ArtColors {
   return {
     faint: mix(fill, icon, 0.2),
     wall: mix(fill, icon, 0.4),
     roof: mix(fill, icon, 0.7),
-    border: mix(fill, icon, 0.5),
+    // Owned tiles keep the border in the owner's own color rather than the pale art tint.
+    border: owner === null ? mix(fill, icon, 0.5) : mix(fill, owner, 0.7),
     accent: mix(fill, icon, 0.95),
   };
 }
