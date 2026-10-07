@@ -20,7 +20,9 @@ const NEUTRAL_FILL = { farmland: 0x242932, village: 0x2f3749, city: 0x3a4360 } a
 const NEUTRAL_ICON = 0xaab3c8;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
-const RING_RADIUS = 21;
+const RING_RADIUS = 20.5;
+/** Inset of the inner wall border from the hex edge: far enough out to clear the progress ring. */
+const WALL_INSET = 4.5;
 const MAX_RING_SEGMENTS = 36;
 
 export function playerColor(game: GameView, owner: string | null): number | null {
@@ -144,17 +146,17 @@ export class Board {
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
     const iconColor = owner ?? NEUTRAL_ICON;
-    const art = tileArtColors(fill, iconColor);
+    const art = tileArtColors(fill, iconColor, owner !== null);
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
     } else if (tile.type === 'village') {
-      shape.poly(hexCorners(center, 6)).stroke({ width: 1, color: art.border });
+      shape.poly(hexCorners(center, WALL_INSET)).stroke({ width: 1, color: art.border });
       drawVillage(shape, center, art, fill);
     } else {
-      const inner = hexCorners(center, 6);
+      const inner = hexCorners(center, WALL_INSET);
       shape.poly(inner).stroke({ width: 1.5, color: art.border });
       for (let i = 0; i < inner.length; i += 2) {
-        shape.circle(inner[i]!, inner[i + 1]!, 1.9).fill(art.border);
+        shape.circle(inner[i]!, inner[i + 1]!, 1.6).fill(art.border);
       }
       drawCastle(shape, center, art, fill);
     }
@@ -192,7 +194,7 @@ export class Board {
       shape
         .moveTo(center.x + RING_RADIUS * Math.cos(start), center.y + RING_RADIUS * Math.sin(start))
         .arc(center.x, center.y, RING_RADIUS, start, end)
-        .stroke({ width: 3, color, alpha });
+        .stroke({ width: 2.5, color, alpha });
     }
   }
 
@@ -364,12 +366,13 @@ interface ArtColors {
   readonly accent: number;
 }
 
-function tileArtColors(fill: number, icon: number): ArtColors {
+function tileArtColors(fill: number, icon: number, owned: boolean): ArtColors {
   return {
     faint: mix(fill, icon, 0.2),
     wall: mix(fill, icon, 0.4),
     roof: mix(fill, icon, 0.7),
-    border: mix(fill, icon, 0.5),
+    // Owned tiles already have a bright outline, so their wall border is quieter.
+    border: mix(fill, icon, owned ? 0.3 : 0.5),
     accent: mix(fill, icon, 0.95),
   };
 }
