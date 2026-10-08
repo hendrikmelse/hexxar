@@ -15,6 +15,7 @@ import {
   hexagonalBoard,
   type Hex,
 } from './hex.js';
+import { DEFAULT_GENERATION_PARAMS } from './params.js';
 import { createRng } from './rng.js';
 import { randomShape } from './shape.js';
 import type { Tile } from './state.js';
@@ -73,8 +74,8 @@ describe('randomShape', () => {
     for (const seed of seeds) {
       const shape = shapeFor(seed);
       expect(pieces(shape)).toHaveLength(1);
-      expect(shape.length).toBeGreaterThan(size * 0.7);
-      expect(shape.length).toBeLessThan(size * 1.35);
+      expect(shape.length).toBeGreaterThanOrEqual(size * DEFAULT_GENERATION_PARAMS.minAreaRatio);
+      expect(shape.length).toBeLessThanOrEqual(size * DEFAULT_GENERATION_PARAMS.maxAreaRatio);
     }
   });
 
@@ -144,7 +145,7 @@ describe('randomShape', () => {
     for (const seed of seeds) {
       const present = keysOf(shapeFor(seed, [identity], protect));
       for (const start of protect) {
-        for (const hex of hexagonalBoard(2)) {
+        for (const hex of hexagonalBoard(DEFAULT_GENERATION_PARAMS.startRoom)) {
           expect(present.has(hexKey({ q: start.q + hex.q, r: start.r + hex.r }))).toBe(true);
         }
       }

@@ -18,6 +18,7 @@ import {
   type Symmetry,
 } from './generate.js';
 import { TILE_TYPES } from './tiles.js';
+import { DEFAULT_GENERATION_PARAMS } from './params.js';
 import { createRng } from './rng.js';
 import { parseMatchConfig } from './config.js';
 
@@ -203,7 +204,14 @@ describe('terrain rules', () => {
 
   const boardFor = (n: number, symmetry: Symmetry, radius: number, seed: number) => {
     const ids = Array.from({ length: n }, (_, i) => `P${i}`);
-    const { state } = createSymmetricMatch({ players: ids, seed, radius, symmetry });
+    // Fully packed with villages, so the "nowhere legal is left" check means something.
+    const { state } = createSymmetricMatch({
+      players: ids,
+      seed,
+      radius,
+      symmetry,
+      params: { villageChance: 100 },
+    });
     const tiles = Object.values(state.tiles);
     return {
       tiles,
@@ -285,7 +293,7 @@ describe('terrain rules', () => {
 describe('free-for-all boards', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
   const board = (n: number, seed: number, radius?: number) =>
-    createFreeForAllMatch({ players: ids(n), seed, radius }).state;
+    createFreeForAllMatch({ players: ids(n), seed, radius, params: { villageChance: 100 } }).state;
   const radiusOf = (hexes: { q: number; r: number }[]) =>
     Math.max(...hexes.map((h) => hexDistance(h, { q: 0, r: 0 })));
   const counts = [2, 3, 5, 8, 20, 100];
@@ -302,7 +310,7 @@ describe('free-for-all boards', () => {
       expect(radius).toBeGreaterThanOrEqual(previous);
       previous = radius;
       const tiles = 3 * radius * (radius + 1) + 1;
-      expect(tiles / n).toBeGreaterThanOrEqual(36);
+      expect(tiles / n).toBeGreaterThanOrEqual(DEFAULT_GENERATION_PARAMS.tilesPerPlayer);
       expect(radiusOf(Object.values(board(n, 1).tiles))).toBe(radius);
     }
     expect(recommendedRadius(2, 'symmetric')).toBe(7);

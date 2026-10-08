@@ -19,9 +19,9 @@ Both generators take a `shape`: `hexagon` (the default, a regular hexagonal boar
 - **Outline:** a circle bent by three random waves, so the board has lobes and bays instead of six straight sides, with each tile's edge position jittered for a rough coast. A circle with the radius of the hexagon it stands in for holds about the same number of tiles.
 - **Tidying:** tiles that stick out as spurs (two or fewer neighbors) are removed and one-tile bays are filled, and tiny islands are dropped, so the coast is jagged but never noisy.
 - **Cutouts:** a few lakes are carved out of the inside. Each is one big blob of contiguous tiles (at least 5, up to about a thirtieth of the board), grown compactly, and kept at least 3 tiles from the coast (so there is always room to walk around), from every starting city, and from other lakes.
-- **Checks:** the board must be one connected piece, within about 70% to 130% of the hexagon's area, and keep the room around every starting city, otherwise another shape is tried.
+- **Checks:** the board must be one connected piece, within 50% to 130% of the hexagon's area (by default), and keep the room around every starting city, otherwise another shape is tried.
 - **Symmetry:** symmetric boards keep their symmetry. A tile is land if it or any of its images would be, and lakes are carved out along with all of their images, so the whole board maps onto itself.
-- **Starting cities:** protected, with two rings of land around each one.
+- **Starting cities:** protected, with a ring of land around each one (the start room setting).
 
 "Edge" now means a tile with a missing neighbor, whether at the coast or beside a lake. Cities never go on edge tiles, so every city has a full ring of six neighbors, and villages fill the interior before the edge.
 
@@ -29,7 +29,7 @@ Both generators take a `shape`: `hexagon` (the default, a regular hexagonal boar
 
 1. **Starting cities** as above.
 2. **Other cities** are rare: about one per 50 tiles, not counting the starting cities. Orbits are tried in random order, and one is added only if it brings the number of extra cities closer to that target. Cities are never closer than **3 tiles** to any other city, starting cities included, and are never placed on the edge of the board.
-3. **Villages** are placed randomly until nowhere legal is left. A village never touches another village or a city. Edge tiles are only considered once no interior tile can take a village. Placing a village only removes options, so a single random pass over the orbits leaves a board where no further village fits.
+3. **Villages** are placed randomly wherever they fit. Each legal spot gets one with the village chance (40% by default); at 100% the board is filled until nowhere legal is left. A village never touches another village or a city. Edge tiles are only considered once no interior tile can take a village. Placing a village only removes options, so a single random pass over the orbits leaves a board where no further village fits.
 4. **Farmland** is everything else.
 
 Neutral tiles start with their type's base garrison.
@@ -38,7 +38,7 @@ Neutral tiles start with their type's base garrison.
 
 A free-for-all board has no symmetry; the terrain is simply random, within the tile rules above.
 
-- **Size:** the board is always the smallest that gives each player their share, 36 tiles per player (radius 6 for 3 players, 10 for 8, 35 for 100), so starting cities end up around 6 tiles apart. The size is not a setting; `recommendedRadius` decides it. Symmetric games have fixed recommended sizes (radius 7 for a duel up to 10 for 6 players).
+- **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. The size is not a setting; `recommendedRadius` decides it. Symmetric games have fixed recommended sizes (radius 7 for a duel up to 10 for 6 players).
 - **Starting cities:** one per player, at least 3 tiles apart and at least one tile in from the edge, spread as evenly as the board allows. The generator tries many random layouts, each time putting the next player as far as it can from the ones already placed, and keeps the layout whose closest pair of players is furthest apart. It rejects boards too small to hold everyone 3 tiles apart.
 - **Who starts where:** players are assigned to the starting cities at random.
 - **Cities and villages:** there are no cities except the starting ones, so each player's start is the only city nearby. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.
@@ -49,12 +49,12 @@ Because nothing about the layout is symmetric, free-for-all boards are not perfe
 
 Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`). Both generators take a `params` option with any overrides, and boards made with the defaults are unchanged.
 
-| Group               | Settings (defaults)                                                                                                                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Outline             | outline size (0.91), waves (3), wave strength (1), wave detail (5), jagged coast (1.8), smallest and largest area (72% and 130% of the matching hexagon)                                           |
-| Lakes               | lake frequency (about one per 140 tiles, 0 for none), smallest lake (5), biggest lake (3.3% of the board), lake size cap (60), shore room (3)                                                      |
-| Cities and villages | city density (one extra city per 50 tiles), extra cities in free-for-all (off), city spacing (3), village chance (100%), village spacing (2, so they never touch), villages may touch cities (off) |
-| Starts and size     | start inset (1), start room on random shapes (2), tiles per player for free-for-all (36)                                                                                                           |
+| Group               | Settings (defaults)                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Outline             | outline size (0.91), waves (4), wave strength (1.5), wave detail (6), jagged coast (1.2), smallest and largest area (50% and 130% of the matching hexagon)                                        |
+| Lakes               | lake frequency (about one per 60 tiles, 0 for none), smallest lake (6), biggest lake (8% of the board), lake size cap (60), shore room (3)                                                        |
+| Cities and villages | city density (one extra city per 50 tiles), extra cities in free-for-all (off), city spacing (3), village chance (40%), village spacing (2, so they never touch), villages may touch cities (off) |
+| Starts and size     | start inset (1), start room on random shapes (1), tiles per player for free-for-all (20)                                                                                                          |
 
 ## Previewing maps
 

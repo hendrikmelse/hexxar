@@ -58,29 +58,29 @@ export interface GenerationParams {
 
 export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   outlineScale: 0.91,
-  waveCount: 3,
-  waveStrength: 1,
-  waveDetail: 5,
-  jaggedness: 1.8,
-  minAreaRatio: 0.72,
+  waveCount: 4,
+  waveStrength: 1.5,
+  waveDetail: 6,
+  jaggedness: 1.2,
+  minAreaRatio: 0.5,
   maxAreaRatio: 1.3,
 
-  tilesPerLake: 140,
-  minLakeSize: 5,
-  maxLakePercent: 100 / 30,
+  tilesPerLake: 60,
+  minLakeSize: 6,
+  maxLakePercent: 8,
   maxLakeSize: 60,
   lakeClearance: 3,
 
   tilesPerCity: 50,
   minCityDistance: 3,
   freeForAllCities: false,
-  villageChance: 100,
+  villageChance: 40,
   minVillageDistance: 2,
   villagesNextToCities: false,
 
   startInset: 1,
-  startRoom: 2,
-  tilesPerPlayer: 36,
+  startRoom: 1,
+  tilesPerPlayer: 20,
 };
 
 /** Fill in defaults for anything not given. */
