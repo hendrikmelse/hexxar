@@ -1,4 +1,5 @@
 import { hexDistance, hexKey, hexNeighbors, hexagonalBoard, type Hex } from './hex.js';
+import { DEFAULT_GENERATION_PARAMS, type GenerationParams } from './params.js';
 import type { Rng } from './rng.js';
 
 type Transform = (h: Hex) => Hex;
@@ -11,12 +12,12 @@ export interface RandomShapeInput {
   readonly group: readonly Transform[];
   /** Hexes that must be on the board with room around them: the starting cities. */
   readonly protect: readonly Hex[];
+  /** Defaults to `DEFAULT_GENERATION_PARAMS`. */
+  readonly params?: GenerationParams;
 }
 
-/** Disk around each protected hex that is always kept: its neighbors and their neighbors. */
-const PROTECT_RADIUS = 2;
-/** Cutouts keep at least this many tiles of board between them and the outside. */
-const CUTOUT_CLEARANCE = 3;
+type ResolvedShapeInput = RandomShapeInput & { readonly params: GenerationParams };
+
 const SQRT3 = Math.sqrt(3);
 
 /** Distance from the center in tile spacings, and direction, of a hex. */
@@ -44,25 +45,25 @@ const byPosition = (a: Hex, b: Hex): number => a.q - b.q || a.r - b.r;
  */
 export function randomShape(input: RandomShapeInput): Hex[] {
   for (let attempt = 0; attempt < 40; attempt++) {
-    const shape = tryShape(input);
+    const shape = tryShape({ ...input, params: input.params ?? DEFAULT_GENERATION_PARAMS });
     if (shape) return shape;
   }
   return hexagonalBoard(input.radius);
 }
 
-function tryShape({ radius, rng, group, protect }: RandomShapeInput): Hex[] | null {
+function tryShape({ radius, rng, group, protect, params }: ResolvedShapeInput): Hex[] | null {
   const candidates = hexagonalBoard(radius + 5);
 
   // -- Outline: a bent circle with a rough edge.
-  const waves = Array.from({ length: 3 }, () => ({
-    k: 2 + rng.int(4),
-    amplitude: 0.04 + rng.next() * 0.09,
+  const waves = Array.from({ length: params.waveCount }, () => ({
+    k: 2 + rng.int(Math.max(1, params.waveDetail - 1)),
+    amplitude: (0.04 + rng.next() * 0.09) * params.waveStrength,
     phase: rng.next() * Math.PI * 2,
   }));
   const jitter = new Map<string, number>();
-  for (const hex of candidates) jitter.set(hexKey(hex), (rng.next() - 0.5) * 1.8);
+  for (const hex of candidates) jitter.set(hexKey(hex), (rng.next() - 0.5) * params.jaggedness);
   // A circle of this radius holds about as many tiles as a hexagon of the given radius.
-  const base = 0.91 * radius;
+  const base = params.outlineScale * radius;
   const wouldBeLand = (hex: Hex): boolean => {
     const { u, theta } = polar(hex);
     let scale = 1;
@@ -79,7 +80,7 @@ function tryShape({ radius, rng, group, protect }: RandomShapeInput): Hex[] | nu
   const protectedKeys = new Set<string>();
   for (const start of protect) {
     for (const hex of candidates) {
-      if (hexDistance(hex, start) <= PROTECT_RADIUS) {
+      if (hexDistance(hex, start) <= params.startRoom) {
         land.set(hexKey(hex), hex);
         protectedKeys.add(hexKey(hex));
       }
@@ -94,7 +95,7 @@ function tryShape({ radius, rng, group, protect }: RandomShapeInput): Hex[] | nu
   }
   if (components(land).length !== 1) return null;
 
-  carveCutouts(land, { rng, group, protect });
+  carveCutouts(land, { rng, group, protect, params });
   // Carving can leave a tile stranded between a lake and the coast; tidy up again.
   tidy(land, candidates, protectedKeys);
   if (components(land).length !== 1) return null;
@@ -102,7 +103,12 @@ function tryShape({ radius, rng, group, protect }: RandomShapeInput): Hex[] | nu
 
   // -- Not much bigger or smaller than the hexagon it stands in for.
   const hexagonSize = 3 * radius * (radius + 1) + 1;
-  if (land.size < hexagonSize * 0.72 || land.size > hexagonSize * 1.3) return null;
+  if (
+    land.size < hexagonSize * params.minAreaRatio ||
+    land.size > hexagonSize * params.maxAreaRatio
+  ) {
+    return null;
+  }
 
   return [...land.values()].sort(byPosition);
 }
@@ -187,13 +193,18 @@ function depthFromCoast(land: ReadonlyMap<string, Hex>): Map<string, number> {
  */
 function carveCutouts(
   land: Map<string, Hex>,
-  { rng, group, protect }: Pick<RandomShapeInput, 'rng' | 'group' | 'protect'>,
+  { rng, group, protect, params }: Pick<ResolvedShapeInput, 'rng' | 'group' | 'protect' | 'params'>,
 ): void {
   const depth = depthFromCoast(land);
   const area = land.size;
-  const count = rng.int(Math.max(1, Math.round(area / 140)) + 1);
-  const minSize = 5;
-  const maxSize = Math.min(60, Math.max(10, Math.round(area / 30)));
+  const clearance = params.lakeClearance;
+  const count =
+    params.tilesPerLake > 0 ? rng.int(Math.max(1, Math.round(area / params.tilesPerLake)) + 1) : 0;
+  const minSize = Math.max(3, params.minLakeSize);
+  const maxSize = Math.min(
+    params.maxLakeSize,
+    Math.max(minSize + 5, Math.round((area * params.maxLakePercent) / 100)),
+  );
   const cut = new Set<string>();
   const cutHexes: Hex[] = [];
   const tooClose = (hex: Hex, others: readonly Hex[], distance: number): boolean =>
@@ -202,8 +213,8 @@ function carveCutouts(
   for (let i = 0; i < count; i++) {
     const centers = [...land.values()].filter(
       (hex) =>
-        (depth.get(hexKey(hex)) ?? 0) >= CUTOUT_CLEARANCE + 2 &&
-        !tooClose(hex, protect, PROTECT_RADIUS + 4) &&
+        (depth.get(hexKey(hex)) ?? 0) >= clearance + 2 &&
+        !tooClose(hex, protect, params.startRoom + 4) &&
         !tooClose(hex, cutHexes, 4),
     );
     if (centers.length === 0) break;
@@ -214,8 +225,8 @@ function carveCutouts(
       return (
         land.has(key) &&
         !cut.has(key) &&
-        (depth.get(key) ?? 0) >= CUTOUT_CLEARANCE &&
-        !tooClose(hex, protect, PROTECT_RADIUS + 2) &&
+        (depth.get(key) ?? 0) >= clearance &&
+        !tooClose(hex, protect, params.startRoom + 2) &&
         !tooClose(hex, cutHexes, 3)
       );
     });
@@ -274,4 +285,21 @@ function growBlob(center: Hex, size: number, rng: Rng, allowed: (hex: Hex) => bo
     inBlob.add(hexKey(chosen.hex));
   }
   return blob;
+}
+
+/**
+ * The lakes of a board: groups of missing tiles that are walled in by land, as opposed to open
+ * sea. Used to describe generated boards.
+ */
+export function lakesOf(tiles: readonly Hex[]): Hex[][] {
+  if (tiles.length === 0) return [];
+  const present = new Set(tiles.map(hexKey));
+  const reach = Math.max(...tiles.map((t) => hexDistance(t, { q: 0, r: 0 }))) + 2;
+  const missing = new Map<string, Hex>();
+  for (const hex of hexagonalBoard(reach)) {
+    if (!present.has(hexKey(hex))) missing.set(hexKey(hex), hex);
+  }
+  return components(missing)
+    .map((keys) => keys.map((key) => missing.get(key)!))
+    .filter((group) => !group.some((hex) => hexDistance(hex, { q: 0, r: 0 }) >= reach));
 }

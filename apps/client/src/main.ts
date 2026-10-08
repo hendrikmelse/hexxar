@@ -3,6 +3,7 @@ import {
   createSymmetricMatch,
   hexEquals,
   hexKey,
+  lakesOf,
   recommendedRadius,
   type Hex,
   type RoomSettingsPatch,
@@ -119,19 +120,26 @@ function showPreview(options: PreviewOptions): void {
   const players = Array.from({ length: count }, (_, i) => `P${i + 1}`);
   // Free-for-all boards are always as small as they can be; only symmetric ones have a size choice.
   const radius = freeForAll
-    ? recommendedRadius(count, 'freeForAll')
+    ? recommendedRadius(count, 'freeForAll', options.params.tilesPerPlayer)
     : (options.radius ?? recommendedRadius(count, 'symmetric'));
-  const seed = Math.floor(Math.random() * 2 ** 32);
+  const seed = options.seed ?? Math.floor(Math.random() * 2 ** 32);
   let generated;
   try {
     generated = freeForAll
-      ? createFreeForAllMatch({ players, seed, radius, shape: options.shape })
+      ? createFreeForAllMatch({
+          players,
+          seed,
+          radius,
+          shape: options.shape,
+          params: options.params,
+        })
       : createSymmetricMatch({
           players,
           seed,
           radius,
           symmetry: effectiveSymmetry(options) ?? undefined,
           shape: options.shape,
+          params: options.params,
         });
   } catch (error) {
     // E.g. a board too small for the players. Keep showing the last map.
@@ -149,7 +157,9 @@ function showPreview(options: PreviewOptions): void {
   const tiles = Object.values(state.tiles);
   const cities = tiles.filter((t) => t.type === 'city').length;
   const villages = tiles.filter((t) => t.type === 'village').length;
-  const summary = `${tiles.length} tiles · radius ${radius} · ${cities} cities (${count} starting) · ${villages} villages`;
+  const lakes = lakesOf(tiles);
+  const lakeTiles = lakes.reduce((sum, lake) => sum + lake.length, 0);
+  const summary = `${tiles.length} tiles · radius ${radius} · ${cities} cities (${count} starting) · ${villages} villages · ${lakes.length} lakes (${lakeTiles} tiles)`;
   const view: GameView = {
     ...emptyGame(),
     status: 'playing',

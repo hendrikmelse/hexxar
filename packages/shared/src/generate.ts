@@ -10,17 +10,15 @@ import {
   type Hex,
 } from './hex.js';
 import { createRng, type Rng } from './rng.js';
+import { DEFAULT_GENERATION_PARAMS, withDefaults, type GenerationParams } from './params.js';
 import { randomShape } from './shape.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
 /** Roughly one extra city per this many tiles. The starting cities are not counted. */
-export const TILES_PER_CITY = 50;
+export const TILES_PER_CITY = DEFAULT_GENERATION_PARAMS.tilesPerCity;
 /** Cities are never closer than this to each other, starting cities included. */
-export const MIN_CITY_DISTANCE = 3;
-
-/** Starting cities sit this many tiles in from the edge of the board. */
-const START_INSET = 1;
+export const MIN_CITY_DISTANCE = DEFAULT_GENERATION_PARAMS.minCityDistance;
 
 /** Fisher-Yates shuffle driven by the seeded rng, so boards are reproducible. */
 function shuffle<T>(items: readonly T[], rng: Rng): T[] {
@@ -33,26 +31,34 @@ function shuffle<T>(items: readonly T[], rng: Rng): T[] {
 }
 
 /** Can all of an orbit's hexes be cities, given the cities already placed? */
-function cityFits(orbit: readonly Hex[], cities: readonly Hex[]): boolean {
+function cityFits(orbit: readonly Hex[], cities: readonly Hex[], minDistance: number): boolean {
   return orbit.every(
     (hex, i) =>
-      cities.every((city) => hexDistance(hex, city) >= MIN_CITY_DISTANCE) &&
-      orbit.slice(i + 1).every((other) => hexDistance(hex, other) >= MIN_CITY_DISTANCE),
+      cities.every((city) => hexDistance(hex, city) >= minDistance) &&
+      orbit.slice(i + 1).every((other) => hexDistance(hex, other) >= minDistance),
   );
 }
 
+/** Every hex within `distance` of the origin, except the origin itself. */
+const diskOffsets = (distance: number): Hex[] =>
+  hexagonalBoard(distance).filter((h) => h.q !== 0 || h.r !== 0);
+
 /**
- * Can all of an orbit's hexes be villages? Villages never touch each other or a city.
+ * Can all of an orbit's hexes be villages? Villages keep a minimum distance from each other
+ * (2 means they never touch) and, unless allowed, never touch a city.
  */
 function villageFits(
   orbit: readonly Hex[],
   villages: ReadonlySet<string>,
   cities: ReadonlySet<string>,
+  params: GenerationParams,
 ): boolean {
+  const nearVillage = diskOffsets(Math.max(0, params.minVillageDistance - 1));
   return orbit.every(
     (hex, i) =>
-      hexNeighbors(hex).every((n) => !villages.has(hexKey(n)) && !cities.has(hexKey(n))) &&
-      orbit.slice(i + 1).every((other) => hexDistance(hex, other) > 1),
+      nearVillage.every((d) => !villages.has(hexKey({ q: hex.q + d.q, r: hex.r + d.r }))) &&
+      (params.villagesNextToCities || hexNeighbors(hex).every((n) => !cities.has(hexKey(n)))) &&
+      orbit.slice(i + 1).every((other) => hexDistance(hex, other) >= params.minVillageDistance),
   );
 }
 
@@ -87,6 +93,8 @@ export interface SymmetricMatchOptions {
   readonly symmetry?: Symmetry;
   /** Defaults to a regular hexagon. A random shape keeps the board's symmetry. */
   readonly shape?: BoardShape;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
 }
@@ -98,9 +106,14 @@ const mirrors: Transform[] = [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) 
 
 /**
  * A hex on the given ring (distance from the center) in the lower-right quadrant closest to the given angle (0 = right, 90 = down)
- * whose symmetric images are all at least `MIN_CITY_DISTANCE` apart, since they all become cities.
+ * whose symmetric images are all at least `minDistance` apart, since they all become cities.
  */
-function ringHexNear(ring: number, degrees: number, images: readonly Transform[]): Hex {
+function ringHexNear(
+  ring: number,
+  degrees: number,
+  images: readonly Transform[],
+  minDistance: number,
+): Hex {
   let best: Hex | null = null;
   let bestDiff = Infinity;
   for (const hex of hexagonalBoard(ring)) {
@@ -110,7 +123,7 @@ function ringHexNear(ring: number, degrees: number, images: readonly Transform[]
     if (x <= 0 || y <= 0) continue;
     const spread = images.map((image) => image(hex));
     const spaced = spread.every((a, i) =>
-      spread.slice(i + 1).every((b) => hexDistance(a, b) >= MIN_CITY_DISTANCE),
+      spread.slice(i + 1).every((b) => hexDistance(a, b) >= minDistance),
     );
     if (!spaced) continue;
     const diff = Math.abs((Math.atan2(y, x) * 180) / Math.PI - degrees);
@@ -128,10 +141,12 @@ function layout(
   count: number,
   symmetry: Symmetry,
   radius: number,
+  params: GenerationParams,
 ): { terrain: Transform[]; starts: Hex[] } {
+  const inset = params.startInset;
   if (symmetry === 'rotational') {
     if (![2, 3, 6].includes(count)) throw new Error('rotational boards support 2, 3 or 6 players');
-    const corner: Hex = { q: radius - START_INSET, r: 0 };
+    const corner: Hex = { q: radius - inset, r: 0 };
     const stride = 6 / count;
     return {
       terrain: rotationGroup(count),
@@ -140,14 +155,14 @@ function layout(
   }
   if (count === 2) {
     // Left and right corners, mirror images across the vertical axis only.
-    const start: Hex = { q: radius - START_INSET, r: 0 };
+    const start: Hex = { q: radius - inset, r: 0 };
     return {
       terrain: [(h) => h, hexFlipHorizontal],
       starts: [start, hexFlipHorizontal(start)],
     };
   }
   if (count === 4) {
-    const start = ringHexNear(radius - START_INSET, 45, mirrors);
+    const start = ringHexNear(radius - inset, 45, mirrors, params.minCityDistance);
     const [, flipV, flipH, turn] = mirrors as [Transform, Transform, Transform, Transform];
     return { terrain: mirrors, starts: [start, flipV(start), flipH(start), turn(start)] };
   }
@@ -166,11 +181,12 @@ function placeTerrain(input: {
   /** Is this hex on the edge of the board (next to a tile that is not there)? */
   isEdgeHex: (hex: Hex) => boolean;
   totalTiles: number;
-  /** Add cities beyond the starting ones? Free-for-all boards do not. */
+  /** Add cities beyond the starting ones? */
   extraCities: boolean;
+  params: GenerationParams;
   rng: Rng;
 }): Map<string, TileTypeId> {
-  const { startHexes, others, isEdgeHex, totalTiles, extraCities: wantExtra, rng } = input;
+  const { startHexes, others, isEdgeHex, totalTiles, extraCities: wantExtra, params, rng } = input;
   const types = new Map<string, TileTypeId>();
   const cities: Hex[] = [...startHexes];
   for (const hex of startHexes) types.set(hexKey(hex), 'city');
@@ -181,11 +197,11 @@ function placeTerrain(input: {
 
   // Cities: rare, spaced apart, and never on the edge of the board. Add groups (in random
   // order) while that brings the number of extra cities closer to the target density.
-  const target = wantExtra ? totalTiles / TILES_PER_CITY : 0;
+  const target = wantExtra && params.tilesPerCity > 0 ? totalTiles / params.tilesPerCity : 0;
   let extraCities = 0;
   for (const orbit of shuffle(interior, rng)) {
     if (Math.abs(extraCities + orbit.length - target) >= Math.abs(extraCities - target)) continue;
-    if (!cityFits(orbit, cities)) continue;
+    if (!cityFits(orbit, cities, params.minCityDistance)) continue;
     for (const hex of orbit) {
       cities.push(hex);
       types.set(hexKey(hex), 'city');
@@ -200,7 +216,9 @@ function placeTerrain(input: {
   const cityKeys = new Set(cities.map(hexKey));
   for (const orbit of [...shuffle(interior, rng), ...shuffle(edge, rng)]) {
     if (orbit.some((hex) => types.has(hexKey(hex)))) continue;
-    if (!villageFits(orbit, villages, cityKeys)) continue;
+    if (!villageFits(orbit, villages, cityKeys, params)) continue;
+    // Below 100%, only some of the places a village fits get one.
+    if (params.villageChance < 100 && rng.next() * 100 >= params.villageChance) continue;
     for (const hex of orbit) {
       villages.add(hexKey(hex));
       types.set(hexKey(hex), 'village');
@@ -248,7 +266,8 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
   if (radius < 5) throw new Error('radius must be at least 5');
 
-  const { terrain, starts } = layout(players.length, symmetry, radius);
+  const params = withDefaults(options.params);
+  const { terrain, starts } = layout(players.length, symmetry, radius, params);
   const startOwners = new Map<string, PlayerId>();
   starts.forEach((hex, i) => {
     const player = players[i];
@@ -264,7 +283,13 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   const shape = options.shape ?? 'hexagon';
   const ordered = (
     shape === 'random'
-      ? randomShape({ radius, rng: createRng(seed ^ 0x5eed5eed), group: terrain, protect: starts })
+      ? randomShape({
+          radius,
+          rng: createRng(seed ^ 0x5eed5eed),
+          group: terrain,
+          protect: starts,
+          params,
+        })
       : hexagonalBoard(radius)
   ).sort((a, b) => a.q - b.q || a.r - b.r);
   const present = new Set(ordered.map(hexKey));
@@ -290,6 +315,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
     isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
     extraCities: true,
+    params,
     rng: createRng(seed),
   });
   const tiles = buildTiles(ordered, types, startOwners, config);
@@ -305,14 +331,18 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
  * of their own. Starting cities end up about 6 tiles apart, with farmland for a full ring
  * around each city and space for a few villages.
  */
-const FFA_TILES_PER_PLAYER = 36;
+const FFA_TILES_PER_PLAYER = DEFAULT_GENERATION_PARAMS.tilesPerPlayer;
 
 /** The board radius for a game. Free-for-all boards are always the smallest that gives each player their share. */
-export function recommendedRadius(players: number, kind: 'symmetric' | 'freeForAll'): number {
+export function recommendedRadius(
+  players: number,
+  kind: 'symmetric' | 'freeForAll',
+  tilesPerPlayer: number = FFA_TILES_PER_PLAYER,
+): number {
   if (kind === 'symmetric')
     return ({ 2: 7, 3: 8, 4: 9, 6: 10 } as Record<number, number>)[players] ?? 8;
   // 3r(r+1) + 1 tiles on a board of radius r.
-  return Math.max(MIN_FFA_RADIUS, Math.ceil(Math.sqrt((players * FFA_TILES_PER_PLAYER) / 3)));
+  return Math.max(MIN_FFA_RADIUS, Math.ceil(Math.sqrt((players * tilesPerPlayer) / 3)));
 }
 
 const MIN_FFA_RADIUS = 5;
@@ -324,6 +354,8 @@ export interface FreeForAllOptions {
   readonly radius?: number;
   /** Defaults to a regular hexagon. */
   readonly shape?: BoardShape;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
 }
@@ -333,7 +365,12 @@ export interface FreeForAllOptions {
  * well spread out: many random attempts at "put each next player as far from the others as it fits",
  * keeping the attempt whose closest pair of players is furthest apart.
  */
-function spreadStarts(count: number, candidates: readonly Hex[], rng: Rng): Hex[] {
+function spreadStarts(
+  count: number,
+  candidates: readonly Hex[],
+  rng: Rng,
+  minDistance: number,
+): Hex[] {
   if (candidates.length < count) throw new Error('the board is too small for that many players');
   let best: Hex[] = [];
   let bestSpacing = -1;
@@ -359,8 +396,7 @@ function spreadStarts(count: number, candidates: readonly Hex[], rng: Rng): Hex[
       bestSpacing = spacing;
     }
   }
-  if (bestSpacing < MIN_CITY_DISTANCE)
-    throw new Error('the board is too small for that many players');
+  if (bestSpacing < minDistance) throw new Error('the board is too small for that many players');
   return best;
 }
 
@@ -372,12 +408,13 @@ function chooseFreeForAllLayout(
   count: number,
   radius: number,
   shape: BoardShape,
+  params: GenerationParams,
   rng: Rng,
 ): { ordered: Hex[]; present: Set<string>; starts: Hex[] } {
   for (let attempt = 0; ; attempt++) {
     const ordered = (
       shape === 'random'
-        ? randomShape({ radius, rng, group: [(h) => h], protect: [] })
+        ? randomShape({ radius, rng, group: [(h) => h], protect: [], params })
         : hexagonalBoard(radius)
     ).sort((a, b) => a.q - b.q || a.r - b.r);
     const present = new Set(ordered.map(hexKey));
@@ -388,6 +425,7 @@ function chooseFreeForAllLayout(
           count,
           ordered.filter((hex) => !isEdge(hex)),
           rng,
+          params.minCityDistance,
         ),
         rng,
       );
@@ -411,7 +449,9 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
   const config = parseMatchConfig(options.config);
   if (players.length < 2) throw new Error('a match needs at least 2 players');
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
-  const radius = options.radius ?? recommendedRadius(players.length, 'freeForAll');
+  const params = withDefaults(options.params);
+  const radius =
+    options.radius ?? recommendedRadius(players.length, 'freeForAll', params.tilesPerPlayer);
   if (radius < MIN_FFA_RADIUS) throw new Error(`radius must be at least ${MIN_FFA_RADIUS}`);
 
   const rng = createRng(seed);
@@ -419,6 +459,7 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
     players.length,
     radius,
     options.shape ?? 'hexagon',
+    params,
     rng,
   );
   const startOwners = new Map<string, PlayerId>();
@@ -431,7 +472,8 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
     others,
     isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
-    extraCities: false,
+    extraCities: params.freeForAllCities,
+    params,
     rng,
   });
   return {

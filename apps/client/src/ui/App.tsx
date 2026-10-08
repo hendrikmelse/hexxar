@@ -1,4 +1,8 @@
-import type { RoomSettingsPatch } from '@hexxar/shared';
+import {
+  DEFAULT_GENERATION_PARAMS,
+  type GenerationParams,
+  type RoomSettingsPatch,
+} from '@hexxar/shared';
 import { useApp } from '../store.js';
 import { Lobby } from './Lobby.js';
 import { Menu } from './Menu.js';
@@ -17,6 +21,10 @@ export interface PreviewOptions {
   symmetry: 'mirror' | 'rotational';
   /** The outline of the board. */
   shape: 'random' | 'hexagon';
+  /** The generation settings. */
+  params: GenerationParams;
+  /** Fixed seed, or `null` for a fresh random one. */
+  seed: number | null;
 }
 
 export const DEFAULT_PREVIEW: PreviewOptions = {
@@ -25,6 +33,8 @@ export const DEFAULT_PREVIEW: PreviewOptions = {
   radius: null,
   symmetry: 'mirror',
   shape: 'random',
+  params: DEFAULT_GENERATION_PARAMS,
+  seed: null,
 };
 
 /**
