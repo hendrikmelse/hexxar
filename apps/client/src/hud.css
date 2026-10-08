@@ -570,3 +570,8 @@
     transition: none;
   }
 }
+
+/* In the tutorial there is nothing to surrender: leaving is the guide's job */
+#hud.tutorial .surrender {
+  display: none;
+}

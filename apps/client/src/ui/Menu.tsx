@@ -35,6 +35,14 @@ export function Menu({ actions }: { actions: Actions }) {
         </section>
 
         <section className="menu-section">
+          <h3>New here?</h3>
+          <button className="mode learn" onClick={actions.startTutorial}>
+            <strong>How to play</strong>
+            <small>A short, interactive tutorial</small>
+          </button>
+        </section>
+
+        <section className="menu-section">
           <h3>Private games</h3>
           <div className="tiles">
             <button className="mode" onClick={actions.createRoom}>

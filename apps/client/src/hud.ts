@@ -198,7 +198,7 @@ export class Hud {
         this.rows.set(standing.id, row);
       }
       const you = standing.id === game.playerId;
-      row.label.textContent = names.get(standing.id) ?? standing.id;
+      row.label.textContent = game.names[standing.id] ?? names.get(standing.id) ?? standing.id;
       row.troops.textContent = String(standing.troops);
       row.item.classList.toggle('me', you);
       row.item.classList.toggle('out', standing.out);

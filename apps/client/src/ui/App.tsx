@@ -6,6 +6,7 @@ import { Gate } from './Gate.js';
 import { Lobby } from './Lobby.js';
 import { Menu } from './Menu.js';
 import { Results } from './Results.js';
+import { Tutorial } from './Tutorial.js';
 
 /** Everything the screens can ask the app to do. */
 export interface Actions {
@@ -18,6 +19,12 @@ export interface Actions {
   startGame(): void;
   voteStart(vote: boolean): void;
   leaveRoom(): void;
+  startTutorial(): void;
+  tutorialNext(): void;
+  tutorialBack(): void;
+  tutorialRetry(): void;
+  tutorialJump(lesson: number): void;
+  exitTutorial(): void;
 }
 
 /** Whatever the server just refused, popping up over the current screen for a few seconds. */
@@ -69,6 +76,7 @@ export function App({ actions }: { actions: Actions }) {
 
 function Screen({ actions }: { actions: Actions }) {
   const app = useApp();
+  if (app.tutorial) return <Tutorial actions={actions} view={app.tutorial} />;
   if (!app.connected) {
     // Once we have been connected, a dropped connection is a reconnect.
     return <Connecting reconnecting={app.userId !== null} />;

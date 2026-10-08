@@ -1,10 +1,17 @@
-import { hexEquals, hexKey, type Hex, type RoomSettingsPatch } from '@hexxar/shared';
+import {
+  hexEquals,
+  hexKey,
+  type ClientMessage,
+  type Hex,
+  type RoomSettingsPatch,
+} from '@hexxar/shared';
 import { Board, playerColor } from './board.js';
 import { applyMessage, emptyGame } from './game.js';
 import { Hud } from './hud.js';
 import { connect, loadToken, saveCode, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { appStore, saveName } from './store.js';
+import { TutorialRunner } from './tutorial/runner.js';
 import { mountUi } from './ui/mount.js';
 
 /** The match being played. Reset whenever you are back in the menu. */
@@ -16,8 +23,15 @@ const hudEl = document.getElementById('hud')!;
 
 /** True while a match is on screen: running, or finished and showing the result. */
 const inMatch = (): boolean => {
-  const room = appStore.get().room;
+  const { room, tutorial } = appStore.get();
+  if (tutorial) return true;
   return room !== null && (room.state === 'running' || room.state === 'finished');
+};
+
+/** Where messages for the match go: the tutorial's local match, or the server. */
+const send = (message: ClientMessage): void => {
+  if (appStore.get().tutorial) tutorial.handle(message);
+  else connection.send(message);
 };
 
 const canPlay = (): boolean =>
@@ -41,6 +55,7 @@ function showDraft(): void {
 function updateVisibility(): void {
   appEl.style.display = inMatch() ? 'block' : 'none';
   hudEl.hidden = !inMatch();
+  hudEl.classList.toggle('tutorial', appStore.get().tutorial !== null);
 }
 
 function render(change: ReturnType<typeof applyMessage>): void {
@@ -110,7 +125,7 @@ const board = await Board.create(appEl, {
   },
   end() {
     if (canPlay()) {
-      for (const order of draft.moves()) connection.send({ type: 'order', order });
+      for (const order of draft.moves()) send({ type: 'order', order });
     }
     draft.clear();
     showDraft();
@@ -121,9 +136,27 @@ const board = await Board.create(appEl, {
   },
 });
 const hud = new Hud(hudEl, {
-  surrender: () => connection.send({ type: 'surrender' }),
+  surrender: () => send({ type: 'surrender' }),
   fit: () => board.fitToBoard(),
   zoom: (factor) => board.zoomBy(factor),
+});
+
+// -- The tutorial: a match that runs in the browser -----------------------------------
+
+/** How much of the screen's height the tutorial's guide takes up at the bottom. */
+const TUTORIAL_CARD_SPACE = 230;
+
+const tutorial = new TutorialRunner({
+  game,
+  receive: (message) => render(applyMessage(game, message)),
+  reset: clearMatch,
+  show: (view) => {
+    // The guide's card sits along the bottom, so the board is fitted above it.
+    board.setBottomInset(view ? TUTORIAL_CARD_SPACE : 0);
+    appStore.set({ tutorial: view });
+  },
+  highlight: (hexes) => board.setHighlights(hexes),
+  leave: () => undefined,
 });
 
 // -- Server connection ----------------------------------------------------------------
@@ -166,6 +199,12 @@ mountUi(document.getElementById('ui')!, {
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
   leaveRoom: () => connection.send({ type: 'leaveRoom' }),
+  startTutorial: () => tutorial.start(0),
+  tutorialNext: () => tutorial.next(),
+  tutorialBack: () => tutorial.back(),
+  tutorialRetry: () => tutorial.retry(),
+  tutorialJump: (lesson) => tutorial.jump(lesson),
+  exitTutorial: () => tutorial.exit(),
 });
 
 appStore.subscribe(updateVisibility);
@@ -205,6 +244,11 @@ const connection = connect(url, playerName, {
       case 'room': {
         const previous = appStore.get().room;
         const { room } = message;
+        // The tutorial has its own match; a lobby update is none of its business.
+        if (appStore.get().tutorial) {
+          appStore.set({ room });
+          return;
+        }
         appStore.set({
           room,
           clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,

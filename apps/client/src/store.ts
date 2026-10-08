@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { PlayerId, RoomView } from '@hexxar/shared';
 import { randomName } from './names.js';
+import type { TutorialView } from './tutorial/runner.js';
 
 const NAME_KEY = 'hexxar.name';
 
@@ -25,6 +26,8 @@ export interface AppState {
   matchPlayerId: PlayerId | null;
   /** How many people are playing each mode, once the server has said. */
   activity: { duel: number; ffa: number } | null;
+  /** Set while the tutorial is open: where in it the player is. */
+  tutorial: TutorialView | null;
 }
 
 function loadName(): string {
@@ -56,6 +59,7 @@ class Store {
     error: null,
     errorSeq: 0,
     activity: null,
+    tutorial: null,
     winner: null,
     matchPlayerId: null,
   };

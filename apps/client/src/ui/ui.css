@@ -1473,3 +1473,273 @@
   text-align: center;
   letter-spacing: 0.12em;
 }
+
+/* ---- The tutorial -------------------------------------------------------------------------- */
+
+#ui .tutorial {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui .tutorial-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 74px;
+  width: min(540px, calc(100% - 28px));
+  margin: 0 auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 4px 0 #10131a,
+    0 16px 28px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s;
+}
+
+#ui .tutorial-card.done {
+  border-color: rgba(111, 224, 165, 0.55);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 4px 0 #10131a,
+    0 0 22px rgba(111, 224, 165, 0.28),
+    0 16px 28px rgba(0, 0, 0, 0.55);
+}
+
+#ui .tutorial-card.failed {
+  border-color: rgba(255, 150, 120, 0.6);
+}
+
+#ui .tutorial-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+}
+
+#ui .tutorial-lesson {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+#ui .tutorial-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 55%, #9cc3ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+#ui .tutorial-dots {
+  display: flex;
+  gap: 6px;
+}
+
+#ui .tutorial-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #343a4b;
+}
+
+#ui .tutorial-dots i.past {
+  background: #5d6a86;
+}
+
+#ui .tutorial-dots i.now {
+  background: #6aaeff;
+  box-shadow: 0 0 8px rgba(106, 174, 255, 0.8);
+}
+
+#ui .tutorial-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #c9d0de;
+  animation: tutorial-text-in 0.28s ease-out;
+}
+
+#ui .tutorial-text strong {
+  color: #ffffff;
+}
+
+@keyframes tutorial-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+#ui .tutorial-failure {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(255, 150, 120, 0.12);
+  color: #ffc4b0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#ui .tutorial-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#ui .tutorial-status {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+#ui .tutorial-card.done .tutorial-status {
+  color: #7fe3ad;
+}
+
+#ui .tutorial-buttons button.primary.ready {
+  animation: tutorial-ready 1s ease-in-out infinite;
+}
+
+@keyframes tutorial-ready {
+  50% {
+    filter: brightness(1.2);
+  }
+}
+
+#ui .tutorial-top {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  pointer-events: auto;
+}
+
+#ui .tutorial-top > button,
+#ui .lessons > button {
+  font-size: 14px;
+}
+
+#ui .lessons {
+  position: relative;
+}
+
+#ui .lesson-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  min-width: 240px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 4px 0 #10131a,
+    0 16px 28px rgba(0, 0, 0, 0.55);
+}
+
+#ui .lesson-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  color: #c4cad8;
+}
+
+#ui .lesson-list button:hover:not(:disabled) {
+  background: rgba(79, 157, 255, 0.18);
+  color: #ffffff;
+}
+
+#ui .lesson-list button.current {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+#ui .lesson-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #343a4b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* A pulsing outline around the part of the screen the guide is talking about */
+#ui .spotlight {
+  position: fixed;
+  box-sizing: border-box;
+  border: 3px solid #ffd966;
+  border-radius: 14px;
+  box-shadow:
+    0 0 18px rgba(255, 217, 102, 0.55),
+    0 0 0 6px rgba(255, 217, 102, 0.12);
+  animation: spotlight-pulse 1.3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+#ui .spotlight.round {
+  border-radius: 50%;
+}
+
+@keyframes spotlight-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+#ui button.learn {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  #ui .tutorial-card {
+    bottom: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .tutorial-text,
+  #ui .tutorial-buttons button.primary.ready,
+  #ui .spotlight {
+    animation: none;
+  }
+}

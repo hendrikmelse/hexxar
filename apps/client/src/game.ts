@@ -33,6 +33,8 @@ export interface GameView {
   queue: Order[];
   /** Every player's strength, for the scoreboard. Not hidden by fog. */
   scores: PlayerScore[];
+  /** Names for players, when the room does not have them (the tutorial's rivals). */
+  names: Record<PlayerId, string>;
 }
 
 /**
@@ -66,6 +68,7 @@ export function emptyGame(): GameView {
     clockOffset: 0,
     queue: [],
     scores: [],
+    names: {},
   };
 }
 

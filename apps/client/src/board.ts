@@ -196,6 +196,10 @@ export class Board {
   private readonly queueLayer = new Graphics();
   private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
+  private bottomInset = 0;
+  private readonly highlightLayer = new Graphics();
+  /** Tiles a lesson is pointing at. */
+  private highlights: readonly Hex[] = [];
   private readonly moveLayer = new Container();
   private readonly trails = new Graphics();
   private readonly bursts = new Graphics();
@@ -216,6 +220,7 @@ export class Board {
       this.coastLayer,
       this.tileLayer,
       this.fogLayer,
+      this.highlightLayer,
       this.queueLayer,
       this.pendingLayer,
       this.selectionLayer,
@@ -230,6 +235,7 @@ export class Board {
       this.animatePops();
       this.animateRings();
       this.animateFlights();
+      this.drawHighlights();
     });
     this.attachInput();
   }
@@ -264,6 +270,32 @@ export class Board {
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
     this.coverTiles(game, Object.keys(game.tiles), true);
     if (fresh && this.views.size > 0) this.fitToBoard();
+  }
+
+  /** Point at some tiles (a pulsing outline), or at none. Used by the tutorial. */
+  setHighlights(hexes: readonly Hex[]): void {
+    this.highlights = hexes;
+    if (hexes.length === 0) this.highlightLayer.clear();
+  }
+
+  private drawHighlights(): void {
+    if (this.highlights.length === 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+    const g = this.highlightLayer;
+    g.clear();
+    for (const hex of this.highlights) {
+      const center = hexToPixel(hex);
+      g.poly(hexCorners(center, -3)).stroke({
+        width: 7,
+        color: 0xffd966,
+        alpha: 0.12 + 0.18 * pulse,
+      });
+      g.poly(hexCorners(center, 0)).stroke({
+        width: 3,
+        color: 0xffd966,
+        alpha: 0.55 + 0.45 * pulse,
+      });
+    }
   }
 
   /** How much of a tile the player sees. */
@@ -421,6 +453,11 @@ export class Board {
       label.anchor.set(0.5);
       token.addChild(disc, label);
       this.moveLayer.addChild(token);
+      // The army has left: its tile is down to the one troop that stays, even if the tile itself
+      // is being held back (two armies swapping places each leave from a tile the other is
+      // heading for).
+      const source = this.views.get(hexKey(move.from));
+      if (source && source.label.text !== '') source.label.text = '1';
       const target = hexKey(move.to);
       this.held.add(target);
       const winner = move.clash !== undefined && move.clash.survivors > 0;
@@ -896,10 +933,16 @@ export class Board {
     this.world.position.set(middle.x - before.x * next, middle.y - before.y * next);
   }
 
+  /** Keep this many pixels at the bottom of the screen clear when fitting the board (the tutorial's guide sits there). */
+  setBottomInset(pixels: number): void {
+    this.bottomInset = pixels;
+  }
+
   /** Zoom and center so the whole board is visible. */
   fitToBoard(): void {
     const bounds = this.tileLayer.getLocalBounds();
-    const { width, height } = this.app.screen;
+    const { width, height: fullHeight } = this.app.screen;
+    const height = fullHeight - this.bottomInset;
     // On wide screens the HUD's left column takes up room, so the board is centered in the rest.
     const left = width >= WIDE_SCREEN ? LEFT_HUD_WIDTH : 0;
     const free = width - left;
