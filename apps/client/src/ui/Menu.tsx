@@ -60,7 +60,6 @@ export function Menu({ actions }: { actions: Actions }) {
             </form>
           </div>
         </section>
-
       </div>
     </div>
   );

@@ -16,13 +16,13 @@ export interface LobbyOptions {
   /** The kinds of game that can be played right now. */
   allowedModes: readonly RoomMode[];
   tickMs: number;
-  /** Countdown between a room filling up (or the host starting it) and the match. */
-  countdownMs: number;
+  /** Time between a match being created and its first tick, for planning the opening. */
+  prepMs: number;
   /** How long a public battle royale waits for more players, once it has enough, before starting anyway. */
   earlyStartMs: number;
   /** A player joining tops that wait up to at least this long. */
   joinWaitMs: number;
-  /** Once enough players have voted to start early, how long until the countdown begins. */
+  /** Once enough players have voted to start early, how long until the match starts. */
   voteStartMs: number;
   /** How often to tell people in the menu how many are playing each mode (0 turns it off). */
   statsMs: number;
@@ -231,7 +231,7 @@ export class Lobby {
       host,
       settings,
       allowedModes: this.options.allowedModes,
-      countdownMs: this.options.countdownMs,
+      prepMs: this.options.prepMs,
       earlyStartMs: this.options.earlyStartMs,
       joinWaitMs: this.options.joinWaitMs,
       voteStartMs: this.options.voteStartMs,

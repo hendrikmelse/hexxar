@@ -72,7 +72,7 @@ export type RoomSettingsPatch = z.infer<typeof roomSettingsPatchSchema>;
  * - `running`: the match is being played.
  * - `finished`: the match is over; players can look at the result and leave.
  */
-export const roomStateSchema = z.enum(['lobby', 'starting', 'running', 'finished']);
+export const roomStateSchema = z.enum(['lobby', 'running', 'finished']);
 export type RoomState = z.infer<typeof roomStateSchema>;
 
 export const roomPlayerSchema = z.object({
@@ -101,10 +101,8 @@ export const roomViewSchema = z.object({
   minPlayers: z.number().int(),
   /** How long a public battle royale waits for more players, once it has enough (the full timer). */
   waitMs: z.number().int(),
-  /** Server timestamp (ms since epoch) when a countdown ends, while `starting`. */
-  startsAt: z.number().nullable(),
   /**
-   * In a public battle royale with enough players, when the countdown will begin if nobody
+   * In a public battle royale with enough players, when the match will start if nobody
    * else joins before then.
    */
   earlyStartAt: z.number().nullable(),
@@ -142,7 +140,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('updateRoom'), settings: roomSettingsPatchSchema }),
   /** Public battle royale: vote to start early (or take the vote back). */
   z.object({ type: z.literal('voteStart'), vote: z.boolean() }),
-  /** Host only: start the countdown once there are enough players. */
+  /** Host only: start the match once there are enough players. */
   z.object({ type: z.literal('startGame') }),
   /** Leave the room. In a running match this is a surrender. */
   z.object({ type: z.literal('leaveRoom') }),

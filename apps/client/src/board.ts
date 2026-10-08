@@ -47,6 +47,9 @@ const RING_RADIUS = 20.5;
 /** Inset of the inner wall border from the hex edge: far enough out to clear the progress ring. */
 const WALL_INSET = 4.5;
 const MAX_RING_SEGMENTS = 36;
+/** Screens at least this wide leave room for the HUD's left column when fitting the board. */
+const WIDE_SCREEN = 900;
+const LEFT_HUD_WIDTH = 296;
 
 export function playerColor(game: GameView, owner: string | null): number | null {
   if (owner === null) return null;
@@ -104,6 +107,8 @@ export class Board {
   private readonly queueLayer = new Graphics();
   private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
+  private readonly introLayer = new Container();
+  private stopIntroFrame: (() => void) | null = null;
   private readonly views = new Map<string, TileView>();
   private fitted = false;
   /** Pixel density the troop labels are currently rendered at. */
@@ -113,7 +118,13 @@ export class Board {
     private readonly app: Application,
     private readonly handlers: OrderDragHandlers,
   ) {
-    this.world.addChild(this.tileLayer, this.queueLayer, this.pendingLayer, this.selectionLayer);
+    this.world.addChild(
+      this.tileLayer,
+      this.queueLayer,
+      this.pendingLayer,
+      this.selectionLayer,
+      this.introLayer,
+    );
     app.stage.addChild(this.world);
     this.attachInput();
   }
@@ -313,18 +324,114 @@ export class Board {
     g.poly(hexCorners(hexToPixel(hex), 0)).stroke({ width: 3, color: 0xffffff });
   }
 
+  /**
+   * A quick "you are here" for the start of a match: ripples spreading out from the player's
+   * first tile, a pulsing outline and a marker that drops in. It ends by itself, or on
+   * `stopIntro`, and never lingers into play.
+   */
+  playIntro(hex: Hex, color: number): void {
+    this.stopIntro();
+    const center = hexToPixel(hex);
+    const rings = new Graphics();
+    const marker = new Container();
+    const pin = new Graphics();
+    const label = new Text({
+      text: 'YOU',
+      style: {
+        fontSize: 15,
+        fontWeight: '800',
+        fill: 0xffffff,
+        stroke: { color: 0x0e1016, width: 4, join: 'round' },
+        letterSpacing: 1.5,
+        fontFamily: 'system-ui, sans-serif',
+      },
+      resolution: this.textResolution * 2,
+    });
+    label.anchor.set(0.5, 1);
+    label.position.set(0, -18);
+    pin.poly([-9, -14, 9, -14, 0, 0]).fill(0xffffff).stroke({ width: 2, color, join: 'round' });
+    marker.addChild(pin, label);
+    this.introLayer.addChild(rings, marker);
+
+    const started = performance.now();
+    const duration = 2600;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const frame = (): void => {
+      const t = (performance.now() - started) / duration;
+      if (t >= 1) return this.stopIntro();
+      // Keep the effect readable on big boards, where the world is scaled right down.
+      const k = Math.max(1, 0.5 / this.world.scale.x);
+      rings.clear();
+      if (!reduced) {
+        for (let i = 0; i < 3; i++) {
+          const p = t * 1.7 - i * 0.28;
+          if (p <= 0 || p >= 1) continue;
+          const radius = HEX_SIZE * k * (0.7 + p * 4.2);
+          rings
+            .circle(center.x, center.y, radius)
+            .stroke({ width: 3 * k, color, alpha: (1 - p) ** 1.3 * 0.9 });
+        }
+      }
+      // Outline of the tile itself, pulsing a few times.
+      const pulse = 0.55 + 0.45 * Math.sin(t * Math.PI * 7);
+      const fade = Math.min(1, (1 - t) * 4);
+      rings
+        .poly(hexCorners(center, 0))
+        .stroke({ width: 3.5 * k, color: 0xffffff, alpha: pulse * fade });
+      // The marker drops in from above, bounces once, and bobs until it fades.
+      const drop = Math.min(1, t / 0.18);
+      const bounce = drop < 1 ? (1 - drop) ** 2 * 60 * k : Math.sin(t * Math.PI * 9) * 3 * k;
+      marker.scale.set(k);
+      marker.position.set(center.x, center.y - HEX_SIZE * 0.55 * k - bounce);
+      marker.alpha = reduced ? fade : Math.min(1, drop * 2) * fade;
+    };
+    this.app.ticker.add(frame);
+    this.stopIntroFrame = () => this.app.ticker.remove(frame);
+    frame();
+  }
+
+  stopIntro(): void {
+    this.stopIntroFrame?.();
+    this.stopIntroFrame = null;
+    this.introLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
+  }
+
+  /** Zoom in or out by `factor`, about the middle of the screen. */
+  zoomBy(factor: number): void {
+    const { width, height } = this.app.screen;
+    const middle = { x: width / 2, y: height / 2 };
+    const before = this.world.toLocal(middle);
+    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.world.scale.x * factor));
+    this.world.scale.set(next);
+    this.syncTextResolution();
+    this.world.position.set(middle.x - before.x * next, middle.y - before.y * next);
+  }
+
+  /** Pan so a hex is in the middle of the screen, zooming in if the board is shown very small. */
+  focusOn(hex: Hex): void {
+    const { width, height } = this.app.screen;
+    const center = hexToPixel(hex);
+    const scale = Math.max(this.world.scale.x, 0.6);
+    this.world.scale.set(scale);
+    this.syncTextResolution();
+    this.world.position.set(width / 2 - center.x * scale, height / 2 - center.y * scale);
+  }
+
   /** Zoom and center so the whole board is visible. */
   fitToBoard(): void {
     const bounds = this.tileLayer.getLocalBounds();
     const { width, height } = this.app.screen;
+    // On wide screens the HUD's left column takes up room, so the board is centered in the rest.
+    const left = width >= WIDE_SCREEN ? LEFT_HUD_WIDTH : 0;
+    const free = width - left;
     const scale = Math.min(
       MAX_ZOOM,
-      Math.max(MIN_ZOOM, Math.min((width * 0.9) / bounds.width, (height * 0.9) / bounds.height)),
+      Math.max(MIN_ZOOM, Math.min((free * 0.92) / bounds.width, (height * 0.9) / bounds.height)),
     );
     this.world.scale.set(scale);
     this.syncTextResolution();
     this.world.position.set(
-      width / 2 - (bounds.x + bounds.width / 2) * scale,
+      left + free / 2 - (bounds.x + bounds.width / 2) * scale,
       height / 2 - (bounds.y + bounds.height / 2) * scale,
     );
   }

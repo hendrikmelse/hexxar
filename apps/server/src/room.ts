@@ -58,7 +58,8 @@ export interface RoomOptions {
   readonly host: Session;
   readonly settings: RoomSettings;
   readonly allowedModes: readonly RoomMode[];
-  readonly countdownMs: number;
+  /** Time between the match being created and its first tick: players look at the map and queue orders. */
+  readonly prepMs: number;
   /**
    * In a public battle royale, how long the room waits for more players once it has enough
    * to start, before starting with whoever is there.
@@ -66,7 +67,7 @@ export interface RoomOptions {
   readonly earlyStartMs: number;
   /** A player joining tops the wait up to at least this long, so newcomers have time to settle in. */
   readonly joinWaitMs: number;
-  /** Once enough players have voted to start early, how long until the countdown begins. */
+  /** Once enough players have voted to start early, how long until the match starts. */
   readonly voteStartMs: number;
   /** How long a disconnected player is given before their army surrenders. */
   readonly afkMs: number;
@@ -107,10 +108,8 @@ export class Room {
   private state: RoomState = 'lobby';
   private readonly members: Member[] = [];
   private match: Match | null = null;
-  private startsAt: number | null = null;
   private nextTickAt: number | null = null;
   private tickTimer: Timer | null = null;
-  private countdownTimer: Timer | null = null;
   private lingerTimer: Timer | null = null;
   private earlyStartTimer: Timer | null = null;
   private earlyStartAt: number | null = null;
@@ -138,7 +137,7 @@ export class Room {
     session.room = this;
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
     if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
-      this.startCountdown();
+      this.begin();
     } else {
       this.scheduleEarlyStart();
       this.topUpWaitForJoin();
@@ -151,19 +150,15 @@ export class Room {
   leave(session: Session): void {
     const member = this.memberOf(session);
     if (!member || member.left) return;
-    if (this.state === 'lobby' || this.state === 'starting') {
+    if (this.state === 'lobby') {
       this.members.splice(this.members.indexOf(member), 1);
       this.votes.delete(session.userId);
       this.detach(session);
       if (this.members.length === 0) return this.close();
       if (this.host === session) this.host = this.members[0]!.session;
-      if (this.state === 'starting' && this.members.length < this.minPlayers) {
-        this.cancelCountdown();
-      } else if (this.state === 'lobby') {
-        this.scheduleEarlyStart();
-        // With one fewer player, the votes already in may now be enough.
-        this.checkVotes();
-      }
+      this.scheduleEarlyStart();
+      // With one fewer player, the votes already in may now be enough.
+      this.checkVotes();
       this.broadcastRoom();
       return;
     }
@@ -177,7 +172,7 @@ export class Room {
   disconnect(session: Session): void {
     const member = this.memberOf(session);
     if (!member || member.left) return;
-    if (this.state === 'lobby' || this.state === 'starting') return this.leave(session);
+    if (this.state === 'lobby') return this.leave(session);
     if (this.state === 'running' && member.afkTimer === null) {
       // Their queue keeps running; if they stay away this long, their army surrenders.
       member.afkTimer = setTimeout(() => {
@@ -215,12 +210,12 @@ export class Room {
     return null;
   }
 
-  /** Host only: start the countdown, once there are enough players (never more than fit). */
+  /** Host only: start the match, once there are enough players (never more than fit). */
   start(session: Session): string | null {
     if (session !== this.host) return 'only the host can start the game';
     if (this.state !== 'lobby') return 'the game has already started';
     if (this.activeMembers().length < this.minPlayers) return 'waiting for more players';
-    this.startCountdown();
+    this.begin();
     return null;
   }
 
@@ -256,7 +251,6 @@ export class Room {
       })),
       minPlayers: this.minPlayers,
       waitMs: this.options.earlyStartMs,
-      startsAt: this.startsAt,
       earlyStartAt: this.earlyStartAt,
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
@@ -292,12 +286,7 @@ export class Room {
   /** Stop all timers without telling anyone (shutdown and tests). */
   dispose(): void {
     this.closed = true;
-    for (const timer of [
-      this.tickTimer,
-      this.countdownTimer,
-      this.lingerTimer,
-      this.earlyStartTimer,
-    ]) {
+    for (const timer of [this.tickTimer, this.lingerTimer, this.earlyStartTimer]) {
       if (timer) clearTimeout(timer);
     }
     for (const member of this.members) if (member.afkTimer) clearTimeout(member.afkTimer);
@@ -359,13 +348,13 @@ export class Room {
     this.lockedIn = false;
   }
 
-  /** Run the wait out in `waitMs`, after which the start countdown begins. */
+  /** Run the wait out in `waitMs`, after which the match starts. */
   private armEarlyStart(waitMs: number): void {
     if (this.earlyStartTimer) clearTimeout(this.earlyStartTimer);
     this.earlyStartAt = Date.now() + waitMs;
     this.earlyStartTimer = setTimeout(() => {
       this.earlyStartTimer = null;
-      this.startCountdown();
+      this.begin();
     }, waitMs);
   }
 
@@ -423,25 +412,9 @@ export class Room {
     this.armEarlyStart(Math.min(remaining, this.options.voteStartMs));
   }
 
-  private startCountdown(): void {
-    this.resetEarlyStart();
-    this.state = 'starting';
-    this.startsAt = Date.now() + this.options.countdownMs;
-    this.countdownTimer = setTimeout(() => this.begin(), this.options.countdownMs);
-    this.broadcastRoom();
-  }
-
-  private cancelCountdown(): void {
-    if (this.countdownTimer) clearTimeout(this.countdownTimer);
-    this.countdownTimer = null;
-    this.startsAt = null;
-    this.state = 'lobby';
-    this.scheduleEarlyStart();
-  }
-
-  /** Create the match and start ticking. */
+  /** Create the match. The first tick comes after `prepMs`, so everyone can plan their opening. */
   private begin(): void {
-    this.countdownTimer = null;
+    this.resetEarlyStart();
     const seed = Math.floor(Math.random() * 2 ** 32);
     // Who starts where is random, so nobody always gets the same side.
     const order = shuffle(this.members, createRng(seed));
@@ -453,7 +426,6 @@ export class Room {
         ? createFreeForAllMatch({
             players,
             seed,
-            shape: 'random',
             config: this.settings.config,
             params: { tilesPerPlayer: ROYALE_TILES_PER_PLAYER[this.settings.mapSize] },
           })
@@ -465,8 +437,7 @@ export class Room {
           });
     this.match = new Match(this.id, state, config);
     this.state = 'running';
-    this.startsAt = null;
-    this.nextTickAt = Date.now() + config.tickMs;
+    this.nextTickAt = Date.now() + this.options.prepMs;
     this.broadcastRoom();
     this.broadcastSnapshots();
     this.scheduleTick();

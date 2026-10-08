@@ -1,4 +1,4 @@
-/* Menu, lobby, results and preview screens. Flat, dark, and over the board. */
+/* Menu, lobby and results screens. Flat, dark, and over the board. */
 
 #ui {
   position: fixed;
@@ -7,9 +7,7 @@
 }
 
 #ui .screen,
-#ui .results,
-#ui .preview,
-#ui .params {
+#ui .results {
   pointer-events: auto;
 }
 
@@ -225,116 +223,6 @@
   background: rgba(30, 34, 44, 0.95);
 }
 
-#ui .preview {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 360px;
-  padding: 10px;
-  background: rgba(30, 34, 44, 0.92);
-  border-radius: 10px;
-  font-size: 12px;
-  color: #8a93a8;
-}
-
-#ui .preview .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-#ui .preview button,
-#ui .preview select {
-  padding: 6px 10px;
-  font-size: 13px;
-}
-
-#ui .preview .error {
-  color: #ff8f8f;
-}
-
-#ui .preview .check,
-#ui .params .check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #8a93a8;
-  font-size: 12px;
-}
-
-#ui .params {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 290px;
-  max-height: calc(100% - 24px);
-  overflow-y: auto;
-  padding: 10px 12px;
-  background: rgba(30, 34, 44, 0.94);
-  border-radius: 10px;
-  font-size: 12px;
-  color: #c4cad8;
-}
-
-#ui .params-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-#ui .params button {
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-#ui .params fieldset {
-  margin: 8px 0 0;
-  padding: 6px 0 0;
-  border: 0;
-  border-top: 1px solid #2a2f3d;
-}
-
-#ui .params legend {
-  padding: 0 6px 0 0;
-  color: #8a93a8;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-#ui .params .param {
-  display: block;
-  margin-bottom: 8px;
-}
-
-#ui .params .param.check {
-  display: flex;
-}
-
-#ui .params .param-head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-
-#ui .params output {
-  color: #8a93a8;
-}
-
-#ui .params input[type='range'] {
-  width: 100%;
-  padding: 0;
-  accent-color: #4f9dff;
-}
-
-#ui .params .inactive {
-  opacity: 0.4;
-}
-
 #ui .muted {
   margin: 0;
   color: #8a93a8;
@@ -491,7 +379,7 @@
   }
 }
 
-/* Battle Royale lobby: head count, early-start vote, and the starting screen */
+/* Battle Royale lobby: head count, and the early-start vote */
 
 #ui .head-count {
   display: flex;
@@ -537,46 +425,6 @@
 #ui .vote button.voted {
   background: linear-gradient(180deg, #3d9b6e 0%, #2d7a55 100%);
   color: #eafff4;
-}
-
-#ui .starting {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-#ui .starting h2 {
-  font-size: 28px;
-  letter-spacing: 0.04em;
-}
-
-#ui .starting-count {
-  font-size: 120px;
-  line-height: 1;
-  font-weight: 900;
-  color: #eef5ff;
-  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 2px 0 #1b2f57) drop-shadow(0 3px 0 #1b2f57)
-    drop-shadow(0 4px 0 #1b2f57) drop-shadow(0 5px 0 #1b2f57) drop-shadow(0 6px 0 #1b2f57)
-    drop-shadow(0 16px 16px rgba(0, 0, 0, 0.55));
-  animation: count-pop 0.5s ease-out;
-}
-
-@keyframes count-pop {
-  from {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #ui .starting-count {
-    animation: none;
-  }
 }
 
 #ui .wait-timer {
@@ -685,7 +533,6 @@
   filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57)
     drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45));
 }
-
 
 /* Duel lobby: you versus your opponent */
 
@@ -998,11 +845,6 @@
   letter-spacing: 0;
 }
 
-#ui .preview button,
-#ui .params button {
-  font-size: 13px;
-}
-
 #ui .join-tile button {
   font-size: 15px;
 }
@@ -1114,7 +956,6 @@
   font-style: normal;
   color: #8a93a8;
 }
-
 
 /* Settings controls: one width and one look, so the rows line up */
 #ui .settings .select,
@@ -1304,7 +1145,6 @@
   box-shadow: none;
 }
 
-
 /* A bar of options (game mode, map size): click one to select it */
 #ui .field.stack {
   flex-direction: column;
@@ -1370,7 +1210,6 @@
 #ui .select-button {
   box-sizing: border-box;
 }
-
 
 /* Private battle royale: twelve boxes in a 3 x 4 grid that fill in as players join */
 #ui .roster {
@@ -1476,7 +1315,6 @@
   font-size: 14px;
 }
 
-
 /* Tick length slider: a sunken track filled with blue up to a raised round thumb */
 #ui .slider-head {
   display: flex;
@@ -1560,7 +1398,6 @@
     0 4px 8px rgba(0, 0, 0, 0.5);
 }
 
-
 /* A player leaving: their box swells a little, then shrinks away to nothing */
 #ui .roster-slot.leaving,
 #ui .versus .slot.leaving {
@@ -1590,7 +1427,6 @@
     opacity: 0;
   }
 }
-
 
 /* A box that becomes empty after a player leaves fades in rather than blinking into place */
 #ui .roster-slot.open.appear,
@@ -1892,7 +1728,6 @@
   animation-fill-mode: backwards;
 }
 
-
 /* "N playing" on the quick play buttons */
 #ui button.mode small.activity {
   display: inline-flex;
@@ -1926,7 +1761,6 @@
     animation: none;
   }
 }
-
 
 /* Battle royale lobby: the timer shows (paused) and the vote has a placeholder before 3 players */
 #ui .wait-timer.paused {

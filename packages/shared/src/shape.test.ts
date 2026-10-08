@@ -192,7 +192,6 @@ describe('random board shapes in matches', () => {
           seed,
           radius: 10,
           symmetry,
-          shape: 'random',
         });
         const group: ((h: Hex) => Hex)[] =
           symmetry === 'rotational'
@@ -219,7 +218,6 @@ describe('random board shapes in matches', () => {
           seed,
           radius: 10,
           symmetry,
-          shape: 'random',
         });
         const starts = Object.values(state.tiles).filter((t) => t.owner !== null);
         expect(starts).toHaveLength(players);
@@ -237,7 +235,6 @@ describe('random board shapes in matches', () => {
         players: ['A', 'B'],
         seed,
         radius: 10,
-        shape: 'random',
       });
       const tiles = Object.values(state.tiles);
       const cities = tiles.filter((t) => t.type === 'city');
@@ -261,7 +258,7 @@ describe('random board shapes in matches', () => {
     for (const count of [3, 8, 20, 100]) {
       for (const seed of [1, 2]) {
         const ids = Array.from({ length: count }, (_, i) => `P${i}`);
-        const { state } = createFreeForAllMatch({ players: ids, seed, shape: 'random' });
+        const { state } = createFreeForAllMatch({ players: ids, seed });
         const tiles = Object.values(state.tiles);
         const hexagon = hexagonalBoard(
           Math.max(...tiles.map((t) => hexDistance(t, { q: 0, r: 0 }))),
@@ -281,13 +278,10 @@ describe('random board shapes in matches', () => {
     }
   });
 
-  it('is deterministic, and leaves hexagon boards exactly as they were', () => {
+  it('is deterministic, and never a full hexagon', () => {
     const options = { players: ['A', 'B'], seed: 9, radius: 8 };
-    const a = createSymmetricMatch({ ...options, shape: 'random' }).state;
-    const b = createSymmetricMatch({ ...options, shape: 'random' }).state;
-    expect(a).toEqual(b);
-    const hexagon = createSymmetricMatch(options).state;
-    expect(createSymmetricMatch({ ...options, shape: 'hexagon' }).state).toEqual(hexagon);
-    expect(Object.keys(hexagon.tiles)).toHaveLength(hexagonalBoard(8).length);
+    const a = createSymmetricMatch(options).state;
+    expect(a).toEqual(createSymmetricMatch(options).state);
+    expect(Object.keys(a.tiles).length).not.toBe(hexagonalBoard(8).length);
   });
 });

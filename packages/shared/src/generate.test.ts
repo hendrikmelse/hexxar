@@ -6,7 +6,6 @@ import {
   hexKey,
   hexNeighbors,
   hexRotate,
-  hexagonalBoard,
   type Hex,
 } from './hex.js';
 import {
@@ -54,7 +53,6 @@ describe('createSymmetricMatch', () => {
       radius: 5,
       symmetry: 'rotational',
     });
-    expect(Object.keys(state.tiles)).toHaveLength(hexagonalBoard(5).length);
     for (const tile of Object.values(state.tiles)) {
       // A turn of 360 / players degrees (180 for 2, 120 for 3, 60 for 6) maps the board onto itself.
       const image = state.tiles[hexKey(hexRotate(tile, 6 / n))]!;
@@ -70,7 +68,7 @@ describe('createSymmetricMatch', () => {
       const players = Array.from({ length: n }, (_, i) => `P${i}`);
       const { state } = createSymmetricMatch({ players, seed, radius: 8, symmetry: 'rotational' });
       return Object.values(state.tiles).every(
-        (t) => state.tiles[hexKey(hexRotate(t, 1))]!.type === t.type,
+        (t) => state.tiles[hexKey(hexRotate(t, 1))]?.type === t.type,
       );
     };
     const seeds = [1, 2, 3, 4, 5];
@@ -117,7 +115,7 @@ describe('createSymmetricMatch', () => {
       const players = Array.from({ length: n }, (_, i) => `P${i}`);
       const { state } = createSymmetricMatch({ players, seed: 11 });
       const flip = n === 2 ? hexFlipHorizontal : hexFlipVertical;
-      return Object.values(state.tiles).every((t) => state.tiles[hexKey(flip(t))]!.type === t.type);
+      return Object.values(state.tiles).every((t) => state.tiles[hexKey(flip(t))]?.type === t.type);
     };
     expect(mirrored(2)).toBe(true);
     expect(mirrored(4)).toBe(true);
@@ -129,7 +127,7 @@ describe('createSymmetricMatch', () => {
     const topBottomDiffers = (seed: number) => {
       const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius: 8 });
       return Object.values(state.tiles).some(
-        (t) => state.tiles[hexKey(hexFlipVertical(t))]!.type !== t.type,
+        (t) => state.tiles[hexKey(hexFlipVertical(t))]?.type !== t.type,
       );
     };
     expect([1, 2, 3, 4, 5].every(topBottomDiffers)).toBe(true);
@@ -189,16 +187,11 @@ describe('terrain rules', () => {
   };
 
   const forEachBoard = (
-    check: (
-      board: ReturnType<typeof boardFor>,
-      symmetry: Symmetry,
-      players: number,
-      radius: number,
-    ) => void,
+    check: (board: ReturnType<typeof boardFor>, symmetry: Symmetry, players: number) => void,
   ) => {
     for (const { players, symmetry, radius } of setups) {
       for (let seed = 1; seed <= 25; seed++)
-        check(boardFor(players, symmetry, radius, seed), symmetry, players, radius);
+        check(boardFor(players, symmetry, radius, seed), symmetry, players);
     }
   };
 
@@ -233,9 +226,9 @@ describe('terrain rules', () => {
   });
 
   it('never puts a city on the edge of the board', () => {
-    forEachBoard(({ cities }, _symmetry, _players, radius) => {
+    forEachBoard(({ cities, byKey }) => {
       for (const city of cities) {
-        expect(hexDistance(city, { q: 0, r: 0 })).toBeLessThan(radius);
+        for (const n of hexNeighbors(city)) expect(byKey[hexKey(n)]).toBeDefined();
       }
     });
   });
@@ -294,8 +287,6 @@ describe('battle royale boards', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
   const board = (n: number, seed: number, radius?: number) =>
     createFreeForAllMatch({ players: ids(n), seed, radius, params: { villageChance: 100 } }).state;
-  const radiusOf = (hexes: { q: number; r: number }[]) =>
-    Math.max(...hexes.map((h) => hexDistance(h, { q: 0, r: 0 })));
   const counts = [2, 3, 5, 8, 20, 100];
 
   it('is deterministic for a seed and different for different seeds', () => {
@@ -309,9 +300,10 @@ describe('battle royale boards', () => {
       const radius = recommendedRadius(n, 'freeForAll');
       expect(radius).toBeGreaterThanOrEqual(previous);
       previous = radius;
-      const tiles = 3 * radius * (radius + 1) + 1;
-      expect(tiles / n).toBeGreaterThanOrEqual(DEFAULT_GENERATION_PARAMS.tilesPerPlayer);
-      expect(radiusOf(Object.values(board(n, 1).tiles))).toBe(radius);
+      // The outline is irregular, so the board does not fill the radius exactly.
+      expect(Object.keys(board(n, 1).tiles).length / n).toBeGreaterThan(
+        DEFAULT_GENERATION_PARAMS.tilesPerPlayer / 2,
+      );
     }
     expect(recommendedRadius(2, 'symmetric')).toBe(7);
   });
@@ -320,14 +312,13 @@ describe('battle royale boards', () => {
     for (const n of counts) {
       for (let seed = 1; seed <= 4; seed++) {
         const state = board(n, seed);
-        const radius = radiusOf(Object.values(state.tiles));
         const owned = Object.values(state.tiles).filter((t) => t.owner !== null);
         expect(owned).toHaveLength(n);
         expect(new Set(owned.map((t) => t.owner)).size).toBe(n);
         for (const start of owned) {
           expect(start.type).toBe('city');
           expect(start.troops).toBe(10);
-          expect(hexDistance(start, { q: 0, r: 0 })).toBeLessThan(radius);
+          for (const nb of hexNeighbors(start)) expect(state.tiles[hexKey(nb)]).toBeDefined();
         }
         for (const a of owned) {
           for (const b of owned)
@@ -352,10 +343,9 @@ describe('battle royale boards', () => {
       for (let seed = 1; seed <= 3; seed++) {
         const state = board(n, seed);
         const tiles = Object.values(state.tiles);
-        const radius = radiusOf(tiles);
         const cities = tiles.filter((t) => t.type === 'city');
         for (const a of cities) {
-          expect(hexDistance(a, { q: 0, r: 0 })).toBeLessThan(radius);
+          for (const nb of hexNeighbors(a)) expect(state.tiles[hexKey(nb)]).toBeDefined();
           for (const b of cities)
             if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
         }

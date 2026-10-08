@@ -1,20 +1,11 @@
-import {
-  createFreeForAllMatch,
-  createSymmetricMatch,
-  hexEquals,
-  hexKey,
-  lakesOf,
-  recommendedRadius,
-  type Hex,
-  type RoomSettingsPatch,
-} from '@hexxar/shared';
+import { hexEquals, hexKey, type Hex, type RoomSettingsPatch } from '@hexxar/shared';
 import { Board, playerColor } from './board.js';
-import { applyMessage, emptyGame, type GameView } from './game.js';
+import { applyMessage, emptyGame } from './game.js';
 import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { appStore, saveName } from './store.js';
-import { DEFAULT_PREVIEW, effectiveSymmetry, mountUi, type PreviewOptions } from './ui/mount.js';
+import { mountUi } from './ui/mount.js';
 
 /** The match being played. Reset whenever you are back in the menu. */
 const game = emptyGame();
@@ -23,8 +14,6 @@ const draft = new PathDraft();
 const appEl = document.getElementById('app')!;
 const hudEl = document.getElementById('hud')!;
 
-const previewing = (): boolean => appStore.get().preview !== null;
-
 /** True while a match is on screen: running, or finished and showing the result. */
 const inMatch = (): boolean => {
   const room = appStore.get().room;
@@ -32,7 +21,6 @@ const inMatch = (): boolean => {
 };
 
 const canPlay = (): boolean =>
-  !previewing() &&
   inMatch() &&
   game.status === 'playing' &&
   game.playerId !== null &&
@@ -49,16 +37,22 @@ function showDraft(): void {
   board.setSelection(draft.path[0] ?? null);
 }
 
-/** The board and the match HUD are only shown during a match (or a map preview). */
+/** The board and the match HUD are only shown during a match. */
 function updateVisibility(): void {
-  appEl.style.display = inMatch() || previewing() ? 'block' : 'none';
-  hudEl.hidden = !inMatch() || previewing();
+  appEl.style.display = inMatch() ? 'block' : 'none';
+  hudEl.hidden = !inMatch();
 }
 
 function render(change: ReturnType<typeof applyMessage>): void {
-  if (!change || previewing()) return;
-  if (change.kind === 'all') board.setAll(game);
-  else if (change.kind === 'tiles') board.updateTiles(change.tiles, game);
+  if (!change) return;
+  if (change.kind === 'all') {
+    board.setAll(game);
+    introduceStart();
+  } else if (change.kind === 'tiles') {
+    board.updateTiles(change.tiles, game);
+    // The "you are here" effect is for the planning period only.
+    if (game.tick > 0) board.stopIntro();
+  }
   board.drawQueue(game.queue, myColor());
   if (draft.active && (change.kind === 'all' || !canPlay())) {
     draft.clear();
@@ -70,9 +64,21 @@ function render(change: ReturnType<typeof applyMessage>): void {
   }
 }
 
+/** Where your land is: the tile you start on, shown to you before the first tick. */
+function startingHex(): Hex | null {
+  const mine = Object.values(game.tiles).filter((tile) => tile.owner === game.playerId);
+  return mine[0] ?? null;
+}
+
+function introduceStart(): void {
+  const start = startingHex();
+  if (game.status === 'playing' && game.tick === 0 && start) board.playIntro(start, myColor());
+}
+
 /** Forget the match: back in the menu, or in a lobby for the next one. */
 function clearMatch(): void {
   Object.assign(game, emptyGame());
+  board.stopIntro();
   draft.clear();
   showDraft();
   board.setAll(game);
@@ -110,75 +116,22 @@ const board = await Board.create(appEl, {
     showDraft();
   },
 });
-const hud = new Hud(hudEl, () => connection.send({ type: 'surrender' }));
-
-// -- Map preview (temporary): generate a map locally and show it on the board ----------
-
-function showPreview(options: PreviewOptions): void {
-  const freeForAll = options.mode === 'ffa';
-  const count = freeForAll ? options.players : Number(options.mode);
-  const players = Array.from({ length: count }, (_, i) => `P${i + 1}`);
-  // Battle Royale boards are always as small as they can be; only symmetric ones have a size choice.
-  const radius = freeForAll
-    ? recommendedRadius(count, 'freeForAll', options.params.tilesPerPlayer)
-    : (options.radius ?? recommendedRadius(count, 'symmetric'));
-  const seed = options.seed ?? Math.floor(Math.random() * 2 ** 32);
-  let generated;
-  try {
-    generated = freeForAll
-      ? createFreeForAllMatch({
-          players,
-          seed,
-          radius,
-          shape: options.shape,
-          params: options.params,
-        })
-      : createSymmetricMatch({
-          players,
-          seed,
-          radius,
-          symmetry: effectiveSymmetry(options) ?? undefined,
-          shape: options.shape,
-          params: options.params,
-        });
-  } catch (error) {
-    // E.g. a board too small for the players. Keep showing the last map.
-    const current = appStore.get().preview;
-    appStore.set({
-      preview: {
-        seed: current?.seed ?? seed,
-        summary: current?.summary ?? '',
-        error: error instanceof Error ? error.message : 'could not generate that map',
-      },
-    });
-    return;
-  }
-  const { state, config } = generated;
-  const tiles = Object.values(state.tiles);
-  const cities = tiles.filter((t) => t.type === 'city').length;
-  const villages = tiles.filter((t) => t.type === 'village').length;
-  const lakes = lakesOf(tiles);
-  const lakeTiles = lakes.reduce((sum, lake) => sum + lake.length, 0);
-  const summary = `${tiles.length} tiles · radius ${radius} · ${cities} cities (${count} starting) · ${villages} villages · ${lakes.length} lakes (${lakeTiles} tiles)`;
-  const view: GameView = {
-    ...emptyGame(),
-    status: 'playing',
-    playerId: 'P1',
-    config,
-    players,
-    tiles: { ...state.tiles },
-  };
-  appStore.set({ preview: { seed, summary, error: null } });
-  board.setAll(view, true);
-  board.drawQueue([], 0xffffff);
-  board.drawPending([]);
-  board.setSelection(null);
-}
-
-function leavePreview(): void {
-  appStore.set({ preview: null });
-  board.setAll(game);
-}
+const hud = new Hud(hudEl, {
+  surrender: () => connection.send({ type: 'surrender' }),
+  fit: () => board.fitToBoard(),
+  zoom: (factor) => board.zoomBy(factor),
+  home() {
+    // The tile of yours nearest the middle of your land.
+    const mine = Object.values(game.tiles).filter((tile) => tile.owner === game.playerId);
+    if (mine.length === 0) return;
+    const q = mine.reduce((sum, t) => sum + t.q, 0) / mine.length;
+    const r = mine.reduce((sum, t) => sum + t.r, 0) / mine.length;
+    const nearest = mine.reduce((best, t) =>
+      Math.hypot(t.q - q, t.r - r) < Math.hypot(best.q - q, best.r - r) ? t : best,
+    );
+    board.focusOn(nearest);
+  },
+});
 
 // -- Server connection ----------------------------------------------------------------
 
@@ -214,13 +167,7 @@ mountUi(document.getElementById('ui')!, {
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
   leaveRoom: () => connection.send({ type: 'leaveRoom' }),
-  startPreview: showPreview,
-  newPreview: showPreview,
-  exitPreview: leavePreview,
 });
-
-// The map preview has no menu button any more; open it with /?preview.
-if (new URLSearchParams(location.search).has('preview')) showPreview(DEFAULT_PREVIEW);
 
 appStore.subscribe(updateVisibility);
 updateVisibility();
@@ -252,7 +199,7 @@ const connection = connect(url, appStore.get().name, {
         appStore.set({
           room,
           clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,
-                  });
+        });
         if (!room || previous?.id !== room.id) clearMatch();
         if (!room) joinFromUrl();
         return;

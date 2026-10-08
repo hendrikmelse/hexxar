@@ -57,7 +57,7 @@ class FakeClient implements Connection {
 const options = {
   allowedModes: ['duel', 'ffa'] as ('duel' | 'ffa')[],
   tickMs: 1000,
-  countdownMs: 3000,
+  prepMs: 3000,
   earlyStartMs: 20_000,
   joinWaitMs: 5000,
   voteStartMs: 5000,
@@ -85,7 +85,6 @@ describe('Lobby', () => {
     const b = new FakeClient(lobby).hello('Bob');
     a.say({ type: 'quickPlay', mode: 'duel' });
     b.say({ type: 'quickPlay', mode: 'duel' });
-    vi.advanceTimersByTime(options.countdownMs);
     return { a, b };
   }
 
@@ -129,20 +128,17 @@ describe('Lobby', () => {
       expect(a.room?.players).toHaveLength(1);
     });
 
-    it('pairs two players, counts down, then starts the match', () => {
+    it('pairs two players and starts the match at once, with the first tick after the prep time', () => {
       const a = new FakeClient(lobby).hello('Ann');
       const b = new FakeClient(lobby).hello('Bob');
       a.say({ type: 'quickPlay', mode: 'duel' });
       b.say({ type: 'quickPlay', mode: 'duel' });
 
       expect(a.room?.id).toBe(b.room?.id);
-      expect(a.room).toMatchObject({ state: 'starting' });
-      expect(a.room?.startsAt).toBeGreaterThan(Date.now());
-      expect(a.all('snapshot')).toHaveLength(0);
-
-      vi.advanceTimersByTime(options.countdownMs);
-      expect(a.room?.state).toBe('running');
+      expect(a.room).toMatchObject({ state: 'running' });
       const snapshot = a.last('snapshot');
+      expect(snapshot.state.tick).toBe(0);
+      expect(snapshot.nextTickAt).toBe(Date.now() + options.prepMs);
       expect(snapshot.state.players).toHaveLength(2);
       expect([snapshot.you, b.last('snapshot').you].sort()).toEqual(['P1', 'P2']);
       expect(snapshot.matchId).toBe(a.room?.id);
@@ -155,18 +151,6 @@ describe('Lobby', () => {
       expect(c.room?.id).not.toBe(a.room?.id);
       expect(c.room?.state).toBe('lobby');
       expect(b.room?.players).toHaveLength(2);
-    });
-
-    it('cancels the countdown if someone leaves', () => {
-      const a = new FakeClient(lobby).hello('Ann');
-      const b = new FakeClient(lobby).hello('Bob');
-      a.say({ type: 'quickPlay', mode: 'duel' });
-      b.say({ type: 'quickPlay', mode: 'duel' });
-      b.say({ type: 'leaveRoom' });
-      expect(b.room).toBeNull();
-      expect(a.room).toMatchObject({ state: 'lobby', startsAt: null });
-      vi.advanceTimersByTime(options.countdownMs * 2);
-      expect(a.all('snapshot')).toHaveLength(0);
     });
 
     it('closes a room when its last player leaves', () => {
@@ -216,15 +200,14 @@ describe('Lobby', () => {
 
       const guest = new FakeClient(lobby).hello('Gus');
       guest.say({ type: 'joinRoom', code: host.room!.code });
-      vi.advanceTimersByTime(options.countdownMs * 2);
+      vi.advanceTimersByTime(options.prepMs * 2);
       expect(host.room?.state).toBe('lobby');
 
       guest.say({ type: 'startGame' });
       expect(guest.last('rejected').reason).toMatch(/only the host/);
 
       host.say({ type: 'startGame' });
-      expect(host.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(host.room?.state).toBe('running');
       expect(host.room?.state).toBe('running');
       expect(guest.all('snapshot')).toHaveLength(1);
     });
@@ -254,26 +237,21 @@ describe('Lobby', () => {
     });
 
     it('starts the match with the chosen settings, and sizes the board by map size', () => {
-      const radiusAt = (mapSize: 'small' | 'normal' | 'large') => {
+      const tilesAt = (mapSize: 'small' | 'normal' | 'large') => {
         const { host } = hostWithGuest();
         host.say({
           type: 'updateRoom',
           settings: { mapSize, config: { tickMs: 250, startingTroops: 17 } },
         });
         host.say({ type: 'startGame' });
-        vi.advanceTimersByTime(options.countdownMs);
         const snapshot = host.last('snapshot');
         expect(snapshot.config).toMatchObject({ tickMs: 250, startingTroops: 17 });
         host.say({ type: 'leaveRoom' });
-        return Math.max(
-          ...Object.values(snapshot.state.tiles).map((t) =>
-            Math.max(Math.abs(t.q), Math.abs(t.r), Math.abs(t.q + t.r)),
-          ),
-        );
+        return Object.keys(snapshot.state.tiles).length;
       };
-      expect(radiusAt('small')).toBe(5);
-      expect(radiusAt('normal')).toBe(7);
-      expect(radiusAt('large')).toBe(9);
+      const [small, normal, large] = [tilesAt('small'), tilesAt('normal'), tilesAt('large')];
+      expect(small).toBeLessThan(normal);
+      expect(normal).toBeLessThan(large);
     });
 
     it('passes the host to the next player when the host leaves', () => {
@@ -306,7 +284,8 @@ describe('Lobby', () => {
       a.say({ type: 'order', order: { type: 'move', from: home, to: target } });
       expect(a.last('queued')).toBeDefined();
 
-      vi.advanceTimersByTime(999);
+      // Orders can be queued during the prep time; the first tick comes when it ends.
+      vi.advanceTimersByTime(options.prepMs - 1);
       expect(a.all('tick')).toHaveLength(0);
       vi.advanceTimersByTime(1);
       expect(a.last('tick')).toMatchObject({ tick: 1, queueLength: 0 });
@@ -371,7 +350,7 @@ describe('Lobby', () => {
       b.disconnect();
       expect(a.room?.state).toBe('running');
       expect(a.room?.players.find((p) => p.name === 'Bob')?.connected).toBe(false);
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(options.prepMs + 2000);
       expect(a.last('tick').tick).toBe(3);
     });
 
@@ -464,8 +443,7 @@ describe('Lobby battle royale', () => {
   describe('public rooms', () => {
     it('holds 12 players and starts as soon as it is full', () => {
       const clients = joinPublic(12);
-      expect(clients[0]!.room).toMatchObject({ state: 'starting' });
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room).toMatchObject({ state: 'running' });
       expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(12);
       const ids = clients.map((c) => c.last('snapshot').you);
@@ -492,8 +470,7 @@ describe('Lobby battle royale', () => {
       vi.advanceTimersByTime(options.earlyStartMs - 1);
       expect(clients[0]!.room?.state).toBe('lobby');
       vi.advanceTimersByTime(1);
-      expect(clients[0]!.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
     });
@@ -508,8 +485,7 @@ describe('Lobby battle royale', () => {
       // Plenty of time left, so the end of the wait is unchanged.
       expect(clients[0]!.room?.earlyStartAt).toBe(end);
       vi.advanceTimersByTime(options.earlyStartMs - 5000);
-      expect(clients[0]!.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(4);
     });
 
@@ -521,8 +497,7 @@ describe('Lobby battle royale', () => {
       vi.advanceTimersByTime(options.joinWaitMs - 1);
       expect(clients[0]!.room?.state).toBe('lobby');
       vi.advanceTimersByTime(1);
-      expect(clients[0]!.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(4);
     });
 
@@ -533,7 +508,7 @@ describe('Lobby battle royale', () => {
       clients[3]!.say({ type: 'leaveRoom' });
       expect(clients[0]!.room?.earlyStartAt).toBe(end);
       vi.advanceTimersByTime(options.earlyStartMs - 8000);
-      expect(clients[0]!.room?.state).toBe('starting');
+      expect(clients[0]!.room?.state).toBe('running');
     });
 
     it('starts the wait afresh if the room drops below 3 and gets back to 3', () => {
@@ -556,20 +531,19 @@ describe('Lobby battle royale', () => {
       expect(clients[0]!.room?.state).toBe('lobby');
     });
 
-    it('turns away late joiners once the countdown has begun', () => {
+    it('turns away late joiners once the match has begun', () => {
       const clients = joinPublic(12);
-      expect(clients[0]!.room?.state).toBe('starting');
+      expect(clients[0]!.room?.state).toBe('running');
       const late = new FakeClient(lobby).hello('Late');
       late.say({ type: 'quickPlay', mode: 'ffa' });
       expect(late.room?.id).not.toBe(clients[0]!.room?.id);
     });
 
-    it('carries on counting down when someone leaves, as long as 3 remain', () => {
+    it('plays on when someone leaves a match that started with a full room', () => {
       const clients = joinPublic(12);
       clients[11]!.say({ type: 'leaveRoom' });
-      expect(clients[0]!.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
-      expect(clients[0]!.last('snapshot').state.players).toHaveLength(11);
+      expect(clients[0]!.room?.state).toBe('running');
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(12);
     });
 
     it('does not mix duels and battle royales', () => {
@@ -597,8 +571,7 @@ describe('Lobby battle royale', () => {
       expect(host.room?.state).toBe('lobby');
 
       host.say({ type: 'startGame' });
-      expect(host.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(host.room?.state).toBe('running');
       expect(host.last('snapshot').state.players).toHaveLength(3);
     });
 
@@ -609,7 +582,6 @@ describe('Lobby battle royale', () => {
       extra.say({ type: 'joinRoom', code: host.room!.code });
       expect(extra.last('rejected').reason).toMatch(/full/);
       host.say({ type: 'startGame' });
-      vi.advanceTimersByTime(options.countdownMs);
       expect(host.last('snapshot').state.players).toHaveLength(12);
     });
 
@@ -687,8 +659,7 @@ describe('Lobby battle royale', () => {
       vi.advanceTimersByTime(options.voteStartMs - 1);
       expect(clients[0]!.room?.state).toBe('lobby');
       vi.advanceTimersByTime(1);
-      expect(clients[0]!.room?.state).toBe('starting');
-      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.room?.state).toBe('running');
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
     });
@@ -708,7 +679,7 @@ describe('Lobby battle royale', () => {
       vote(clients[0]!);
       vote(clients[1]!);
       vi.advanceTimersByTime(2000);
-      expect(clients[0]!.room?.state).toBe('starting');
+      expect(clients[0]!.room?.state).toBe('running');
     });
 
     it('closes the room to newcomers once the vote has passed', () => {
@@ -718,7 +689,7 @@ describe('Lobby battle royale', () => {
       const late = new FakeClient(lobby).hello('Late');
       late.say({ type: 'quickPlay', mode: 'ffa' });
       expect(late.room?.id).not.toBe(clients[0]!.room?.id);
-      vi.advanceTimersByTime(options.voteStartMs + options.countdownMs);
+      vi.advanceTimersByTime(options.voteStartMs);
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
     });
 
@@ -729,7 +700,7 @@ describe('Lobby battle royale', () => {
       vote(clients[2]!);
       expect(clients[0]!.room?.earlyStartAt).not.toBeNull();
       clients[3]!.say({ type: 'leaveRoom' });
-      vi.advanceTimersByTime(options.voteStartMs + options.countdownMs);
+      vi.advanceTimersByTime(options.voteStartMs);
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
     });
 
@@ -756,20 +727,19 @@ describe('Lobby battle royale', () => {
       clients[4]!.say({ type: 'leaveRoom' });
       expect(clients[0]!.room?.votesNeeded).toBe(3);
       vi.advanceTimersByTime(options.voteStartMs);
-      expect(clients[0]!.room?.state).toBe('starting');
+      expect(clients[0]!.room?.state).toBe('running');
     });
   });
 
   it('plays a full battle royale: random shaped board, everyone gets a starting city', () => {
     const clients = joinPublic(12);
-    vi.advanceTimersByTime(options.countdownMs);
     const snapshot = clients[0]!.last('snapshot');
     const starts = Object.values(snapshot.state.tiles).filter((t) => t.owner !== null);
     expect(starts).toHaveLength(12);
     expect(new Set(starts.map((t) => t.owner)).size).toBe(12);
     for (const start of starts) expect(start.type).toBe('city');
     // Ticks run, and the last player standing wins as in any match.
-    vi.advanceTimersByTime(3000);
+    vi.advanceTimersByTime(options.prepMs + 2000);
     expect(clients[0]!.last('tick').tick).toBe(3);
     for (const client of clients.slice(1)) client.say({ type: 'surrender' });
     expect(clients[0]!.room?.state).toBe('finished');

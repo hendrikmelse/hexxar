@@ -23,8 +23,6 @@ export interface AppState {
   matchPlayerId: PlayerId | null;
   /** How many people are playing each mode, once the server has said. */
   activity: { duel: number; ffa: number } | null;
-  /** Set while looking at a generated map instead of playing. */
-  preview: { seed: number; summary: string; error: string | null } | null;
 }
 
 function loadName(): string {
@@ -57,7 +55,6 @@ class Store {
     activity: null,
     winner: null,
     matchPlayerId: null,
-    preview: null,
   };
   private readonly listeners = new Set<() => void>();
 

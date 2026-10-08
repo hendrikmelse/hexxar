@@ -49,10 +49,10 @@ Because nothing about the layout is symmetric, battle royale boards are not perf
 
 Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`). Both generators take a `params` option with any overrides, and boards made with the defaults are unchanged.
 
-| Group               | Settings (defaults)                                                                                                                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Outline             | outline size (0.91), waves (4), wave strength (1.5), wave detail (6), jagged coast (1.2), smallest and largest area (50% and 130% of the matching hexagon)                                        |
-| Lakes               | lake frequency (about one per 60 tiles, 0 for none), smallest lake (6), biggest lake (8% of the board), lake size cap (60), shore room (3)                                                        |
+| Group               | Settings (defaults)                                                                                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Outline             | outline size (0.91), waves (4), wave strength (1.5), wave detail (6), jagged coast (1.2), smallest and largest area (50% and 130% of the matching hexagon)                                         |
+| Lakes               | lake frequency (about one per 60 tiles, 0 for none), smallest lake (6), biggest lake (8% of the board), lake size cap (60), shore room (3)                                                         |
 | Cities and villages | city density (one extra city per 50 tiles), extra cities in battle royale (off), city spacing (3), village chance (40%), village spacing (2, so they never touch), villages may touch cities (off) |
 | Starts and size     | start inset (1), start room on random shapes (1), tiles per player for battle royale (20)                                                                                                          |
 

@@ -72,12 +72,6 @@ type Transform = (h: Hex) => Hex;
  */
 export type Symmetry = 'rotational' | 'mirror';
 
-/**
- * - `hexagon`: a regular hexagonal board.
- * - `random`: an irregular outline with a rough coast, and a few lakes cut out of the middle.
- */
-export type BoardShape = 'hexagon' | 'random';
-
 /** Does this board have a tile at every neighbor of the hex? Tiles that do not are on the edge. */
 const edgeTest =
   (tiles: ReadonlySet<string>) =>
@@ -91,8 +85,6 @@ export interface SymmetricMatchOptions {
   readonly radius?: number;
   /** Defaults to `mirror` for 2 and 4 players, `rotational` for 3 and 6. */
   readonly symmetry?: Symmetry;
-  /** Defaults to a regular hexagon. A random shape keeps the board's symmetry. */
-  readonly shape?: BoardShape;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
@@ -280,18 +272,14 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
 
   // Group the board into symmetry orbits. Every hex in an orbit gets the same tile type,
   // which is what keeps the board fair.
-  const shape = options.shape ?? 'hexagon';
-  const ordered = (
-    shape === 'random'
-      ? randomShape({
-          radius,
-          rng: createRng(seed ^ 0x5eed5eed),
-          group: terrain,
-          protect: starts,
-          params,
-        })
-      : hexagonalBoard(radius)
-  ).sort((a, b) => a.q - b.q || a.r - b.r);
+  // The outline is irregular, with a rough coast and lakes, but keeps the board's symmetry.
+  const ordered = randomShape({
+    radius,
+    rng: createRng(seed ^ 0x5eed5eed),
+    group: terrain,
+    protect: starts,
+    params,
+  }).sort((a, b) => a.q - b.q || a.r - b.r);
   const present = new Set(ordered.map(hexKey));
   const orbits: Hex[][] = [];
   const grouped = new Set<string>();
@@ -352,8 +340,6 @@ export interface FreeForAllOptions {
   readonly seed: number;
   /** Board radius in hexes; by default one that suits the number of players. */
   readonly radius?: number;
-  /** Defaults to a regular hexagon. */
-  readonly shape?: BoardShape;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
@@ -407,16 +393,13 @@ function spreadStarts(
 function chooseFreeForAllLayout(
   count: number,
   radius: number,
-  shape: BoardShape,
   params: GenerationParams,
   rng: Rng,
 ): { ordered: Hex[]; present: Set<string>; starts: Hex[] } {
   for (let attempt = 0; ; attempt++) {
-    const ordered = (
-      shape === 'random'
-        ? randomShape({ radius, rng, group: [(h) => h], protect: [], params })
-        : hexagonalBoard(radius)
-    ).sort((a, b) => a.q - b.q || a.r - b.r);
+    const ordered = randomShape({ radius, rng, group: [(h) => h], protect: [], params }).sort(
+      (a, b) => a.q - b.q || a.r - b.r,
+    );
     const present = new Set(ordered.map(hexKey));
     const isEdge = edgeTest(present);
     try {
@@ -431,7 +414,7 @@ function chooseFreeForAllLayout(
       );
       return { ordered, present, starts };
     } catch (error) {
-      if (shape !== 'random' || attempt >= 20) throw error;
+      if (attempt >= 20) throw error;
     }
   }
 }
@@ -455,13 +438,7 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
   if (radius < MIN_FFA_RADIUS) throw new Error(`radius must be at least ${MIN_FFA_RADIUS}`);
 
   const rng = createRng(seed);
-  const { ordered, present, starts } = chooseFreeForAllLayout(
-    players.length,
-    radius,
-    options.shape ?? 'hexagon',
-    params,
-    rng,
-  );
+  const { ordered, present, starts } = chooseFreeForAllLayout(players.length, radius, params, rng);
   const startOwners = new Map<string, PlayerId>();
   starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
 

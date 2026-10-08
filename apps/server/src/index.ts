@@ -7,7 +7,7 @@ const PORT = Number(process.env.PORT ?? 8080);
 const lobby = new Lobby({
   allowedModes: ['duel', 'ffa'],
   tickMs: Number(process.env.TICK_MS ?? DEFAULT_TICK_MS),
-  countdownMs: Number(process.env.COUNTDOWN_MS ?? 3000),
+  prepMs: Number(process.env.PREP_MS ?? 5000),
   earlyStartMs: Number(process.env.EARLY_START_MS ?? 60_000),
   joinWaitMs: Number(process.env.JOIN_WAIT_MS ?? 10_000),
   voteStartMs: Number(process.env.VOTE_START_MS ?? 5000),

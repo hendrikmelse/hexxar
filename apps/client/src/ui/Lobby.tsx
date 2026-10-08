@@ -17,7 +17,11 @@ const MAX_STARTING_TROOPS = 50;
 const MIN_TICK_SECONDS = 0.1;
 const MAX_TICK_SECONDS = 5;
 
-const MAP_SIZE_LABELS: Record<MapSize, string> = { small: 'Small', normal: 'Normal', large: 'Large' };
+const MAP_SIZE_LABELS: Record<MapSize, string> = {
+  small: 'Small',
+  normal: 'Normal',
+  large: 'Large',
+};
 const MODE_LABELS: Record<RoomMode, string> = { duel: 'Duel', ffa: 'Battle Royale' };
 
 /** The room before the match: who is here, the settings, and the start countdown. */
@@ -59,7 +63,8 @@ export function Lobby({ actions }: { actions: Actions }) {
               </strong>
               <span>players in the lobby</span>
             </div>
-          )        ) : (
+          )
+        ) : (
           <>
             <Versus room={room} shown={shown} />
             {!isPrivate && (
@@ -75,18 +80,13 @@ export function Lobby({ actions }: { actions: Actions }) {
 
         {isPrivate && <Settings room={room} editable={editable} onChange={actions.updateRoom} />}
 
-
         {/* The timer and the vote are always on screen, so nothing jumps when the third player joins. */}
         {canVote && (
           <div
             className={`wait-timer ${lockedIn ? 'locked' : ''} ${waitSeconds === null ? 'paused' : ''}`}
           >
             <span className="wait-label">
-              {lockedIn ? (
-                'Enough votes: starting in'
-              ) : (
-                'Match starts in'
-              )}
+              {lockedIn ? 'Enough votes: starting in' : 'Match starts in'}
             </span>
             <strong>{formatClock(waitSeconds ?? Math.round(room.waitMs / 1000))}</strong>
           </div>
@@ -127,7 +127,6 @@ export function Lobby({ actions }: { actions: Actions }) {
           <button onClick={actions.leaveRoom}>Leave</button>
         </div>
       </div>
-
     </div>
   );
 }
@@ -258,7 +257,11 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
           // duel shows for its missing opponent; the rest are just empty.
           const needed = index < room.minPlayers;
           return (
-            <EmptyBox key={`open-${index}`} base={`roster-slot${needed ? ' waiting' : ''}`} armed={armed}>
+            <EmptyBox
+              key={`open-${index}`}
+              base={`roster-slot${needed ? ' waiting' : ''}`}
+              armed={armed}
+            >
               {needed && <SearchingDots />}
             </EmptyBox>
           );
@@ -291,7 +294,10 @@ function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
       </div>
       <div className="vs">VS</div>
       {opponent ? (
-        <div key={opponent.player.userId} className={`slot ${boxClass(opponent, opponent.player.connected)}`}>
+        <div
+          key={opponent.player.userId}
+          className={`slot ${boxClass(opponent, opponent.player.connected)}`}
+        >
           <FitText className="name" text={opponent.player.name} max={15} min={11} />
           {!opponent.player.connected && <em>disconnected</em>}
         </div>
@@ -490,7 +496,7 @@ function Slider({
       setShown(value);
       setDraft(value.toFixed(decimals));
     }
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value]);
 
   /** Round to the step, so values like 0.30000000000000004 never go anywhere. */
   const clean = (n: number): number => Number((Math.round(n / step) * step).toFixed(6));

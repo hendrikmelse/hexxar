@@ -1,65 +1,228 @@
-/* The in-match overlay: scoreboard, tick timer, surrender, messages and the controls reminder. */
+/*
+ * The in-match overlay. It borrows the menus' look: dark gradient cards with a solid lower edge,
+ * sunken wells for readouts, chunky pale-blue lettering, and raised buttons that press down.
+ */
 
 #hud {
-  --panel-top: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
-  --panel-edge: rgba(255, 255, 255, 0.1);
-  --panel-shadow:
+  --card: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  --card-edge: rgba(255, 255, 255, 0.1);
+  --card-shadow:
     0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 4px 0 #10131a, 0 14px 24px rgba(0, 0, 0, 0.5);
+  --well: #0f1117;
+  --well-shadow: 0 2px 4px rgba(0, 0, 0, 0.55) inset, 0 1px 0 rgba(255, 255, 255, 0.04);
+  --muted: #8a93a8;
   font-size: 14px;
+  color: #e8eaf0;
 }
 
-#hud .panel {
+/* ---- Top left: the timer, your queue, and the players -------------------------------------- */
+
+#hud .left {
   position: fixed;
   top: 14px;
   left: 14px;
-  width: 276px;
-  max-height: calc(100% - 28px);
-  box-sizing: border-box;
-  padding: 12px 12px 8px;
-  background: var(--panel-top);
-  border: 1px solid var(--panel-edge);
-  border-radius: 12px;
-  box-shadow: var(--panel-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 270px;
+  max-height: calc(100% - 100px);
   pointer-events: none;
-  overflow: hidden;
 }
 
-#hud .panel-head {
+#hud .status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  padding: 12px 16px 12px 12px;
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+}
+
+/* The timer: a hexagon whose edge fills up over each tick */
+#hud .tick-badge {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  flex: none;
+}
+
+#hud .tick-badge svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+#hud .tick-badge .plate {
+  fill: #14171f;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+#hud .tick-badge .track {
+  fill: none;
+  stroke: #232836;
+  stroke-width: 7;
+  stroke-linejoin: round;
+}
+
+#hud .tick-badge .ring {
+  fill: none;
+  stroke: #6aaeff;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100 100;
+  filter: drop-shadow(0 0 3px rgba(106, 174, 255, 0.8));
+}
+
+#hud .tick-badge.prep .ring {
+  stroke: #6fe0a5;
+  filter: drop-shadow(0 0 3px rgba(111, 224, 165, 0.8));
+}
+
+#hud .tick-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+#hud .tick-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8fa7d1;
+}
+
+#hud .tick-badge.prep .tick-label {
+  color: #8fd1b0;
+}
+
+#hud .tick-number {
+  min-width: 2ch;
+  text-align: center;
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 55%, #9cc3ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #1b2f57);
+}
+
+#hud .tick-badge.prep .tick-number {
+  background: linear-gradient(180deg, #ffffff 0%, #d9ffea 55%, #9fe8c2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 2px 0 #174a31);
+}
+
+/* Each new tick gives the badge a little thump */
+#hud .tick-badge.ticked {
+  animation: thump 0.32s ease-out;
+}
+
+@keyframes thump {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.07);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+#hud .queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  padding: 8px 12px 9px;
+  border-radius: 8px;
+  background: var(--well);
+  box-shadow: var(--well-shadow);
+}
+
+#hud .queue[hidden] {
+  display: none;
+}
+
+#hud .queue-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#hud .queue-row {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  color: #8a93a8;
+  gap: 6px;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
-#hud .panel-head .tick-count,
-#hud .panel-head .queue-count {
-  color: #e8eaf0;
+#hud .queue strong {
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+  color: #c4cad8;
 }
 
-/* An order queue with something in it lights up, so you can tell moves are on their way */
-#hud .panel-head .queue.busy .queue-count {
-  color: #7dd3ff;
+#hud .queue.busy strong {
+  color: #ffffff;
 }
 
-#hud .tick-bar {
-  height: 5px;
-  margin: 8px 0 10px;
-  background: #0f1117;
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) inset;
+#hud .queue.busy .queue-row {
+  color: #8fb8f0;
 }
 
-#hud .tick-bar-fill {
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, #5d6a86, #9fb0d6);
-  border-radius: 3px;
+#hud .players {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 14px 12px 12px;
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+}
+
+#hud .players h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#hud .players h3::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent);
 }
 
 #hud .standings {
@@ -68,94 +231,193 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
 
 #hud .standing {
+  --c: #8a93a8;
+  position: relative;
   display: grid;
-  grid-template-columns: 14px 10px minmax(0, 1fr) auto auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 7px;
+  column-gap: 9px;
+  padding: 7px 10px 10px;
+  border-radius: 8px;
+  background: var(--well);
+  box-shadow: var(--well-shadow);
   color: #c4cad8;
+  overflow: hidden;
+  flex: none;
+  transition: opacity 0.4s;
 }
 
-#hud .standing.me {
-  background: rgba(255, 255, 255, 0.07);
-  color: #ffffff;
-  font-weight: 700;
-}
-
-#hud .standing.out {
-  opacity: 0.4;
-}
-
-#hud .standing.out .name {
-  text-decoration: line-through;
-}
-
-#hud .rank {
-  color: #6b7389;
-  font-size: 11px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
+/* A hexagonal chip in the player's color, with a solid lower edge like the menu's logo tiles */
 #hud .swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.4),
-    0 1px 0 rgba(255, 255, 255, 0.25) inset;
+  width: 15px;
+  height: 17px;
+  background: var(--c);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.28);
 }
 
 #hud .name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+#hud .name span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#hud .stat {
-  min-width: 26px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  color: #8a93a8;
+/* Your own row says so, in your color */
+#hud .standing.me .name::after {
+  content: 'You';
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--c);
+  color: #0e1016;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-/* Tiles and troops each get a tiny icon so the two columns are told apart without a header */
+#hud .standing.me {
+  background: linear-gradient(180deg, #1a2234 0%, #131a2a 100%);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 0 0 1px color-mix(in srgb, var(--c) 70%, transparent),
+    0 0 14px color-mix(in srgb, var(--c) 25%, transparent);
+}
+
+#hud .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 30px;
+  justify-content: flex-end;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #aab3c8;
+}
+
 #hud .stat::before {
   content: '';
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 5px;
+  width: 8px;
+  height: 8px;
   background: currentColor;
-  opacity: 0.7;
+  opacity: 0.55;
 }
 
 #hud .stat.tiles::before {
-  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
-  width: 9px;
-  height: 8px;
+  height: 9px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
 }
 
 #hud .stat.troops::before {
   border-radius: 50%;
 }
 
-#hud .standing.me .stat {
-  color: #e8eaf0;
+/* The player's share of the land, as a thin bar along the bottom of their row */
+#hud .share {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
-/* Surrender: a raised red button like the ones in the menus */
-#hud .surrender {
+#hud .share i {
+  display: block;
+  height: 100%;
+  background: var(--c);
+  border-radius: 0 2px 2px 0;
+  transition: width 0.5s ease-out;
+}
+
+#hud .standing.out {
+  opacity: 0.38;
+}
+
+#hud .standing.out .name {
+  text-decoration: line-through;
+}
+
+/* ---- Top middle: messages from the game ------------------------------------------------------ */
+
+#hud .top {
   position: fixed;
   top: 14px;
-  right: 14px;
+  left: 50%;
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 640px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#hud .banner {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 10px 20px;
+  background: linear-gradient(180deg, #4a3a22 0%, #3a2d1a 100%);
+  border: 1px solid rgba(255, 205, 120, 0.35);
+  border-radius: 10px;
+  color: #ffe9bf;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 0 #1b140a,
+    0 14px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* The planning period's prompt is friendly rather than a warning */
+#hud .banner.prep {
+  background: linear-gradient(180deg, #1b2a45 0%, #14203a 100%);
+  border-color: rgba(143, 167, 209, 0.35);
+  color: #cfe0ff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 0 #0d1526,
+    0 14px 24px rgba(0, 0, 0, 0.5);
+}
+
+#hud .banner.pop {
+  animation: banner-in 0.24s ease-out;
+}
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Buttons: surrender and the camera ------------------------------------------------------- */
+
+#hud .surrender {
+  position: fixed;
+  left: 14px;
+  bottom: 18px;
   padding: 9px 16px;
-  border: 1px solid rgba(255, 130, 130, 0.35);
+  border: 1px solid rgba(255, 130, 130, 0.3);
   border-radius: 10px;
   background: linear-gradient(180deg, #4a2830 0%, #3a1f26 100%);
   color: #ffd0d0;
@@ -172,8 +434,18 @@
     filter 0.12s;
 }
 
+#hud .surrender.confirm {
+  background: linear-gradient(180deg, #d04a58 0%, #a63341 100%);
+  border-color: rgba(255, 190, 190, 0.5);
+  color: #ffffff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 4px 0 #5c1721,
+    0 10px 18px rgba(0, 0, 0, 0.4);
+}
+
 #hud .surrender:hover {
-  filter: brightness(1.15);
+  filter: brightness(1.12);
 }
 
 #hud .surrender:active {
@@ -184,57 +456,110 @@
     0 4px 8px rgba(0, 0, 0, 0.4);
 }
 
-/* Messages from the game (a refused order, being eliminated) */
-#hud .banner {
+#hud .camera {
   position: fixed;
-  top: 14px;
-  left: 50%;
-  max-width: calc(100% - 560px);
-  min-width: 160px;
-  box-sizing: border-box;
-  padding: 11px 22px;
-  background: linear-gradient(180deg, #4a3a22 0%, #3a2d1a 100%);
-  border: 1px solid rgba(255, 205, 120, 0.35);
+  right: 14px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#hud .camera button {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  color: #ffe9bf;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
+  background: linear-gradient(180deg, #3c4257 0%, #2b3042 100%);
+  color: #e8eaf0;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.08) inset,
-    0 4px 0 #1b140a,
-    0 14px 24px rgba(0, 0, 0, 0.5);
-  transform: translateX(-50%);
-  animation: banner-in 0.22s ease-out;
-  pointer-events: none;
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 4px 0 #14171f,
+    0 10px 16px rgba(0, 0, 0, 0.4);
+  transition:
+    transform 0.08s,
+    box-shadow 0.08s,
+    filter 0.12s;
 }
 
-@keyframes banner-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -14px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
+#hud .camera button:hover {
+  filter: brightness(1.18);
 }
 
-/* Controls reminder along the bottom edge: key caps that fade once you've had time to read them */
+#hud .camera button:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 1px 0 #14171f,
+    0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* The two icon buttons are drawn with CSS: a hexagon outline, and a hexagon with a dot */
+#hud .camera button.icon::before,
+#hud .camera button.icon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#hud .camera button.icon::before {
+  width: 20px;
+  height: 22px;
+  background: currentColor;
+  clip-path: polygon(
+    50% 0,
+    100% 25%,
+    100% 75%,
+    50% 100%,
+    0 75%,
+    0 25%,
+    50% 0,
+    50% 14%,
+    14% 32%,
+    14% 68%,
+    50% 86%,
+    86% 68%,
+    86% 32%,
+    50% 14%
+  );
+}
+
+#hud .camera button.fit::after {
+  display: none;
+}
+
+#hud .camera button.home::after {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ---- Bottom middle: the controls, as key caps ------------------------------------------------ */
+
 #hud .hint {
   position: fixed;
-  bottom: 14px;
+  bottom: 18px;
   left: 0;
   right: 0;
-  margin: 0 auto;
-  width: max-content;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px 18px;
-  max-width: calc(100% - 28px);
+  width: max-content;
+  max-width: calc(100% - 340px);
+  margin: 0 auto;
   padding: 8px 16px;
-  background: rgba(20, 23, 31, 0.78);
+  background: rgba(20, 23, 31, 0.8);
   border-radius: 999px;
   color: #aab3c8;
   font-size: 12px;
@@ -243,7 +568,7 @@
 }
 
 #hud .hint.faded {
-  opacity: 0.3;
+  opacity: 0.28;
 }
 
 #hud .hint-item {
@@ -265,24 +590,74 @@
   font-weight: 700;
 }
 
-@media (max-width: 760px) {
-  #hud .panel {
-    width: 208px;
+/* ---- Small screens ---------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  #hud .left {
+    width: 220px;
   }
 
-  #hud .banner {
+  #hud .queue-label {
+    display: none;
+  }
+
+  #hud .stat.troops {
+    display: none;
+  }
+
+  #hud .standing {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+  }
+
+  #hud .top {
+    max-width: calc(100% - 520px);
+  }
+
+  #hud .hint {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  #hud .top {
     top: auto;
-    bottom: 64px;
+    bottom: 76px;
     max-width: calc(100% - 28px);
+  }
+
+  #hud .left {
+    width: 190px;
+    max-height: 55%;
+  }
+
+  #hud .status {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  #hud .queue {
+    display: none;
+  }
+
+  #hud .tick-badge {
+    width: 72px;
+    height: 72px;
+  }
+
+  #hud .tick-number {
+    font-size: 24px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #hud .banner {
+  #hud .tick-badge.ticked,
+  #hud .banner.pop {
     animation: none;
   }
 
-  #hud .hint {
+  #hud .hint,
+  #hud .standing,
+  #hud .share i {
     transition: none;
   }
 }
