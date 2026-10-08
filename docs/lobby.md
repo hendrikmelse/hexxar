@@ -33,7 +33,7 @@ A duel lobby shows you and your opponent side by side ("VS"), with a pulsing pla
 
 ## Settings
 
-A private room's host can change the game mode (duel or battle royale), the **map size** (small, normal or large), the **tick length** (any value from 0.1 to 60 seconds in steps of 0.1; the slider covers 0.1 to 5) and starting troops, while the room is still gathering players. Everyone else sees the same information as plain text, not as disabled controls. Everything is a `MatchConfig` field or a room setting, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults. The troop production speed is no longer offered in the lobby (it is still a match setting).
+A private room's host can change the game mode (duel or battle royale), the **map size** (small, normal or large), the **tick length** (any value from 0.1 to 60 seconds in steps of 0.1; the slider covers 0.1 to 5), **fog of war** (on or off) and starting troops, while the room is still gathering players. Everyone else sees the same information as plain text, not as disabled controls. Everything is a `MatchConfig` field or a room setting, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults. The troop production speed is no longer offered in the lobby (it is still a match setting).
 
 ## Leaving, disconnecting and coming back
 

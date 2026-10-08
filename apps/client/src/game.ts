@@ -1,11 +1,14 @@
 import {
   applyTickDiff,
+  visionOf,
   type ExecutedMove,
   type MatchConfig,
   type Order,
   type PlayerId,
+  type PlayerScore,
   type ServerMessage,
   type Tile,
+  type Vision,
 } from '@hexxar/shared';
 
 /** `idle` until a match snapshot arrives. */
@@ -28,6 +31,24 @@ export interface GameView {
   clockOffset: number;
   /** Your queued orders, oldest first. */
   queue: Order[];
+  /** Every player's strength, for the scoreboard. Not hidden by fog. */
+  scores: PlayerScore[];
+}
+
+/**
+ * What the player can see of the board: a map from tile key to how much (see `Vision`), where a
+ * missing key is a tile hidden by fog. `null` means everything is in view: no fog in this match,
+ * or the player is out of it, or it is over. `ownerOf` can hold back tiles an animation has not
+ * shown changing hands yet.
+ */
+export function visionFor(
+  game: GameView,
+  ownerOf?: ReadonlyMap<string, PlayerId | null>,
+): Map<string, Vision> | null {
+  const { config, playerId } = game;
+  if (!config || config.fog === 'off' || playerId === null) return null;
+  if (game.status !== 'playing' || game.eliminated.includes(playerId)) return null;
+  return visionOf(game.tiles, playerId, ownerOf);
 }
 
 export function emptyGame(): GameView {
@@ -44,6 +65,7 @@ export function emptyGame(): GameView {
     nextTickAt: null,
     clockOffset: 0,
     queue: [],
+    scores: [],
   };
 }
 
@@ -68,6 +90,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       game.queue = message.queue;
       game.nextTickAt = message.nextTickAt;
       game.clockOffset = message.serverTime - Date.now();
+      game.scores = message.scores;
       game.status = message.state.winner === null ? 'playing' : 'over';
       game.notice = '';
       return { kind: 'all' };
@@ -80,6 +103,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       game.nextTickAt = message.nextTickAt;
       game.clockOffset = message.serverTime - Date.now();
       game.eliminated = message.eliminated;
+      game.scores = message.scores;
       game.winner = message.winner;
       game.notice = '';
       if (message.winner !== null) game.status = 'over';

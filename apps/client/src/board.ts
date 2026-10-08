@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Text } from 'pixi.js';
 import {
   generationInterval,
   type ExecutedMove,
+  type Vision,
   hexKey,
   ownedFarmNeighbors,
   isGenerationPaused,
@@ -9,7 +10,8 @@ import {
   type Order,
   type Tile,
 } from '@hexxar/shared';
-import type { GameView } from './game.js';
+import { Clouds, type Cover } from './clouds.js';
+import { visionFor, type GameView } from './game.js';
 import { HEX_SIZE, hexCorners, hexToPixel, pixelToHex, type Point } from './layout.js';
 
 /** Distinct, flat player colors, assigned by player order. */
@@ -24,6 +26,8 @@ const OWNED_BASE = 0x14161c;
 /** Unclaimed land: green fields, packed earth around a village, grey flagstones for a city. */
 const NEUTRAL_FILL = { farmland: 0x2a3a2c, village: 0x3a382f, city: 0x3a3e46 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
+/** What a tile hidden by fog is drawn on, under its clouds. */
+const FOG_GROUND = 0x16212d;
 /** A thin grey line around the board, a few pixels out from the land (also around lakes). */
 const COAST_COLOR = 0x3c4656;
 const COAST_GAP = 3.5;
@@ -182,6 +186,10 @@ export class Board {
   private readonly world = new Container();
   private readonly coastLayer = new Graphics();
   private readonly tileLayer = new Container();
+  private readonly fogLayer = new Container();
+  private readonly clouds: Clouds;
+  /** What the player can see (`null`: everything), as of the last time it was worked out. */
+  private vision: Map<string, Vision> | null = null;
   private readonly ringAnims = new Map<TileView, RingAnim>();
   /** Troop labels that are popping, and when each started. */
   private readonly pops = new Map<Text, number>();
@@ -207,6 +215,7 @@ export class Board {
     this.world.addChild(
       this.coastLayer,
       this.tileLayer,
+      this.fogLayer,
       this.queueLayer,
       this.pendingLayer,
       this.selectionLayer,
@@ -215,7 +224,9 @@ export class Board {
     );
     this.moveLayer.addChild(this.trails, this.bursts);
     app.stage.addChild(this.world);
+    this.clouds = new Clouds(this.fogLayer);
     app.ticker.add(() => {
+      this.clouds.update(app.ticker.deltaMS / 1000);
       this.animatePops();
       this.animateRings();
       this.animateFlights();
@@ -247,9 +258,81 @@ export class Board {
     this.clearFlights();
     this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.views.clear();
+    this.clouds.clear();
     this.drawCoast(game);
+    this.vision = visionFor(game);
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
+    this.coverTiles(game, Object.keys(game.tiles), true);
     if (fresh && this.views.size > 0) this.fitToBoard();
+  }
+
+  /** How much of a tile the player sees. */
+  private levelOf(key: string): 'full' | 'far' | 'hidden' {
+    if (this.vision === null) return 'full';
+    return this.vision.get(key) ?? 'hidden';
+  }
+
+  /**
+   * Work out what the player can see now, and redraw the tiles whose view changed (their clouds
+   * come or go with them). A tile an army is still walking onto counts as it was until it lands,
+   * so the fog does not lift before the army arrives.
+   */
+  refreshVision(game: GameView): void {
+    const staleOwners = new Map<string, string | null>();
+    for (const key of this.held) {
+      const view = this.views.get(key);
+      if (view) staleOwners.set(key, view.owner);
+    }
+    const next = visionFor(game, staleOwners);
+    const previous = this.vision;
+    this.vision = next;
+    const changed: string[] = [];
+    for (const key of this.views.keys()) {
+      const before = previous === null ? 'full' : (previous.get(key) ?? 'hidden');
+      const after = next === null ? 'full' : (next.get(key) ?? 'hidden');
+      if (before !== after) changed.push(key);
+    }
+    if (changed.length === 0) return;
+    for (const key of changed) {
+      const tile = game.tiles[key];
+      if (tile && !this.held.has(key)) this.updateTile(tile, game);
+    }
+    // A tile's clouds also depend on which of its neighbors are in view.
+    const affected = new Set(changed);
+    for (const key of changed) {
+      const tile = game.tiles[key];
+      if (!tile) continue;
+      for (const [dq, dr] of EDGE_NEIGHBORS)
+        affected.add(hexKey({ q: tile.q + dq, r: tile.r + dr }));
+    }
+    this.coverTiles(game, affected, false);
+  }
+
+  /** Put clouds over the tiles the player cannot (fully) see, and take them off the ones they can. */
+  private coverTiles(game: GameView, keys: Iterable<string>, instant: boolean): void {
+    for (const key of keys) {
+      const tile = game.tiles[key];
+      if (!tile) continue;
+      const level = this.levelOf(key);
+      const center = hexToPixel(tile);
+      let cover: Cover | null = null;
+      if (level === 'hidden') cover = { kind: 'hidden' };
+      else if (level === 'far') {
+        // Keep clear the edges that face tiles the player sees in full: that is where the
+        // owner's color and the kind of tile show through.
+        let nx = 0;
+        let ny = 0;
+        for (const [dq, dr] of EDGE_NEIGHBORS) {
+          if (this.levelOf(hexKey({ q: tile.q + dq, r: tile.r + dr })) !== 'full') continue;
+          const toward = hexToPixel({ q: tile.q + dq, r: tile.r + dr });
+          nx += toward.x - center.x;
+          ny += toward.y - center.y;
+        }
+        const length = Math.hypot(nx, ny) || 1;
+        cover = { kind: 'far', away: { x: -nx / length, y: -ny / length } };
+      }
+      this.clouds.cover(key, tile.q, tile.r, center, cover, instant);
+    }
   }
 
   /**
@@ -377,6 +460,8 @@ export class Board {
         this.held.delete(flight.target);
         const tile = flight.game.tiles[flight.target];
         if (tile && !this.held.has(flight.target)) this.updateTiles([tile], flight.game);
+        // Arriving can open up new ground to see.
+        this.refreshVision(flight.game);
       }
       const { clash } = flight;
       const beaten = clash !== undefined && clash.survivors === 0;
@@ -486,11 +571,23 @@ export class Board {
     }
 
     const center = hexToPixel(tile);
+    const level = this.levelOf(key);
     const owner = playerColor(game, tile.owner);
-    const fill = owner === null ? NEUTRAL_FILL[tile.type] : mix(OWNED_BASE, owner, OWNED_FILL);
+    const fill =
+      level === 'hidden'
+        ? FOG_GROUND
+        : owner === null
+          ? NEUTRAL_FILL[tile.type]
+          : mix(OWNED_BASE, owner, OWNED_FILL);
     const shape = view.shape;
     shape.clear();
     view.owner = tile.owner;
+    if (level === 'hidden') {
+      // Nothing is known about this tile: just ground, under the clouds.
+      shape.poly(hexCorners(center, TILE_INSET + 1)).fill(fill);
+      this.hideDetails(view);
+      return;
+    }
     // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.
     const corners = hexCorners(center, owner === null ? TILE_INSET + 1 : TILE_INSET);
     shape.poly(corners).fill(fill);
@@ -559,11 +656,26 @@ export class Board {
       }
       drawCastle(shape, center, art, fill);
     }
-    const previousTroops = existed ? Number(view.label.text) : tile.troops;
+    if (level === 'far') {
+      // Seen from afar: the owner and the kind of tile, but no troops and no production.
+      this.hideDetails(view);
+      return;
+    }
+    const previousTroops =
+      existed && view.label.text !== '' ? Number(view.label.text) : tile.troops;
     this.updateRing(view, tile, center, owner, game, existed, previousTroops);
     // A new troop (the number going up on someone's tile) gets a little pop.
     view.label.text = String(tile.troops);
     if (tile.owner !== null && tile.troops > previousTroops) this.pop(view.label);
+  }
+
+  /** No troop count and no generation ring: what a tile shows when it is not seen up close. */
+  private hideDetails(view: TileView): void {
+    view.label.text = '';
+    view.ring.clear();
+    this.ringAnims.delete(view);
+    view.ringFilled = 0;
+    view.ringSegments = 0;
   }
 
   /**

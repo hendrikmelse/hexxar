@@ -646,18 +646,76 @@ describe('Lobby battle royale', () => {
   });
 
   it('plays a full battle royale: random shaped board, everyone gets a starting city', () => {
-    const clients = joinPublic(12);
-    const snapshot = clients[0]!.last('snapshot');
+    // Without fog, a player is sent the whole board.
+    const host = new FakeClient(lobby).hello('Hana');
+    host.say({ type: 'createRoom', settings: { mode: 'ffa', config: { fog: 'off' } } });
+    const guests = Array.from({ length: 11 }, (_, i) => {
+      const guest = new FakeClient(lobby).hello(`Gus ${i + 1}`);
+      guest.say({ type: 'joinRoom', code: host.room!.code });
+      return guest;
+    });
+    host.say({ type: 'startGame' });
+    const snapshot = host.last('snapshot');
     const starts = Object.values(snapshot.state.tiles).filter((t) => t.owner !== null);
     expect(starts).toHaveLength(12);
     expect(new Set(starts.map((t) => t.owner)).size).toBe(12);
     for (const start of starts) expect(start.type).toBe('city');
     // Ticks run, and the last player standing wins as in any match.
     vi.advanceTimersByTime(options.prepMs + 2 * TICK_MS);
-    expect(clients[0]!.last('tick').tick).toBe(3);
-    for (const client of clients.slice(1)) client.say({ type: 'surrender' });
-    expect(clients[0]!.room?.state).toBe('finished');
-    expect(clients[0]!.last('snapshot').state.winner).toBe(snapshot.you);
+    expect(host.last('tick').tick).toBe(3);
+    for (const guest of guests) guest.say({ type: 'surrender' });
+    expect(host.room?.state).toBe('finished');
+    expect(host.last('snapshot').state.winner).toBe(snapshot.you);
+  });
+
+  describe('fog of war', () => {
+    it('shows a player their own surroundings only, and everybody the scoreboard', () => {
+      const clients = joinPublic(12);
+      const snapshot = clients[0]!.last('snapshot');
+      const tiles = Object.values(snapshot.state.tiles);
+      const mine = tiles.filter((t) => t.owner === snapshot.you);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ type: 'city', troops: 10 });
+      // The other eleven cities are somewhere out of sight (some may be two steps away).
+      const seenCities = tiles.filter((t) => t.type === 'city');
+      expect(seenCities.length).toBeLessThan(12);
+      // Out of sight means blank: the board is known, its contents are not.
+      expect(tiles.filter((t) => t.owner === null && t.troops === 0).length).toBeGreaterThan(
+        tiles.length / 2,
+      );
+      // The scoreboard is not fogged: all twelve players, each with their production.
+      expect(snapshot.scores).toHaveLength(12);
+      for (const score of snapshot.scores) {
+        expect(score).toMatchObject({ tiles: 1, troops: 10 });
+        expect(score.capacity).toBeGreaterThan(0);
+      }
+    });
+
+    it('can be switched off for a private game', () => {
+      const host = new FakeClient(lobby).hello('Hana');
+      host.say({ type: 'createRoom', settings: { config: { fog: 'off' } } });
+      expect(host.room?.settings.config.fog).toBe('off');
+      const guest = new FakeClient(lobby).hello('Gus');
+      guest.say({ type: 'joinRoom', code: host.room!.code });
+      host.say({ type: 'startGame' });
+      const cities = Object.values(host.last('snapshot').state.tiles).filter(
+        (t) => t.type === 'city',
+      );
+      expect(cities.length).toBeGreaterThan(2);
+      // Both players' cities are in view, the other player's with their real troops.
+      expect(cities.filter((t) => t.owner !== null && t.troops === 10)).toHaveLength(2);
+    });
+
+    it('is on by default, and sends other people their own view of each tick', () => {
+      const a = new FakeClient(lobby).hello('Ann');
+      const b = new FakeClient(lobby).hello('Bob');
+      a.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'quickPlay', mode: 'duel' });
+      expect(a.last('snapshot').config.fog).toBe('on');
+      expect(b.last('snapshot').config.fog).toBe('on');
+      vi.advanceTimersByTime(options.prepMs);
+      expect(a.last('tick').scores).toHaveLength(2);
+    });
   });
 });
 

@@ -21,7 +21,7 @@ Players command armies by placing orders into a **queue**. Orders don't execute 
 - **Winning:** last player standing. A player is beaten once they own no cities or villages and every farm they have left holds a single troop. You can surrender at any time (an immediate message, not a queued order).
 - **Match settings:** every match carries its own `MatchConfig` (`packages/shared/src/config.ts`): tick interval, troop generation speed, starting troops, fog mode. Private games let the host change them.
 - **Lobbies:** quick play, private games by code or link, a vote to start a Battle Royale early, and reconnects with auto-surrender after two minutes away. See [`docs/lobby.md`](docs/lobby.md).
-- **Fog of war:** not implemented, but designed in. The server only ever sends clients the output of `visibleState(state, playerId)`, which currently returns everything.
+- **Fog of war:** you see your own tiles and the ring around them in full, the next ring as owner and type only, and clouds beyond that. The server only ever sends clients the output of `visibleState`, so hidden information never reaches them. The scoreboard (production pie and list) is not fogged. See [`docs/fog.md`](docs/fog.md).
 - **Replays:** the sim is deterministic, so a match is fully described by its seed, players and per-tick orders. The server already keeps that log; storing it is not built yet.
 
 ## Stack
@@ -89,4 +89,4 @@ Pushes to `main` run the checks, build a Docker image, push it to GitHub Contain
 
 ## Not built yet
 
-Accounts and ranked play, persistence (match history, replay storage and a viewer), fog of war, more tile types and orders, spectators, bots, a public game list, and mobile-friendly UI. All tile and generation numbers are placeholders to be balanced by playing.
+Accounts and ranked play, persistence (match history, replay storage and a viewer), more tile types and orders, spectators, bots, a public game list, and mobile-friendly UI. All tile and generation numbers are placeholders to be balanced by playing.

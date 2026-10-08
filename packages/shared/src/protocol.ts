@@ -13,6 +13,13 @@ export const tileSchema = z.object({
   progress: z.number().int().nonnegative(),
 });
 
+export const playerScoreSchema = z.object({
+  player: z.string(),
+  tiles: z.number().int().nonnegative(),
+  troops: z.number().int().nonnegative(),
+  capacity: z.number().nonnegative(),
+});
+
 export const gameStateSchema = z.object({
   tick: z.number().int().nonnegative(),
   players: z.array(z.string()),
@@ -176,6 +183,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     nextTickAt: z.number().nullable(),
     /** The server's clock when this was sent, so clients can correct for clock skew. */
     serverTime: z.number(),
+    /** Every player's strength, for the scoreboard. Fog of war does not hide this. */
+    scores: z.array(playerScoreSchema),
   }),
   /** One tick resolved. Only tiles that changed are included. */
   z.object({
@@ -188,6 +197,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     winner: z.string().nullable(),
     /** How many orders the receiving player still has queued (the oldest were consumed). */
     queueLength: z.number().int().nonnegative(),
+    scores: z.array(playerScoreSchema),
     /** The armies that set off this tick (for animation); the new tile states are in `changed`. */
     moves: z
       .array(

@@ -34,8 +34,11 @@ export const matchConfigSchema = z.object({
         .partial(),
     )
     .default({}),
-  /** Fog of war mode. Only `off` is implemented so far. */
-  fog: z.enum(['off']).default('off'),
+  /**
+   * Fog of war. `on`: you see your own tiles and the ring around them in full, the ring beyond
+   * that as owner and type only, and nothing else (see `vision.ts`). `off`: everything.
+   */
+  fog: z.enum(['off', 'on']).default('on'),
 });
 
 export type MatchConfig = z.infer<typeof matchConfigSchema>;

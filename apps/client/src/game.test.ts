@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseMatchConfig, type Order, type ServerMessage, type Tile } from '@hexxar/shared';
-import { applyMessage, emptyGame } from './game.js';
+import { applyMessage, emptyGame, visionFor } from './game.js';
 
 const move = (q: number): Order => ({
   type: 'move',
@@ -32,6 +32,7 @@ const snapshot = (queue: Order[] = []): ServerMessage => ({
   queue,
   nextTickAt: 1000,
   serverTime: 0,
+  scores: [],
 });
 
 describe('applyMessage', () => {
@@ -55,6 +56,7 @@ describe('applyMessage', () => {
       eliminated: [],
       winner: null,
       queueLength: 2,
+      scores: [],
     });
     expect(game.tiles['1,0']!.troops).toBe(9);
     expect(game.tiles['0,0']!.troops).toBe(5);
@@ -74,6 +76,7 @@ describe('applyMessage', () => {
       eliminated: [],
       winner: null,
       queueLength: 0,
+      scores: [],
     });
     expect(game.queue).toEqual([]);
   });
@@ -90,7 +93,54 @@ describe('applyMessage', () => {
       eliminated: ['P2'],
       winner: 'P1',
       queueLength: 0,
+      scores: [],
     });
     expect(game).toMatchObject({ status: 'over', winner: 'P1', nextTickAt: null });
+  });
+});
+
+describe('visionFor', () => {
+  const play = (fog: 'on' | 'off') => {
+    const game = emptyGame();
+    const message = snapshot();
+    if (message.type === 'snapshot') message.config = parseMatchConfig({ fog });
+    applyMessage(game, message);
+    return game;
+  };
+
+  it('is everything (null) with no fog, and what is near your tiles with it', () => {
+    expect(visionFor(play('off'))).toBeNull();
+    const vision = visionFor(play('on'))!;
+    expect(vision.get('0,0')).toBe('full');
+    expect(vision.get('1,0')).toBe('full');
+  });
+
+  it('is everything once you are out of the game or it is over', () => {
+    const game = play('on');
+    game.eliminated = ['P1'];
+    expect(visionFor(game)).toBeNull();
+    const over = play('on');
+    over.status = 'over';
+    expect(visionFor(over)).toBeNull();
+  });
+
+  it('can treat a tile as it was before an army arrived on it', () => {
+    const game = play('on');
+    const stale = new Map<string, string | null>([
+      ['0,0', null],
+      ['1,0', null],
+    ]);
+    expect(visionFor(game, stale)?.size).toBe(0);
+  });
+});
+
+describe('scores', () => {
+  it('are kept from snapshots and ticks, for the scoreboard', () => {
+    const game = emptyGame();
+    const scores = [{ player: 'P1', tiles: 2, troops: 10, capacity: 0.125 }];
+    const message = snapshot();
+    if (message.type === 'snapshot') message.scores = scores;
+    applyMessage(game, message);
+    expect(game.scores).toEqual(scores);
   });
 });

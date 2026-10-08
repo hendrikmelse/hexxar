@@ -52,6 +52,7 @@ function render(change: ReturnType<typeof applyMessage>): void {
     // Armies set off first, so the tiles they walk onto are held back until they arrive.
     board.playMoves(change.moves, game);
     board.updateTiles(change.tiles, game);
+    board.refreshVision(game);
     // The "you are here" effect is for the planning period only.
     if (game.tick > 0 || game.status !== 'playing') board.stopIntro();
   }

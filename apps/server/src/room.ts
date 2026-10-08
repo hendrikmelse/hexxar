@@ -10,6 +10,7 @@ import {
   roomCapacity,
   roomMinPlayers,
   roomSettingsSchema,
+  scoresOf,
   visibleMoves,
   visibleState,
   type Order,
@@ -486,6 +487,8 @@ export class Room {
     if (!match || this.nextTickAt === null) return;
     const { previous, state, moves } = match.step();
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
+    const { config } = match;
+    const scores = scoresOf(state, config);
 
     for (const member of this.members) {
       if (!member.playerId) continue;
@@ -495,11 +498,12 @@ export class Room {
         tick: state.tick,
         nextTickAt: this.nextTickAt,
         serverTime: Date.now(),
-        changed: diffTiles(visibleState(previous, id), visibleState(state, id)),
+        changed: diffTiles(visibleState(previous, id, config), visibleState(state, id, config)),
         eliminated: [...state.eliminated],
         winner: state.winner,
         queueLength: match.queueOf(id).length,
-        moves: visibleMoves(moves, id),
+        moves: visibleMoves(moves, id, previous, state, config),
+        scores,
       });
     }
 
@@ -532,7 +536,7 @@ export class Room {
   private snapshotFor(member: Member): ServerMessage | null {
     const match = this.match;
     if (!match) return null;
-    const state = visibleState(match.state, member.playerId ?? '');
+    const state = visibleState(match.state, member.playerId ?? '', match.config);
     return {
       type: 'snapshot',
       matchId: match.id,
@@ -542,6 +546,7 @@ export class Room {
       queue: member.playerId ? [...match.queueOf(member.playerId)] : [],
       nextTickAt: this.nextTickAt,
       serverTime: Date.now(),
+      scores: scoresOf(match.state, match.config),
     };
   }
 

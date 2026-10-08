@@ -1,4 +1,3 @@
-import { generationInterval, ownedFarmNeighbors, tileRules } from '@hexxar/shared';
 import type { GameView } from './game.js';
 import { playerColor } from './board.js';
 import { appStore } from './store.js';
@@ -167,27 +166,17 @@ export class Hud {
     const names = new Map(
       (appStore.get().room?.players ?? []).map((p) => [p.playerId ?? '', p.name] as const),
     );
-    const totals = new Map<string, { tiles: number; troops: number; capacity: number }>();
-    for (const id of game.players) totals.set(id, { tiles: 0, troops: 0, capacity: 0 });
-    for (const tile of Object.values(game.tiles)) {
-      const total = tile.owner === null ? undefined : totals.get(tile.owner);
-      if (!total) continue;
-      total.tiles += 1;
-      total.troops += tile.troops;
-      // Generation capacity: troops per tick this tile makes with the farms around it.
-      if (game.config) {
-        const every = generationInterval(
-          game.config,
-          tile.type,
-          ownedFarmNeighbors(game.tiles, tile),
-        );
-        const amount = tileRules(game.config, tile.type).generation?.amount ?? 0;
-        if (every !== null) total.capacity += amount / every;
-      }
-    }
+    // The server counts everyone's strength itself: under fog the board alone would not tell.
+    const scores = new Map(game.scores.map((score) => [score.player, score] as const));
     const standings = game.players.map((id) => {
-      const total = totals.get(id) ?? { tiles: 0, troops: 0, capacity: 0 };
-      return { id, ...total, out: game.eliminated.includes(id) };
+      const score = scores.get(id);
+      return {
+        id,
+        tiles: score?.tiles ?? 0,
+        troops: score?.troops ?? 0,
+        capacity: score?.capacity ?? 0,
+        out: game.eliminated.includes(id),
+      };
     });
     // Whoever can produce the most troops leads; fallen players sink to the bottom.
     standings.sort(

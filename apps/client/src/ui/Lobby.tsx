@@ -357,6 +357,8 @@ function Settings({
         <dd>{(config.tickMs / 1000).toFixed(1)}s</dd>
         <dt>Starting troops</dt>
         <dd>{config.startingTroops}</dd>
+        <dt>Fog of war</dt>
+        <dd>{config.fog === 'on' ? 'On' : 'Off'}</dd>
       </dl>
     );
   }
@@ -391,6 +393,15 @@ function Settings({
         decimals={1}
         unit="s"
         onCommit={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
+      />
+      <Segmented
+        label="Fog of war"
+        value={config.fog}
+        options={[
+          { value: 'on', label: 'On' },
+          { value: 'off', label: 'Off' },
+        ]}
+        onChange={(fog) => onChange({ config: { fog } })}
       />
       <Slider
         label="Starting troops"
