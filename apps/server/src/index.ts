@@ -1,6 +1,5 @@
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { DEFAULT_TICK_MS } from '@hexxar/shared';
 import { createHttpHandler } from './http.js';
 import { Lobby } from './lobby.js';
 
@@ -8,7 +7,6 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 const lobby = new Lobby({
   betaCode: process.env.BETA_CODE,
-  tickMs: Number(process.env.TICK_MS ?? DEFAULT_TICK_MS),
   prepMs: Number(process.env.PREP_MS ?? 5000),
   earlyStartMs: Number(process.env.EARLY_START_MS ?? 60_000),
   joinWaitMs: Number(process.env.JOIN_WAIT_MS ?? 10_000),

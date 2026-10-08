@@ -15,7 +15,6 @@ import type { Connection, ConnectionHandler, Session } from './types.js';
 export interface LobbyOptions {
   /** Beta access code. When set, nobody gets in without it; when empty, the server is open. */
   betaCode?: string;
-  tickMs: number;
   /** Time between a match being created and its first tick, for planning the opening. */
   prepMs: number;
   /** How long a public battle royale waits for more players, once it has enough, before starting anyway. */
@@ -233,7 +232,7 @@ export class Lobby {
       mode,
       size: roomCapacity(mode),
       mapSize: 'normal',
-      config: parseMatchConfig({ tickMs: this.options.tickMs }),
+      config: parseMatchConfig(),
     };
   }
 

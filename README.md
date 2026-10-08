@@ -2,7 +2,7 @@
 
 Online multiplayer conquest game on a shared hex map, played in the browser at **hexxar.io** (currently a closed beta: visitors need an access code).
 
-Players command armies by placing orders into a **queue**. Orders don't execute immediately: every tick (1 second by default) the server pops one order from each player's queue and resolves them all simultaneously. Planning ahead, queue management, and reading your opponents' moves are the core of the game.
+Players command armies by placing orders into a **queue**. Orders don't execute immediately: every tick (1.5 seconds by default) the server pops one order from each player's queue and resolves them all simultaneously. Planning ahead, queue management, and reading your opponents' moves are the core of the game.
 
 ## Design pillars
 
@@ -18,7 +18,7 @@ Players command armies by placing orders into a **queue**. Orders don't execute 
 - **Orders:** `move(from, to)` sends all but one troop to an adjacent hex. Each player has **one global queue** with **no length limit**. Orders are append-only: **no reordering and no cancelling**. Once queued, an order is a commitment.
 - **Ticks:** every tick the server takes the head of every queue and resolves them all at once. Invalid orders are dropped. The full rules are in [`docs/tick-resolution.md`](docs/tick-resolution.md).
 - **Planning period:** a match is created when the room starts, and the first tick comes 5 seconds later (`PREP_MS`). You can look over the map and queue your opening orders meanwhile; a quick animation points out where you start.
-- **Winning:** last player standing. You can surrender at any time (an immediate message, not a queued order).
+- **Winning:** last player standing. A player is beaten once they own no cities or villages and every farm they have left holds a single troop. You can surrender at any time (an immediate message, not a queued order).
 - **Match settings:** every match carries its own `MatchConfig` (`packages/shared/src/config.ts`): tick interval, troop generation speed, starting troops, fog mode. Private games let the host change them.
 - **Lobbies:** quick play, private games by code or link, a vote to start a Battle Royale early, and reconnects with auto-surrender after two minutes away. See [`docs/lobby.md`](docs/lobby.md).
 - **Fog of war:** not implemented, but designed in. The server only ever sends clients the output of `visibleState(state, playerId)`, which currently returns everything.
@@ -73,7 +73,6 @@ Environment variables, or a `.env` file in the repository root (see `.env.exampl
 | `BETA_CODE`          | (empty) | Access code visitors must enter before they can play. Empty means open to everyone. |
 | `PORT`               | 8080    | Port for the page, health check and WebSocket                                       |
 | `STATIC_DIR`         | (unset) | Folder with the built client to serve (the Docker image sets it)                    |
-| `TICK_MS`            | 1000    | Default tick length                                                                 |
 | `PREP_MS`            | 5000    | Planning period between a match being created and its first tick                    |
 | `EARLY_START_MS`     | 60000   | How long a public Battle Royale waits for more players once it has 3                |
 | `JOIN_WAIT_MS`       | 10000   | A join tops that wait up to at least this                                           |

@@ -1,5 +1,5 @@
 import { hexKey, type Hex } from './hex.js';
-import type { TileTypeId } from './tiles.js';
+import { TILE_TYPES, type TileTypeId } from './tiles.js';
 
 export type PlayerId = string;
 
@@ -37,19 +37,22 @@ export interface GameState {
 export const getTile = (state: GameState, hex: Hex): Tile | undefined => state.tiles[hexKey(hex)];
 
 /**
- * Derive `eliminated` and `winner` from who still owns tiles. `forced` lists
- * players to eliminate regardless (surrender).
+ * Derive `eliminated` and `winner`. A player is still in the game while they own a producer (a
+ * city or village) or any army that can move (a tile with more than one troop). Once all they have
+ * left is farmland with a single troop on each, they are beaten: nobody has to take those tiles one
+ * by one. `forced` lists players to eliminate regardless (surrender).
  */
 export function settlePlayers(
   state: GameState,
   forced: readonly PlayerId[] = [],
 ): Pick<GameState, 'eliminated' | 'winner'> {
-  const owners = new Set<PlayerId>();
+  const inTheGame = new Set<PlayerId>();
   for (const tile of Object.values(state.tiles)) {
-    if (tile.owner !== null) owners.add(tile.owner);
+    if (tile.owner === null) continue;
+    if (TILE_TYPES[tile.type].generation !== null || tile.troops > 1) inTheGame.add(tile.owner);
   }
   const eliminated = state.players.filter(
-    (p) => state.eliminated.includes(p) || forced.includes(p) || !owners.has(p),
+    (p) => state.eliminated.includes(p) || forced.includes(p) || !inTheGame.has(p),
   );
   const alive = state.players.filter((p) => !eliminated.includes(p));
   const winner = state.players.length > 1 && alive.length === 1 ? (alive[0] ?? null) : null;
@@ -74,4 +77,19 @@ export function diffTiles(previous: GameState, next: GameState): Tile[] {
     }
   }
   return changed;
+}
+
+/**
+ * `settlePlayers`, applied: the state with `eliminated` and `winner` updated, and every tile an
+ * eliminated player still holds turned neutral (the lone troop on each stays as its garrison).
+ */
+export function settle(state: GameState, forced: readonly PlayerId[] = []): GameState {
+  const result = settlePlayers(state, forced);
+  const out = new Set(result.eliminated);
+  const tiles: Record<string, Tile> = {};
+  for (const [key, tile] of Object.entries(state.tiles)) {
+    tiles[key] =
+      tile.owner !== null && out.has(tile.owner) ? { ...tile, owner: null, progress: 0 } : tile;
+  }
+  return { ...state, tiles, ...result };
 }

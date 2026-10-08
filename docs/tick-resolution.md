@@ -32,10 +32,10 @@ Only cities and villages produce troops. Farmland produces nothing; owning the f
 
 | Owned farms | 0   | 1   | 2   | 3   | 4   | 5   | 6   |
 | ----------- | --- | --- | --- | --- | --- | --- | --- |
-| City        | 6   | 5   | 4   | 4   | 3   | 3   | 2   |
+| City        | 8   | 7   | 6   | 5   | 4   | 3   | 2   |
 | Village     | 12  | 11  | 10  | 9   | 8   | 7   | 6   |
 
-Gains get bigger as the ring fills: a full ring makes a city three times faster than a bare one. A farm next to two of your producers counts for both. Map generation keeps cities and villages away from each other, so every interior producer has six farmland neighbors and the same maximum; edge villages have fewer neighbors and are weaker producers.
+Gains get bigger as the ring fills: a full ring makes a city four times faster than a bare one. A farm next to two of your producers counts for both. Map generation keeps cities and villages away from each other, so every interior producer has six farmland neighbors and the same maximum; edge villages have fewer neighbors and are weaker producers.
 
 Adding a type means adding an entry to the table; the sim reads everything from it. A match can override any value through `tileOverrides` in its config, and scale all production and decay with `generationSpeedPercent`. Production stops at the cap but armies can exceed it through reinforcement.
 
@@ -55,7 +55,7 @@ Adding a type means adding an entry to the table; the sim reads everything from 
    - **Rounding favors the defense.** A winning defender's losses are rounded down; a winning attacker's losses are rounded up. So 1-troop attacks cannot dent a city (they would need 1.5 troops to kill one defender), and a narrow attacking win can leave nobody alive.
    - A battle only changes ownership if an attacker survives. If nobody is left standing (a tie, or the winner's losses use up all its troops) the tile keeps its owner and is left empty.
    - An attacker arriving on an empty tile simply captures it.
-6. **Settle.** Players who own no tiles are eliminated. When exactly one player remains, they win and the match stops resolving.
+6. **Settle.** A player is beaten once they own no cities or villages and every tile they have left is farmland with exactly one troop on it: nobody has to take those last farms one by one, it is enough to capture the producers and destroy every army that can still move. A beaten player's remaining tiles turn neutral. (A player with a producer, or any tile holding more than one troop, is still in.) When exactly one player remains, they win and the match stops resolving.
 
 Phases 3 to 5 are computed from the state after all departures, independently per destination tile, so none depends on the order armies are processed in.
 
@@ -65,7 +65,7 @@ Because each player has one order per tick, a player's own armies can never arri
 
 - **Reinforce before attack:** a tile that is about to be attacked can be reinforced in the same tick, and the reinforcements fight.
 - **Leaving a tile weakly held:** when your army moves out, only one troop stays behind, so an enemy arriving that tick meets just that troop.
-- **Swaps pass through each other:** two enemy armies moving onto each other's tiles don't fight in transit; each attacks the other's now thinly held tile.
+- **Swaps fight halfway:** two enemy armies that move onto each other's tiles meet in the middle and battle there, with no defensive bonus for either side (each troop kills one troop). The bigger army survives with the difference and carries on in the same tick to the tile it was sent to (which now holds one troop, and still gets its tile bonus); a tie wipes out both armies, and both tiles keep their one troop.
 - **Piecemeal attacks fail:** an attack must beat the defender's boosted strength in one go. Many small armies arriving one tick at a time each lose everything and kill nothing.
 - **Third wheels are wasted:** in a three-way fight the weakest attacker is removed without affecting the outcome.
 

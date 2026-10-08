@@ -1,3 +1,4 @@
+import { generationInterval, ownedFarmNeighbors, tileRules } from '@hexxar/shared';
 import type { GameView } from './game.js';
 import { playerColor } from './board.js';
 import { appStore } from './store.js';
@@ -15,36 +16,31 @@ export interface HudActions {
   surrender(): void;
   /** Show the whole board. */
   fit(): void;
-  /** Jump to the player's own land. */
-  home(): void;
   zoom(factor: number): void;
 }
 
 interface Row {
   readonly item: HTMLLIElement;
   readonly label: HTMLElement;
-  readonly tiles: HTMLElement;
   readonly troops: HTMLElement;
-  readonly share: HTMLElement;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
-/** A pointy-top hexagon in a 100x100 box, starting at the top and running clockwise. */
-const HEX_RING = 'M50 6 L88.1 28 L88.1 72 L50 94 L11.9 72 L11.9 28 Z';
+const RING_RADIUS = 43;
+/** The pie's color when nobody produces anything. */
+const NEUTRAL_SLICE = '#3d4350';
 
 /**
- * DOM overlay for a match: a hexagonal tick timer with your order queue, the player list,
+ * DOM overlay for a match: a round tick timer with a pie of troop production, the player list,
  * camera and surrender buttons, a banner for messages, and a reminder of the controls.
  * The match result is the results screen's job.
  */
 export class Hud {
   private readonly badge = el('div', 'tick-badge');
-  private readonly ring: SVGPathElement;
+  private readonly ring: SVGCircleElement;
   private readonly badgeLabel = el('span', 'tick-label');
   private readonly badgeNumber = el('span', 'tick-number');
-  private readonly queue = el('div', 'queue');
-  private readonly queueCount = el('strong', '');
-  private readonly queueText = el('span', '');
+  private readonly pie = el('div', 'pie');
   private readonly standings = el('ol', 'standings');
   private readonly rows = new Map<string, Row>();
   private readonly banner = el('div', 'banner');
@@ -61,32 +57,30 @@ export class Hud {
     root: HTMLElement,
     private readonly actions: HudActions,
   ) {
-    // The timer: a hexagon whose edge fills up over each tick.
+    // The timer: a ring that fills up over each tick. Before the first tick it counts down.
     const svg = document.createElementNS(SVG, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
-    const plate = document.createElementNS(SVG, 'path');
-    plate.setAttribute('d', 'M50 1 L92.3 25.5 L92.3 74.5 L50 99 L7.7 74.5 L7.7 25.5 Z');
-    plate.setAttribute('class', 'plate');
-    const track = document.createElementNS(SVG, 'path');
-    track.setAttribute('d', HEX_RING);
-    track.setAttribute('class', 'track');
-    this.ring = document.createElementNS(SVG, 'path');
-    this.ring.setAttribute('d', HEX_RING);
-    this.ring.setAttribute('class', 'ring');
+    const circle = (className: string, radius: number): SVGCircleElement => {
+      const node = document.createElementNS(SVG, 'circle');
+      node.setAttribute('cx', '50');
+      node.setAttribute('cy', '50');
+      node.setAttribute('r', String(radius));
+      node.setAttribute('class', className);
+      return node;
+    };
+    this.ring = circle('ring', RING_RADIUS);
+    // Start at the top and run clockwise.
+    this.ring.setAttribute('transform', 'rotate(-90 50 50)');
     this.ring.setAttribute('pathLength', '100');
-    svg.append(plate, track, this.ring);
+    svg.append(circle('plate', 49), circle('track', RING_RADIUS), this.ring);
     const face = el('div', 'tick-face');
     face.append(this.badgeLabel, this.badgeNumber);
     this.badge.append(svg, face);
 
-    // Next to the timer: how many orders you have waiting to run.
-    const queueLabel = el('span', 'queue-label');
-    queueLabel.textContent = 'Order queue';
-    const queueRow = el('div', 'queue-row');
-    queueRow.append(this.queueCount, this.queueText);
-    this.queue.append(queueLabel, queueRow);
+    // The pie of who makes how many troops sits inside the timer.
+    this.badge.insertBefore(this.pie, face);
     const status = el('div', 'status');
-    status.append(this.badge, this.queue);
+    status.append(this.badge);
 
     const players = el('div', 'players');
     const heading = el('h3', '');
@@ -106,7 +100,6 @@ export class Hud {
       cameraButton('+', 'Zoom in', () => actions.zoom(1.3)),
       cameraButton('−', 'Zoom out', () => actions.zoom(1 / 1.3)),
       cameraButton('', 'Show the whole board', () => actions.fit(), 'fit'),
-      cameraButton('', 'Go to your land', () => actions.home(), 'home'),
     );
 
     this.hint.append(
@@ -135,10 +128,8 @@ export class Hud {
       this.lastTick = game.tick;
       restartAnimation(this.badge, 'ticked');
     }
-    this.queueCount.textContent = String(game.queue.length);
-    this.queueText.textContent = game.queue.length === 1 ? 'order' : 'orders';
-    this.queue.classList.toggle('busy', game.queue.length > 0);
-    this.queue.hidden = !live || eliminated;
+    const mine = me === null ? null : playerColor(game, me);
+    if (mine !== null) this.badge.style.setProperty('--c', css(mine));
 
     this.renderStandings(game, live);
     this.surrender.hidden = game.status !== 'playing' || eliminated;
@@ -176,25 +167,38 @@ export class Hud {
     const names = new Map(
       (appStore.get().room?.players ?? []).map((p) => [p.playerId ?? '', p.name] as const),
     );
-    const totals = new Map<string, { tiles: number; troops: number }>();
-    for (const id of game.players) totals.set(id, { tiles: 0, troops: 0 });
-    let land = 0;
+    const totals = new Map<string, { tiles: number; troops: number; capacity: number }>();
+    for (const id of game.players) totals.set(id, { tiles: 0, troops: 0, capacity: 0 });
     for (const tile of Object.values(game.tiles)) {
-      land += 1;
       const total = tile.owner === null ? undefined : totals.get(tile.owner);
-      if (total) {
-        total.tiles += 1;
-        total.troops += tile.troops;
+      if (!total) continue;
+      total.tiles += 1;
+      total.troops += tile.troops;
+      // Generation capacity: troops per tick this tile makes with the farms around it.
+      if (game.config) {
+        const every = generationInterval(
+          game.config,
+          tile.type,
+          ownedFarmNeighbors(game.tiles, tile),
+        );
+        const amount = tileRules(game.config, tile.type).generation?.amount ?? 0;
+        if (every !== null) total.capacity += amount / every;
       }
     }
     const standings = game.players.map((id) => {
-      const total = totals.get(id) ?? { tiles: 0, troops: 0 };
+      const total = totals.get(id) ?? { tiles: 0, troops: 0, capacity: 0 };
       return { id, ...total, out: game.eliminated.includes(id) };
     });
-    // Whoever holds the most land leads; fallen players sink to the bottom.
+    // Whoever can produce the most troops leads; fallen players sink to the bottom.
     standings.sort(
-      (a, b) => Number(a.out) - Number(b.out) || b.tiles - a.tiles || b.troops - a.troops,
+      (a, b) =>
+        Number(a.out) - Number(b.out) ||
+        b.capacity - a.capacity ||
+        b.tiles - a.tiles ||
+        b.troops - a.troops,
     );
+
+    this.renderPie(game, standings);
 
     standings.forEach((standing, index) => {
       let row = this.rows.get(standing.id);
@@ -206,9 +210,7 @@ export class Hud {
       }
       const you = standing.id === game.playerId;
       row.label.textContent = names.get(standing.id) ?? standing.id;
-      row.tiles.textContent = String(standing.tiles);
       row.troops.textContent = String(standing.troops);
-      row.share.style.width = `${land > 0 ? (standing.tiles / land) * 100 : 0}%`;
       row.item.classList.toggle('me', you);
       row.item.classList.toggle('out', standing.out);
       row.item.dataset.rank = standing.out ? '' : String(index + 1);
@@ -216,6 +218,36 @@ export class Hud {
       if (this.standings.children[index] !== row.item)
         this.standings.insertBefore(row.item, this.standings.children[index] ?? null);
     });
+  }
+
+  /**
+   * A pie of generation capacity (troops made per tick): a slice per player in their color, the
+   * biggest first. A ring around it is lit white along your own slice. With nobody producing it
+   * is plain grey.
+   */
+  private renderPie(game: GameView, standings: readonly { id: string; capacity: number }[]): void {
+    const total = standings.reduce((sum, standing) => sum + standing.capacity, 0);
+    const stops: string[] = [];
+    let from = 0;
+    let lit: [number, number] | null = null;
+    for (const standing of [...standings].sort((a, b) => b.capacity - a.capacity)) {
+      if (standing.capacity <= 0 || total <= 0) continue;
+      const to = from + (standing.capacity / total) * 100;
+      const color = playerColor(game, standing.id);
+      stops.push(
+        `${color === null ? '#8a93a8' : css(color)} ${from.toFixed(2)}% ${to.toFixed(2)}%`,
+      );
+      if (standing.id === game.playerId) lit = [from, to];
+      from = to;
+    }
+    this.pie.style.background =
+      stops.length > 0 ? `conic-gradient(${stops.join(', ')})` : NEUTRAL_SLICE;
+    this.pie.style.setProperty(
+      '--mine',
+      lit
+        ? `conic-gradient(transparent ${lit[0].toFixed(2)}%, #ffffff ${lit[0].toFixed(2)}% ${lit[1].toFixed(2)}%, transparent ${lit[1].toFixed(2)}%)`
+        : 'none',
+    );
   }
 
   private setBanner(text: string, kind: string): void {
@@ -257,25 +289,28 @@ export class Hud {
     const live = game?.status === 'playing' && game.config && game.nextTickAt !== null;
     if (!game || !live) {
       this.setRing(0);
-      this.badgeLabel.textContent = 'Tick';
-      this.badgeNumber.textContent = String(game?.tick ?? 0);
-      this.badge.classList.remove('prep');
+      this.showCountdown(null);
       return;
     }
     const remaining = Math.max(0, game.nextTickAt! - (Date.now() + game.clockOffset));
     if (this.preparing(game)) {
       this.prepTotal = Math.max(this.prepTotal, remaining);
       this.setRing(this.prepTotal > 0 ? remaining / this.prepTotal : 0);
-      this.badge.classList.add('prep');
-      this.badgeLabel.textContent = 'Starts in';
-      this.badgeNumber.textContent = String(Math.ceil(remaining / 1000));
+      this.showCountdown(Math.ceil(remaining / 1000));
       return;
     }
     this.prepTotal = 0;
     this.setRing(1 - Math.min(1, remaining / game.config!.tickMs));
-    this.badge.classList.remove('prep');
-    this.badgeLabel.textContent = 'Tick';
-    this.badgeNumber.textContent = String(game.tick);
+    this.showCountdown(null);
+  }
+
+  /** Words in the middle of the timer: the seconds until the match starts, or nothing once it has. */
+  private showCountdown(seconds: number | null): void {
+    this.badge.classList.toggle('prep', seconds !== null);
+    // The countdown takes the middle of the dial; the pie comes back once play starts.
+    this.pie.hidden = seconds !== null;
+    this.badgeLabel.textContent = seconds === null ? '' : 'Starts in';
+    this.badgeNumber.textContent = seconds === null ? '' : String(seconds);
   }
 
   private setRing(progress: number): void {
@@ -289,14 +324,10 @@ function createRow(): Row {
   const name = el('span', 'name');
   const label = el('span', '');
   name.append(label);
-  const tiles = el('span', 'stat tiles');
-  tiles.title = 'Tiles held';
   const troops = el('span', 'stat troops');
   troops.title = 'Troops';
-  const share = el('span', 'share');
-  share.append(el('i', ''));
-  item.append(el('span', 'swatch'), name, tiles, troops, share);
-  return { item, label, tiles, troops, share: share.firstElementChild as HTMLElement };
+  item.append(el('span', 'swatch'), name, troops);
+  return { item, label, troops };
 }
 
 function cameraButton(

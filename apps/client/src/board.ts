@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import {
   generationInterval,
+  type ExecutedMove,
   hexKey,
   ownedFarmNeighbors,
   isGenerationPaused,
@@ -23,8 +24,36 @@ const OWNED_BASE = 0x14161c;
 /** Unclaimed land: green fields, packed earth around a village, grey flagstones for a city. */
 const NEUTRAL_FILL = { farmland: 0x2a3a2c, village: 0x3a382f, city: 0x3a3e46 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
-/** The foam line where land meets water. */
-const SHORE = 0x5f8ea3;
+/** A thin grey line around the board, a few pixels out from the land (also around lakes). */
+const COAST_COLOR = 0x3c4656;
+const COAST_GAP = 3.5;
+const COAST_WIDTH = 1.25;
+/** Growing a hexagon's corners by this much moves its edges out by 1 (the edge is 0.866 of the corner distance). */
+const EDGE_TO_CORNER = 1 / Math.cos(Math.PI / 6);
+/** How long an army takes to walk from one tile to the next (less on very fast ticks). */
+const MOVE_MS = 320;
+/** How far through its walk an army is when the tile it is walking onto changes. */
+const LAND_AT = 0.8;
+/** Armies that meet: how far through the walk they touch, and when the fight is over. */
+const CLASH_AT = 0.36;
+const CLASH_END = 0.5;
+/** 0 is constant speed, 1 a full ease in and out. */
+const EASE = 1.3;
+const TOKEN_RADIUS = 12;
+/** The dark edge that keeps arrows readable on any tile. */
+const ARROW_OUTLINE = 0x0a0e14;
+/** A troop count pops to this size when it goes up, then settles back over `POP_MS`. */
+const POP_SCALE = 1.18;
+const POP_MS = 300;
+/** How far through the pop the number is at its biggest. */
+const POP_PEAK = 0.35;
+/** The generation ring: a new segment pops for this long, and a completed ring pops then fades. */
+const RING_POP_MS = 300;
+const RING_FINISH_MS = 750;
+/** How far through the finish the last segment is at its biggest, and where the fade begins. */
+const RING_FINISH_POP_END = 0.4;
+/** Thickness of the outline around a group of tiles of one owner. */
+const OUTLINE_WIDTH = 1.3;
 /** How much of the owner color is mixed into an owned tile's fill. */
 const OWNED_FILL = 0.4;
 const MIN_ZOOM = 0.05;
@@ -44,8 +73,13 @@ const EDGE_NEIGHBORS: readonly (readonly [number, number])[] = [
   [1, -1],
 ];
 const RING_RADIUS = 20.5;
+const SEGMENT_WIDTH = 2.5;
+/** How much longer a popping segment gets, as a share of the gap between segments. */
+const SEGMENT_GROWTH = 0.75;
 /** Inset of the inner wall border from the hex edge: far enough out to clear the progress ring. */
 const WALL_INSET = 4.5;
+/** The wedges that fill the corners of a city's inner border. */
+const CORNER_WEDGE_RADIUS = 5;
 const MAX_RING_SEGMENTS = 36;
 /** Screens at least this wide leave room for the HUD's left column when fitting the board. */
 const WIDE_SCREEN = 900;
@@ -79,10 +113,53 @@ function mix(a: number, b: number, amount: number): number {
   return (channel(16) << 16) | (channel(8) << 8) | channel(0);
 }
 
+/** An army on its way: a token travelling from one tile center to another. */
+interface Flight {
+  readonly token: Container;
+  readonly label: Text;
+  readonly from: Point;
+  readonly to: Point;
+  readonly color: number;
+  readonly started: number;
+  readonly duration: number;
+  /** The key of the tile it is heading for. */
+  readonly target: string;
+  readonly game: GameView;
+  /** How far through its walk the target tile is redrawn (just before the army gets there). */
+  readonly landAt: number;
+  /** Set when it meets an army coming the other way: what is left of this one afterwards. */
+  readonly clash?: { readonly survivors: number };
+  /** Only one of the two armies in a clash draws the burst. */
+  readonly drawsBurst: boolean;
+  /** The target tile has been redrawn. */
+  landed: boolean;
+}
+
 interface TileView {
   readonly shape: Graphics;
+  /** The generation ring, apart from the tile so it can animate by itself. */
+  readonly ring: Graphics;
   readonly label: Text;
+  /** Who the tile was drawn as belonging to (a tile an army is walking onto lags behind the game). */
+  owner: string | null;
+  /** What the ring last showed, to tell what changed. */
+  ringFilled: number;
+  ringSegments: number;
 }
+
+/** What a tile's generation ring should show. */
+interface RingSpec {
+  readonly center: Point;
+  readonly color: number;
+  readonly segments: number;
+  readonly filled: number;
+  readonly paused: boolean;
+}
+
+type RingAnim =
+  | { kind: 'pop'; start: number; from: number; to: number; spec: RingSpec }
+  /** A full ring: the last segment pops, then every segment fades away together. */
+  | { kind: 'finish'; start: number; spec: RingSpec; final: RingSpec | null };
 
 /** What the board reports about the player's left-button drags. */
 export interface OrderDragHandlers {
@@ -103,11 +180,21 @@ export interface OrderDragHandlers {
  */
 export class Board {
   private readonly world = new Container();
+  private readonly coastLayer = new Graphics();
   private readonly tileLayer = new Container();
+  private readonly ringAnims = new Map<TileView, RingAnim>();
+  /** Troop labels that are popping, and when each started. */
+  private readonly pops = new Map<Text, number>();
   private readonly queueLayer = new Graphics();
   private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
+  private readonly moveLayer = new Container();
+  private readonly trails = new Graphics();
+  private readonly bursts = new Graphics();
   private readonly introLayer = new Container();
+  private readonly flights = new Set<Flight>();
+  /** Tiles whose redraw waits for an army to arrive. */
+  private readonly held = new Set<string>();
   private stopIntroFrame: (() => void) | null = null;
   private readonly views = new Map<string, TileView>();
   /** Pixel density the troop labels are currently rendered at. */
@@ -118,13 +205,21 @@ export class Board {
     private readonly handlers: OrderDragHandlers,
   ) {
     this.world.addChild(
+      this.coastLayer,
       this.tileLayer,
       this.queueLayer,
       this.pendingLayer,
       this.selectionLayer,
+      this.moveLayer,
       this.introLayer,
     );
+    this.moveLayer.addChild(this.trails, this.bursts);
     app.stage.addChild(this.world);
+    app.ticker.add(() => {
+      this.animatePops();
+      this.animateRings();
+      this.animateFlights();
+    });
     this.attachInput();
   }
 
@@ -147,10 +242,51 @@ export class Board {
    */
   setAll(game: GameView): void {
     const fresh = this.views.size === 0;
+    this.pops.clear();
+    this.ringAnims.clear();
+    this.clearFlights();
     this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.views.clear();
+    this.drawCoast(game);
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
     if (fresh && this.views.size > 0) this.fitToBoard();
+  }
+
+  /**
+   * The grey line around the land. Every tile is drawn a little bigger in the line's color, then
+   * a bit smaller in the water's color: what is left of the first is a thin ring, offset out from
+   * the coast, whose corners and joints are all clean.
+   */
+  private drawCoast(game: GameView): void {
+    const g = this.coastLayer;
+    g.clear();
+    const centers = Object.values(game.tiles).map((tile) => hexToPixel(tile));
+    for (const center of centers) {
+      g.poly(hexCorners(center, -(COAST_GAP + COAST_WIDTH) * EDGE_TO_CORNER)).fill(COAST_COLOR);
+    }
+    for (const center of centers) {
+      g.poly(hexCorners(center, -COAST_GAP * EDGE_TO_CORNER)).fill(WATER);
+    }
+  }
+
+  /** Pop a troop label bigger for a moment, to catch the eye when its number goes up. */
+  private pop(label: Text): void {
+    if (prefersReducedMotion()) return;
+    this.pops.set(label, performance.now());
+  }
+
+  private animatePops(): void {
+    if (this.pops.size === 0) return;
+    const now = performance.now();
+    for (const [label, started] of this.pops) {
+      const t = (now - started) / POP_MS;
+      if (t >= 1) {
+        label.scale.set(1);
+        this.pops.delete(label);
+      } else {
+        label.scale.set(1 + (POP_SCALE - 1) * popCurve(t, POP_PEAK));
+      }
+    }
   }
 
   updateTiles(tiles: readonly Tile[], game: GameView): void {
@@ -162,13 +298,165 @@ export class Board {
     }
     for (const key of keys) {
       const tile = game.tiles[key];
-      if (tile) this.updateTile(tile, game);
+      // A tile an army is walking onto is drawn once it arrives.
+      if (tile && !this.held.has(key)) this.updateTile(tile, game);
     }
+  }
+
+  /**
+   * Show the armies that set off this tick walking to where they are going. The tiles they walk
+   * onto keep their old look until the army arrives, then change (and pop if they grew).
+   */
+  playMoves(moves: readonly ExecutedMove[], game: GameView): void {
+    if (!game.config || prefersReducedMotion()) return;
+    const duration = Math.min(MOVE_MS, game.config.tickMs * 0.6);
+    // A clash needs more time: the armies walk to the middle, fight, and the winner walks on.
+    const clashDuration = Math.min(MOVE_MS * 1.7, game.config.tickMs * 0.9);
+    for (const move of moves) {
+      if (move.troops <= 0) continue;
+      const color = playerColor(game, move.player) ?? 0xffffff;
+      const token = new Container();
+      // A solid disc in the player's color on a soft dark shadow.
+      const disc = new Graphics()
+        .circle(0, 3.5, TOKEN_RADIUS + 2)
+        .fill({ color: 0x000000, alpha: 0.18 })
+        .circle(0, 3, TOKEN_RADIUS + 0.5)
+        .fill({ color: 0x000000, alpha: 0.35 })
+        .circle(0, 0, TOKEN_RADIUS)
+        .fill(color);
+      const label = new Text({
+        text: String(move.troops),
+        style: {
+          fontSize: 13,
+          fontWeight: '800',
+          fill: 0xffffff,
+          stroke: { color: 0x0e1016, width: 3.5, join: 'round' },
+          fontFamily: 'system-ui, sans-serif',
+        },
+        resolution: this.textResolution * 2,
+      });
+      label.anchor.set(0.5);
+      token.addChild(disc, label);
+      this.moveLayer.addChild(token);
+      const target = hexKey(move.to);
+      this.held.add(target);
+      const winner = move.clash !== undefined && move.clash.survivors > 0;
+      this.flights.add({
+        token,
+        label,
+        from: hexToPixel(move.from),
+        to: hexToPixel(move.to),
+        color,
+        started: performance.now(),
+        duration: move.clash ? clashDuration : duration,
+        target,
+        game,
+        // The loser's tile (the winner's start) is settled once the fight is over.
+        landAt: move.clash ? (winner ? 0.85 : CLASH_END) : LAND_AT,
+        ...(move.clash ? { clash: move.clash } : {}),
+        drawsBurst: move.clash !== undefined && hexKey(move.from) < target,
+        landed: false,
+      });
+    }
+    this.animateFlights();
+  }
+
+  private animateFlights(): void {
+    if (this.flights.size === 0) return;
+    const now = performance.now();
+    // On a zoomed-out board the world is scaled down; keep the armies readable.
+    const k = Math.max(1, 0.55 / this.world.scale.x);
+    this.trails.clear();
+    this.bursts.clear();
+    const finished: Flight[] = [];
+    for (const flight of this.flights) {
+      const t = Math.min(1, (now - flight.started) / flight.duration);
+      // The tile changes a moment before the army gets there, so there is no wait at the end.
+      if (!flight.landed && t >= flight.landAt) {
+        flight.landed = true;
+        this.held.delete(flight.target);
+        const tile = flight.game.tiles[flight.target];
+        if (tile && !this.held.has(flight.target)) this.updateTiles([tile], flight.game);
+      }
+      const { clash } = flight;
+      const beaten = clash !== undefined && clash.survivors === 0;
+      if (t >= 1 || (beaten && t >= CLASH_END)) {
+        finished.push(flight);
+        continue;
+      }
+      const dx = flight.to.x - flight.from.x;
+      const dy = flight.to.y - flight.from.y;
+      let e: number;
+      let scale = k;
+      if (!clash) {
+        // A gentle ease: a little slower at both ends, never a stop.
+        const smooth = t * t * (3 - 2 * t);
+        e = t + (smooth - t) * EASE;
+      } else if (t < CLASH_AT) {
+        // Both armies head for the middle of the two tiles, picking up speed.
+        e = 0.5 * (t / CLASH_AT) ** 1.3;
+      } else {
+        e = t < CLASH_END ? 0.5 : 0.5 + (0.5 * (t - CLASH_END)) / (1 - CLASH_END);
+        const fight = Math.min(1, (t - CLASH_AT) / (CLASH_END - CLASH_AT));
+        if (beaten) {
+          // The loser is knocked out: it swells and fades away on the spot.
+          scale = k * (1 + 0.6 * fight);
+          flight.token.alpha = 1 - fight;
+        } else {
+          // The winner shows what is left of it, and carries on a little bigger for a moment.
+          flight.label.text = String(clash!.survivors);
+          scale = k * (1 + 0.3 * popCurve(Math.min(1, (t - CLASH_AT) / 0.25), 0.4));
+        }
+      }
+      const x = flight.from.x + dx * e;
+      const y = flight.from.y + dy * e;
+      flight.token.position.set(x, y);
+      flight.token.scale.set(scale);
+      this.trails
+        .moveTo(flight.from.x, flight.from.y)
+        .lineTo(x, y)
+        .stroke({ width: 5 * k, color: flight.color, alpha: 0.3 * (1 - t), cap: 'round' });
+      if (flight.drawsBurst) this.drawBurst(flight, t, k);
+    }
+    for (const flight of finished) {
+      this.flights.delete(flight);
+      flight.token.destroy({ children: true });
+    }
+  }
+
+  /** The flash where two armies meet: a ring spreading out, and sparks flying off. */
+  private drawBurst(flight: Flight, t: number, k: number): void {
+    const p = (t - (CLASH_AT - 0.04)) / 0.4;
+    if (p <= 0 || p >= 1) return;
+    const x = (flight.from.x + flight.to.x) / 2;
+    const y = (flight.from.y + flight.to.y) / 2;
+    const fade = 1 - p;
+    this.bursts
+      .circle(x, y, (6 + 26 * p) * k)
+      .stroke({ width: 3 * k * fade + 0.5, color: 0xffe2a0, alpha: 0.85 * fade });
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI / 4) * i + 0.4;
+      const inner = (8 + 14 * p) * k;
+      const outer = inner + 7 * k * fade;
+      this.bursts
+        .moveTo(x + Math.cos(angle) * inner, y + Math.sin(angle) * inner)
+        .lineTo(x + Math.cos(angle) * outer, y + Math.sin(angle) * outer)
+        .stroke({ width: 2 * k, color: 0xffffff, alpha: 0.9 * fade, cap: 'round' });
+    }
+  }
+
+  private clearFlights(): void {
+    for (const flight of this.flights) flight.token.destroy({ children: true });
+    this.flights.clear();
+    this.held.clear();
+    this.trails.clear();
+    this.bursts.clear();
   }
 
   private updateTile(tile: Tile, game: GameView): void {
     const key = hexKey(tile);
     let view = this.views.get(key);
+    const existed = view !== undefined;
     if (!view) {
       const center = hexToPixel(tile);
       const label = new Text({
@@ -185,8 +473,15 @@ export class Board {
       });
       label.anchor.set(0.5);
       label.position.set(center.x, center.y + 1);
-      view = { shape: new Graphics(), label };
-      this.tileLayer.addChild(view.shape, view.label);
+      view = {
+        shape: new Graphics(),
+        ring: new Graphics(),
+        label,
+        owner: tile.owner,
+        ringFilled: 0,
+        ringSegments: 0,
+      };
+      this.tileLayer.addChild(view.shape, view.ring, view.label);
       this.views.set(key, view);
     }
 
@@ -195,34 +490,48 @@ export class Board {
     const fill = owner === null ? NEUTRAL_FILL[tile.type] : mix(OWNED_BASE, owner, OWNED_FILL);
     const shape = view.shape;
     shape.clear();
+    view.owner = tile.owner;
     // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.
     const corners = hexCorners(center, owner === null ? TILE_INSET + 1 : TILE_INSET);
     shape.poly(corners).fill(fill);
-    // Outline only the edges on the border of a group of same-owner tiles. The line follows the
-    // true hex boundary rather than the inset fill, so neighboring tiles' edges meet exactly
-    // at the shared corners and the group border has no breaks.
+    // Outline only the edges on the border of a group of same-owner tiles. The line is drawn just
+    // inside the true hex boundary (the whole stroke on this tile's side), so where two groups
+    // touch, each keeps its own line instead of one covering the other.
     if (owner !== null) {
       const boundary = hexCorners(center, 0);
-      EDGE_NEIGHBORS.forEach(([dq, dr], i) => {
-        if (game.tiles[hexKey({ q: tile.q + dq, r: tile.r + dr })]?.owner === tile.owner) return;
+      const isBorder = (edge: number): boolean => {
+        const [dq, dr] = EDGE_NEIGHBORS[edge]!;
+        const key = hexKey({ q: tile.q + dq, r: tile.r + dr });
+        // A neighbor an army is still walking onto is shown as it was, so the border stays put
+        // until that tile changes hands on screen.
+        const neighbor = this.held.has(key) ? this.views.get(key) : game.tiles[key];
+        return neighbor?.owner !== tile.owner;
+      };
+      const inward = OUTLINE_WIDTH / 2;
+      // Where a moved-in line ends so it meets the next one: a 120 degree corner is cut back by
+      // this much, and where the border carries on along a neighbor's edge it reaches this far past.
+      const miter = inward * Math.tan(Math.PI / 6);
+      for (let i = 0; i < 6; i++) {
+        if (!isBorder(i)) continue;
         const j = (i + 1) % 6;
+        // Edge i faces 60 * i degrees; move inward, against that direction.
+        const nx = Math.cos((Math.PI / 3) * i);
+        const ny = Math.sin((Math.PI / 3) * i);
+        const ax = boundary[2 * i]! - nx * inward;
+        const ay = boundary[2 * i + 1]! - ny * inward;
+        const bx = boundary[2 * j]! - nx * inward;
+        const by = boundary[2 * j + 1]! - ny * inward;
+        const length = Math.hypot(bx - ax, by - ay);
+        const ux = (bx - ax) / length;
+        const uy = (by - ay) / length;
+        const startCut = isBorder((i + 5) % 6) ? miter : -miter;
+        const endCut = isBorder(j) ? -miter : miter;
         shape
-          .moveTo(boundary[2 * i]!, boundary[2 * i + 1]!)
-          .lineTo(boundary[2 * j]!, boundary[2 * j + 1]!)
-          .stroke({ width: 1, color: owner, cap: 'round' });
-      });
+          .moveTo(ax + ux * startCut, ay + uy * startCut)
+          .lineTo(bx + ux * endCut, by + uy * endCut)
+          .stroke({ width: OUTLINE_WIDTH, color: owner, cap: 'round' });
+      }
     }
-
-    // Where the board meets water (its coast, or a lake), a pale foam line separates land from sea.
-    const boundary = hexCorners(center, 0);
-    EDGE_NEIGHBORS.forEach(([dq, dr], i) => {
-      if (game.tiles[hexKey({ q: tile.q + dq, r: tile.r + dr })]) return;
-      const j = (i + 1) % 6;
-      shape
-        .moveTo(boundary[2 * i]!, boundary[2 * i + 1]!)
-        .lineTo(boundary[2 * j]!, boundary[2 * j + 1]!)
-        .stroke({ width: 2.5, color: SHORE, alpha: 0.75, cap: 'round' });
-    });
 
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
@@ -232,53 +541,115 @@ export class Board {
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
     } else if (tile.type === 'village') {
-      shape.poly(hexCorners(center, WALL_INSET)).stroke({ width: 1, color: art.villageBorder });
+      shape.poly(hexCorners(center, WALL_INSET)).stroke({ width: 1.5, color: art.border });
       drawVillage(shape, center, art, fill);
     } else {
       const inner = hexCorners(center, WALL_INSET);
       shape.poly(inner).stroke({ width: 1.5, color: art.border });
+      // Each interior corner is filled with a wedge of a circle: the whole 120 degree angle.
       for (let i = 0; i < inner.length; i += 2) {
-        shape.circle(inner[i]!, inner[i + 1]!, 1.6).fill(art.border);
+        const x = inner[i]!;
+        const y = inner[i + 1]!;
+        const toCenter = Math.atan2(center.y - y, center.x - x);
+        shape
+          .moveTo(x, y)
+          .arc(x, y, CORNER_WEDGE_RADIUS, toCenter - Math.PI / 3, toCenter + Math.PI / 3)
+          .closePath()
+          .fill(art.border);
       }
       drawCastle(shape, center, art, fill);
     }
-    this.drawProgressRing(shape, tile, center, owner, game);
+    const previousTroops = existed ? Number(view.label.text) : tile.troops;
+    this.updateRing(view, tile, center, owner, game, existed, previousTroops);
+    // A new troop (the number going up on someone's tile) gets a little pop.
     view.label.text = String(tile.troops);
+    if (tile.owner !== null && tile.troops > previousTroops) this.pop(view.label);
   }
 
   /**
-   * A ring of segments around an owned tile, one per tick of its generation cycle.
-   * Filled segments are progress; when the tile is at its troop cap the progress is
-   * kept but shown dimmed, since it is paused.
+   * The ring of segments around an owned tile, one per tick of its generation cycle. Filled
+   * segments are progress; at the troop cap the progress is kept but shown dimmed, since it is
+   * paused. A newly filled segment pops, and when the last one fills (and a troop is made) the
+   * ring pops once more and then every segment fades away together.
    */
-  private drawProgressRing(
-    shape: Graphics,
+  private updateRing(
+    view: TileView,
     tile: Tile,
     center: Point,
     owner: number | null,
     game: GameView,
+    existed: boolean,
+    previousTroops: number,
   ): void {
-    // Only the owner sees a tile's generation timing.
-    if (owner === null || tile.owner !== game.playerId || !game.config) return;
-    // Only cities and villages produce troops, and the cycle shortens with each owned farm around them.
-    const total = generationInterval(game.config, tile.type, ownedFarmNeighbors(game.tiles, tile));
-    if (total === null || total < 2) return;
-    const paused = isGenerationPaused(game.config, tile);
-    // Very long cycles collapse into a fixed number of chunks.
-    const segments = Math.min(total, MAX_RING_SEGMENTS);
-    const filled = Math.floor((Math.min(tile.progress, total) * segments) / total);
-    const step = (Math.PI * 2) / segments;
-    const gap = Math.min(0.12, step * 0.3);
-    for (let i = 0; i < segments; i++) {
-      const start = -Math.PI / 2 + i * step + gap / 2;
-      const end = start + step - gap;
-      const on = i < filled;
-      const color = on && paused ? 0xffffff : owner;
-      const alpha = on ? (paused ? 0.4 : 1) : 0.22;
-      shape
-        .moveTo(center.x + RING_RADIUS * Math.cos(start), center.y + RING_RADIUS * Math.sin(start))
-        .arc(center.x, center.y, RING_RADIUS, start, end)
-        .stroke({ width: 2.5, color, alpha });
+    const spec = ringSpec(tile, center, owner, game);
+    if (!spec) {
+      this.ringAnims.delete(view);
+      view.ring.clear();
+      view.ringFilled = 0;
+      view.ringSegments = 0;
+      return;
+    }
+    const previousFilled = view.ringFilled;
+    const previousSegments = view.ringSegments;
+    view.ringFilled = spec.filled;
+    view.ringSegments = spec.segments;
+
+    const running = this.ringAnims.get(view);
+    if (running?.kind === 'finish') {
+      // Let the finish play out; what comes after it is the newest state.
+      running.final = spec;
+      return;
+    }
+    const animate = existed && previousSegments > 0 && !prefersReducedMotion();
+    const now = performance.now();
+    if (animate && spec.filled < previousFilled && tile.troops > previousTroops) {
+      const full: RingSpec = { ...spec, segments: previousSegments, filled: previousSegments };
+      this.ringAnims.set(view, { kind: 'finish', start: now, spec: full, final: spec });
+    } else if (animate && spec.segments === previousSegments && spec.filled > previousFilled) {
+      this.ringAnims.set(view, {
+        kind: 'pop',
+        start: now,
+        from: previousFilled,
+        to: spec.filled,
+        spec,
+      });
+    } else {
+      this.ringAnims.delete(view);
+      drawRing(view.ring, spec);
+      return;
+    }
+    this.animateRings();
+  }
+
+  private animateRings(): void {
+    if (this.ringAnims.size === 0) return;
+    const now = performance.now();
+    for (const [view, anim] of this.ringAnims) {
+      const t = (now - anim.start) / (anim.kind === 'pop' ? RING_POP_MS : RING_FINISH_MS);
+      if (t >= 1) {
+        this.ringAnims.delete(view);
+        drawRing(view.ring, anim.kind === 'finish' ? (anim.final ?? anim.spec) : anim.spec);
+        continue;
+      }
+      if (anim.kind === 'pop') {
+        const bump = popCurve(t, POP_PEAK);
+        drawRing(view.ring, anim.spec, (i) =>
+          i >= anim.from && i < anim.to ? { thick: 1 + 0.5 * bump, longer: bump } : undefined,
+        );
+      } else if (t < RING_FINISH_POP_END) {
+        // Every segment is in, and the last one pops like any other.
+        const bump = popCurve(t / RING_FINISH_POP_END, POP_PEAK);
+        const last = anim.spec.segments - 1;
+        drawRing(view.ring, anim.spec, (i) =>
+          i === last ? { thick: 1 + 0.5 * bump, longer: bump } : undefined,
+        );
+      } else {
+        // Straight on from the pop, with no easing in so there is no pause: they all go
+        // together, each shrinking into itself while it fades.
+        const u = (t - RING_FINISH_POP_END) / (1 - RING_FINISH_POP_END);
+        const e = 1 - (1 - u) ** 2;
+        drawRing(view.ring, anim.spec, () => ({ shrink: 1 - 0.6 * e, alpha: 1 - e }), true);
+      }
     }
   }
 
@@ -286,18 +657,25 @@ export class Board {
   drawQueue(queue: readonly Order[], color: number): void {
     const g = this.queueLayer;
     g.clear();
-    queue.slice(0, 300).forEach((order, i) => {
-      drawArrow(g, order.from, order.to, color, i === 0 ? 1 : 0.55);
-    });
+    // The order that runs next stands out; the rest are a little darker and thinner.
+    const next: ArrowStyle = { color: mix(color, 0xffffff, 0.2), width: 5.5 };
+    const later: ArrowStyle = { color: mix(color, 0x141a24, 0.3), width: 4 };
+    drawArrows(
+      g,
+      queue
+        .slice(0, 300)
+        .map((order, i) => ({ from: order.from, to: order.to, style: i === 0 ? next : later })),
+    );
   }
 
   /** Draw the path being dragged out, before it is committed. */
   drawPending(path: readonly Hex[]): void {
     const g = this.pendingLayer;
     g.clear();
-    for (let i = 1; i < path.length; i++) {
-      drawArrow(g, path[i - 1]!, path[i]!, 0xffffff, 0.9);
-    }
+    const style: ArrowStyle = { color: 0xffffff, width: 4.5 };
+    const arrows: Arrow[] = [];
+    for (let i = 1; i < path.length; i++) arrows.push({ from: path[i - 1]!, to: path[i]!, style });
+    drawArrows(g, arrows);
     const end = path.at(-1);
     if (end && path.length > 1) {
       g.poly(hexCorners(hexToPixel(end), 3)).stroke({ width: 2, color: 0xffffff, alpha: 0.6 });
@@ -406,16 +784,6 @@ export class Board {
     this.world.position.set(middle.x - before.x * next, middle.y - before.y * next);
   }
 
-  /** Pan so a hex is in the middle of the screen, zooming in if the board is shown very small. */
-  focusOn(hex: Hex): void {
-    const { width, height } = this.app.screen;
-    const center = hexToPixel(hex);
-    const scale = Math.max(this.world.scale.x, 0.6);
-    this.world.scale.set(scale);
-    this.syncTextResolution();
-    this.world.position.set(width / 2 - center.x * scale, height / 2 - center.y * scale);
-  }
-
   /** Zoom and center so the whole board is visible. */
   fitToBoard(): void {
     const bounds = this.tileLayer.getLocalBounds();
@@ -506,27 +874,151 @@ export class Board {
   }
 }
 
-/** An arrow from the middle of one hex to just short of the center of the next. */
-function drawArrow(g: Graphics, from: Hex, to: Hex, color: number, alpha: number): void {
-  const a = hexToPixel(from);
-  const b = hexToPixel(to);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const length = Math.hypot(dx, dy) || 1;
-  const ux = dx / length;
-  const uy = dy / length;
-  const start = { x: a.x + ux * HEX_SIZE * 0.2, y: a.y + uy * HEX_SIZE * 0.2 };
-  const end = { x: b.x - ux * HEX_SIZE * 0.25, y: b.y - uy * HEX_SIZE * 0.25 };
-  g.moveTo(start.x, start.y).lineTo(end.x, end.y).stroke({ width: 3, color, alpha });
-  const head = 8;
-  g.poly([
-    end.x + ux * head,
-    end.y + uy * head,
-    end.x - ux * head * 0.4 - uy * head * 0.6,
-    end.y - uy * head * 0.4 + ux * head * 0.6,
-    end.x - ux * head * 0.4 + uy * head * 0.6,
-    end.y - uy * head * 0.4 - ux * head * 0.6,
-  ]).fill({ color, alpha });
+interface ArrowStyle {
+  readonly color: number;
+  /** Thickness of the shaft in pixels. */
+  readonly width: number;
+}
+
+interface Arrow {
+  readonly from: Hex;
+  readonly to: Hex;
+  readonly style: ArrowStyle;
+}
+
+/**
+ * Arrows from the middle of one hex to just short of the next, with rounded heads and a dark
+ * edge so they read on any tile. All the edges go down first, then all the colored bodies, so
+ * joined arrows (a path) merge into one clean shape.
+ */
+const smoothstep = (t: number): number => t * t * (3 - 2 * t);
+
+const prefersReducedMotion = (): boolean =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** 0 to 1 and back: up to the peak at `peak` (0 to 1) of the way through, then down again, both eased. */
+const popCurve = (t: number, peak: number): number =>
+  t < peak ? 1 - (1 - t / peak) ** 2 : 1 - smoothstep((t - peak) / (1 - peak));
+
+/** What the ring around a tile should show, or null when this tile has none (or it is not yours to see). */
+function ringSpec(
+  tile: Tile,
+  center: Point,
+  owner: number | null,
+  game: GameView,
+): RingSpec | null {
+  // Only the owner sees a tile's generation timing.
+  if (owner === null || tile.owner !== game.playerId || !game.config) return null;
+  // Only cities and villages produce troops, and the cycle shortens with each owned farm around them.
+  const total = generationInterval(game.config, tile.type, ownedFarmNeighbors(game.tiles, tile));
+  if (total === null || total < 2) return null;
+  // Very long cycles collapse into a fixed number of chunks.
+  const segments = Math.min(total, MAX_RING_SEGMENTS);
+  return {
+    center,
+    color: owner,
+    segments,
+    filled: Math.floor((Math.min(tile.progress, total) * segments) / total),
+    paused: isGenerationPaused(game.config, tile),
+  };
+}
+
+/** How a segment differs from the usual while it animates. */
+interface SegmentLook {
+  /** Thickness multiplier. */
+  thick?: number;
+  /** 0 to 1: how much of `SEGMENT_GROWTH` (a share of the gap between segments) it gets longer by. */
+  longer?: number;
+  /** Multiplies the whole segment, length and thickness, about its own middle. */
+  shrink?: number;
+  alpha?: number;
+}
+
+/**
+ * Draw a ring from scratch. `look` can change single segments (to pop or fade them); `track` puts
+ * the faint empty ring underneath, for when the segments themselves leave.
+ */
+function drawRing(
+  g: Graphics,
+  spec: RingSpec,
+  look?: (index: number) => SegmentLook | undefined,
+  track = false,
+): void {
+  g.clear();
+  const step = (Math.PI * 2) / spec.segments;
+  const gap = Math.min(0.12, step * 0.3);
+  // Both ends are round, so the line is shortened by its own radius at each end: the rounded tips
+  // then land where flat ends would have been. A segment grows about its own middle, by a fixed
+  // length (a share of the gap between segments) however long the segment is.
+  const growth = SEGMENT_GROWTH * gap;
+  const arc = (i: number, look: SegmentLook, color: number, alpha: number): void => {
+    const shrink = look.shrink ?? 1;
+    const width = SEGMENT_WIDTH * (look.thick ?? 1) * shrink;
+    const middle = -Math.PI / 2 + (i + 0.5) * step;
+    const length = ((step - gap) / 2) * shrink + (growth / 2) * (look.longer ?? 0);
+    const half = Math.max(0.001, length - width / 2 / RING_RADIUS);
+    // Walked as a polyline: a lone arc segment can leave its start cap flat.
+    const points = Math.max(2, Math.ceil((half * 2) / 0.08));
+    for (let p = 0; p <= points; p++) {
+      const angle = middle - half + (half * 2 * p) / points;
+      const x = spec.center.x + RING_RADIUS * Math.cos(angle);
+      const y = spec.center.y + RING_RADIUS * Math.sin(angle);
+      if (p === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    g.stroke({ width, color, alpha, cap: 'round', join: 'round' });
+  };
+  if (track) for (let i = 0; i < spec.segments; i++) arc(i, {}, spec.color, 0.22);
+  for (let i = 0; i < spec.segments; i++) {
+    const on = i < spec.filled;
+    const color = on && spec.paused ? 0xffffff : spec.color;
+    const alpha = on ? (spec.paused ? 0.4 : 1) : 0.22;
+    const mod = look?.(i);
+    arc(i, mod ?? {}, color, mod?.alpha ?? alpha);
+  }
+}
+
+function drawArrows(g: Graphics, arrows: readonly Arrow[]): void {
+  const shapes = arrows.map(({ from, to, style }) => {
+    const a = hexToPixel(from);
+    const b = hexToPixel(to);
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const ux = (b.x - a.x) / length;
+    const uy = (b.y - a.y) / length;
+    const start = { x: a.x + ux * HEX_SIZE * 0.44, y: a.y + uy * HEX_SIZE * 0.44 };
+    const tip = { x: b.x - ux * HEX_SIZE * 0.4, y: b.y - uy * HEX_SIZE * 0.4 };
+    const headLength = 7 + style.width * 0.5;
+    const headWidth = 4 + style.width * 0.55;
+    const base = { x: tip.x - ux * headLength, y: tip.y - uy * headLength };
+    const head = [
+      tip.x,
+      tip.y,
+      base.x - uy * headWidth,
+      base.y + ux * headWidth,
+      base.x + uy * headWidth,
+      base.y - ux * headWidth,
+    ];
+    // The shaft runs a little into the head so no gap shows where they meet.
+    const shaftEnd = { x: base.x + ux * 2, y: base.y + uy * 2 };
+    return { start, shaftEnd, head, style };
+  });
+  for (const { start, shaftEnd, head, style } of shapes) {
+    const edge = { color: ARROW_OUTLINE, alpha: 0.55 };
+    g.moveTo(start.x, start.y)
+      .lineTo(shaftEnd.x, shaftEnd.y)
+      // The head's colored stroke (2px) sits on its dark one (3.5px), leaving 0.75px of edge; the
+      // shaft gets the same 0.75px each side.
+      .stroke({ ...edge, width: style.width + 1.5, cap: 'round' });
+    g.poly(head)
+      .fill(edge)
+      .stroke({ ...edge, width: 3.5, join: 'round' });
+  }
+  for (const { start, shaftEnd, head, style } of shapes) {
+    g.moveTo(start.x, start.y)
+      .lineTo(shaftEnd.x, shaftEnd.y)
+      .stroke({ width: style.width, color: style.color, cap: 'round' });
+    g.poly(head).fill(style.color).stroke({ width: 2, color: style.color, join: 'round' });
+  }
 }
 
 /**
@@ -544,8 +1036,6 @@ interface ArtColors {
   readonly crop: number;
   /** Inner border lines on cities. */
   readonly border: number;
-  /** Inner border line on villages: fainter than the city one. */
-  readonly villageBorder: number;
   /** Flag, lit windows and other highlights. */
   readonly accent: number;
 }
@@ -568,7 +1058,6 @@ function tileArtColors(
       wall: type === 'city' ? 0x8e96a5 : 0x9c8d74,
       roof: type === 'city' ? 0x5876a8 : 0xb55d42,
       border: mix(fill, 0xaab3c8, 0.55),
-      villageBorder: mix(fill, 0xc9b79a, 0.35),
       accent: type === 'city' ? 0xe0b84c : 0xf0cf7a,
     };
   }
@@ -579,7 +1068,6 @@ function tileArtColors(
     roof: mix(fill, icon, 0.7),
     // Owned tiles keep the border in the owner's own color rather than the pale art tint.
     border: mix(fill, owner, 0.88),
-    villageBorder: mix(fill, owner, 0.52),
     accent: mix(fill, icon, 0.95),
   };
 }
@@ -594,12 +1082,12 @@ function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
     [9, 1],
   ];
   // Furrows in the soil under the plants.
-  for (const dy of [13, 16.5]) {
+  for (const dy of [11.5, 15]) {
     g.moveTo(c.x - 12, c.y + dy)
       .lineTo(c.x + 12, c.y + dy)
       .stroke({ width: 1.2, color: art.faint, cap: 'round' });
   }
-  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 10, bend, art.crop);
+  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 6.5, bend, art.crop);
 }
 
 /**
@@ -607,7 +1095,7 @@ function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
  * (negative = left, positive = right) and the ear on top tilts further the same way.
  */
 function drawWheat(g: Graphics, x: number, y: number, bend: number, color: number): void {
-  const scale = 0.8;
+  const scale = 0.7;
   // Plant-local coordinates (up is negative y), rotated by `angle` about an origin.
   const place =
     (ox: number, oy: number, angle: number) =>
@@ -639,7 +1127,7 @@ function drawWheat(g: Graphics, x: number, y: number, bend: number, color: numbe
 function drawVillage(g: Graphics, c: Point, art: ArtColors, cutout: number): void {
   // Drawn smaller than a castle so the two read differently at a glance. Scaled about the
   // art's own center, and nudged up so the cottages are not crowded toward the tile's bottom.
-  const k = 0.82;
+  const k = 0.94;
   const at = (x: number, y: number): [number, number] => [c.x + x * k, c.y + 3 + (y - 3) * k - 2.5];
   const rect = (x: number, y: number, w: number, h: number) => g.rect(...at(x, y), w * k, h * k);
   // Large cottage with a chimney.

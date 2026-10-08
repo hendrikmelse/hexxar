@@ -1,5 +1,6 @@
 import {
   applyTickDiff,
+  type ExecutedMove,
   type MatchConfig,
   type Order,
   type PlayerId,
@@ -48,7 +49,10 @@ export function emptyGame(): GameView {
 
 /** What a message changed, so the renderer can do the minimum work. */
 export type Change =
-  { kind: 'all' } | { kind: 'tiles'; tiles: Tile[] } | { kind: 'queue' } | { kind: 'status' };
+  | { kind: 'all' }
+  | { kind: 'tiles'; tiles: Tile[]; moves: ExecutedMove[] }
+  | { kind: 'queue' }
+  | { kind: 'status' };
 
 /** Fold a server message into the view. Returns what changed, or null for nothing. */
 export function applyMessage(game: GameView, message: ServerMessage): Change | null {
@@ -81,7 +85,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       if (message.winner !== null) game.status = 'over';
       // Queues are append-only, so what remains is always the newest orders.
       game.queue = message.queueLength === 0 ? [] : game.queue.slice(-message.queueLength);
-      return { kind: 'tiles', tiles: touched };
+      return { kind: 'tiles', tiles: touched, moves: message.moves ?? [] };
     }
     case 'queued':
       game.queue.push(message.order);

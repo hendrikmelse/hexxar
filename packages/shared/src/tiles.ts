@@ -52,7 +52,7 @@ export const TILE_TYPES = {
     name: 'City',
     defensePercent: 150,
     baseGarrison: 10,
-    generation: { everyTicks: [6, 5, 4, 4, 3, 3, 2], amount: 1, cap: 50 },
+    generation: { everyTicks: [8, 7, 6, 5, 4, 3, 2], amount: 1, cap: 50 },
   },
 } as const satisfies Record<string, TileTypeDef>;
 

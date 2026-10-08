@@ -49,6 +49,8 @@ function render(change: ReturnType<typeof applyMessage>): void {
     board.setAll(game);
     introduceStart();
   } else if (change.kind === 'tiles') {
+    // Armies set off first, so the tiles they walk onto are held back until they arrive.
+    board.playMoves(change.moves, game);
     board.updateTiles(change.tiles, game);
     // The "you are here" effect is for the planning period only.
     if (game.tick > 0 || game.status !== 'playing') board.stopIntro();
@@ -121,17 +123,6 @@ const hud = new Hud(hudEl, {
   surrender: () => connection.send({ type: 'surrender' }),
   fit: () => board.fitToBoard(),
   zoom: (factor) => board.zoomBy(factor),
-  home() {
-    // The tile of yours nearest the middle of your land.
-    const mine = Object.values(game.tiles).filter((tile) => tile.owner === game.playerId);
-    if (mine.length === 0) return;
-    const q = mine.reduce((sum, t) => sum + t.q, 0) / mine.length;
-    const r = mine.reduce((sum, t) => sum + t.r, 0) / mine.length;
-    const nearest = mine.reduce((best, t) =>
-      Math.hypot(t.q - q, t.r - r) < Math.hypot(best.q - q, best.r - r) ? t : best,
-    );
-    board.focusOn(nearest);
-  },
 });
 
 // -- Server connection ----------------------------------------------------------------

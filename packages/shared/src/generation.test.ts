@@ -53,7 +53,7 @@ describe('farm bonus', () => {
 
   it('sets city cycles by farm count', () => {
     const ticks = [0, 1, 2, 3, 4, 5, 6].map((farms) => generationInterval(config, 'city', farms));
-    expect(ticks).toEqual([6, 5, 4, 4, 3, 3, 2]);
+    expect(ticks).toEqual([8, 7, 6, 5, 4, 3, 2]);
   });
 
   it('sets village cycles one tick faster per farm', () => {
@@ -71,13 +71,13 @@ describe('farm bonus', () => {
 
   it('scales the cycle with the match generation speed', () => {
     const fast = parseMatchConfig({ generationSpeedPercent: 200 });
-    expect(generationInterval(fast, 'city', 0)).toBe(3);
+    expect(generationInterval(fast, 'city', 0)).toBe(4);
     expect(generationInterval(fast, 'city', 6)).toBe(1);
   });
 
   it('stepTile advances, produces on the current cycle, and pauses at the cap', () => {
     expect(stepTile(config, tile({ progress: 1 }), 0)).toEqual({ troops: 5, progress: 2 });
-    expect(stepTile(config, tile({ progress: 5 }), 0)).toEqual({ troops: 6, progress: 0 });
+    expect(stepTile(config, tile({ progress: 7 }), 0)).toEqual({ troops: 6, progress: 0 });
     expect(stepTile(config, tile({ progress: 1 }), 6)).toEqual({ troops: 6, progress: 0 });
     expect(stepTile(config, tile({ troops: 50, progress: 2 }), 6)).toEqual({
       troops: 50,
@@ -86,9 +86,9 @@ describe('farm bonus', () => {
   });
 
   it('a newly owned farm can complete a cycle early', () => {
-    // Progress 4: with no farms the cycle is 6, with one farm it is 5.
-    expect(stepTile(config, tile({ progress: 4 }), 0)).toEqual({ troops: 5, progress: 5 });
-    expect(stepTile(config, tile({ progress: 4 }), 1)).toEqual({ troops: 6, progress: 0 });
+    // Progress 6: with no farms the cycle is 8, with one farm it is 7.
+    expect(stepTile(config, tile({ progress: 6 }), 0)).toEqual({ troops: 5, progress: 7 });
+    expect(stepTile(config, tile({ progress: 6 }), 1)).toEqual({ troops: 6, progress: 0 });
   });
 
   it('decays neutral armies at the same flat rate for every type', () => {

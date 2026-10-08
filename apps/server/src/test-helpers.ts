@@ -1,4 +1,4 @@
-import { serverMessageSchema, type ServerMessage } from '@hexxar/shared';
+import { DEFAULT_TICK_MS, serverMessageSchema, type ServerMessage } from '@hexxar/shared';
 import type { Lobby } from './lobby.js';
 import type { Connection, ConnectionHandler } from './types.js';
 
@@ -54,9 +54,11 @@ export class FakeClient implements Connection {
   }
 }
 
+/** How long a tick lasts in a game with the default settings. */
+export const TICK_MS = DEFAULT_TICK_MS;
+
 /** Lobby settings for tests: short, round numbers. */
 export const options = {
-  tickMs: 1000,
   prepMs: 3000,
   earlyStartMs: 20_000,
   joinWaitMs: 5000,

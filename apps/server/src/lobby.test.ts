@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Lobby } from './lobby.js';
-import { FakeClient, options } from './test-helpers.js';
+import { FakeClient, TICK_MS, options } from './test-helpers.js';
 
 describe('Lobby', () => {
   let lobby: Lobby;
@@ -141,7 +141,7 @@ describe('Lobby', () => {
     it('lets only the host change settings, and validates them', () => {
       const { host, guest } = hostWithGuest();
       expect(host.room?.settings).toMatchObject({ mapSize: 'normal' });
-      expect(host.room?.settings.config.tickMs).toBe(1000);
+      expect(host.room?.settings.config.tickMs).toBe(TICK_MS);
 
       guest.say({ type: 'updateRoom', settings: { mapSize: 'large' } });
       expect(guest.last('rejected').reason).toMatch(/only the host/);
@@ -264,7 +264,7 @@ describe('Lobby', () => {
       b.disconnect();
       expect(a.room?.state).toBe('running');
       expect(a.room?.players.find((p) => p.name === 'Bob')?.connected).toBe(false);
-      vi.advanceTimersByTime(options.prepMs + 2000);
+      vi.advanceTimersByTime(options.prepMs + 2 * TICK_MS);
       expect(a.last('tick').tick).toBe(3);
     });
 
@@ -653,7 +653,7 @@ describe('Lobby battle royale', () => {
     expect(new Set(starts.map((t) => t.owner)).size).toBe(12);
     for (const start of starts) expect(start.type).toBe('city');
     // Ticks run, and the last player standing wins as in any match.
-    vi.advanceTimersByTime(options.prepMs + 2000);
+    vi.advanceTimersByTime(options.prepMs + 2 * TICK_MS);
     expect(clients[0]!.last('tick').tick).toBe(3);
     for (const client of clients.slice(1)) client.say({ type: 'surrender' });
     expect(clients[0]!.room?.state).toBe('finished');

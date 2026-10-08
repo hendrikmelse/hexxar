@@ -188,6 +188,18 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     winner: z.string().nullable(),
     /** How many orders the receiving player still has queued (the oldest were consumed). */
     queueLength: z.number().int().nonnegative(),
+    /** The armies that set off this tick (for animation); the new tile states are in `changed`. */
+    moves: z
+      .array(
+        z.object({
+          player: z.string(),
+          from: z.object({ q: z.number().int(), r: z.number().int() }),
+          to: z.object({ q: z.number().int(), r: z.number().int() }),
+          troops: z.number().int().nonnegative(),
+          clash: z.object({ survivors: z.number().int().nonnegative() }).optional(),
+        }),
+      )
+      .optional(),
   }),
   /** How many people are playing each mode right now (sent to players in the main menu). */
   z.object({ type: z.literal('stats'), duel: z.number().int(), ffa: z.number().int() }),

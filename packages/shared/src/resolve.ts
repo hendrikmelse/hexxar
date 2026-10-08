@@ -1,8 +1,8 @@
 import { tileRules, type MatchConfig } from './config.js';
 import { ownedFarmNeighbors, stepTile } from './generation.js';
-import { hexKey } from './hex.js';
+import { hexKey, type Hex } from './hex.js';
 import { checkOrder, type Order, type OrdersByPlayer } from './orders.js';
-import { settlePlayers, type GameState, type PlayerId, type Tile } from './state.js';
+import { settle, type GameState, type PlayerId, type Tile } from './state.js';
 
 /** Attackers fight at face value; defenders get their tile's percentage. */
 const ATTACKER_PERCENT = 100;
@@ -36,33 +36,17 @@ export function resolveTick(
   if (state.winner !== null) return state;
 
   const tick = state.tick + 1;
-  const tiles: Record<string, MutableTile> = {};
-  for (const [key, tile] of Object.entries(state.tiles)) tiles[key] = { ...tile };
+  const tiles = generate(state, config);
 
-  // Phase 1: generation and decay, per tile. Troops generated this tick can fight and move this tick.
-  for (const tile of Object.values(tiles)) {
-    const { troops, progress } = stepTile(config, tile, ownedFarmNeighbors(tiles, tile));
-    tile.troops = troops;
-    tile.progress = progress;
-  }
-
-  // Phase 2: every commanded army departs, leaving one troop behind.
-  // Orders are checked against the post-generation state, before anyone moves.
-  const generated: GameState = { ...state, tiles };
-  const moves: { player: PlayerId; order: Move }[] = [];
-  for (const player of [...state.players].sort()) {
-    const order = orders[player];
-    if (order && checkOrder(generated, player, order) === null) moves.push({ player, order });
-  }
+  // Phase 2: every commanded army departs, leaving one troop behind. Armies that march into
+  // each other fight halfway, and only the survivors go on to their destination.
   const arrivals = new Map<string, Arrival[]>();
-  for (const { player, order } of moves) {
-    const from = tiles[hexKey(order.from)];
-    if (!from) continue;
-    const amount = from.troops - 1;
-    from.troops = 1;
+  for (const { player, order, amount, clash } of depart({ ...state, tiles }, orders)) {
+    const delivered = clash ? clash.survivors : amount;
+    if (delivered <= 0) continue;
     const key = hexKey(order.to);
     const list = arrivals.get(key) ?? [];
-    list.push({ player, amount });
+    list.push({ player, amount: delivered });
     arrivals.set(key, list);
   }
 
@@ -84,8 +68,105 @@ export function resolveTick(
       resolveBattle(tile, hostile, tileRules(config, tile.type).defensePercent);
   }
 
-  const next: GameState = { ...state, tick, tiles };
-  return { ...next, ...settlePlayers(next) };
+  return settle({ ...state, tick, tiles });
+}
+
+/** Phase 1: generation and decay, per tile. Troops generated this tick can fight and move this tick. */
+function generate(state: GameState, config: MatchConfig): Record<string, MutableTile> {
+  const tiles: Record<string, MutableTile> = {};
+  for (const [key, tile] of Object.entries(state.tiles)) tiles[key] = { ...tile };
+  for (const tile of Object.values(tiles)) {
+    const { troops, progress } = stepTile(config, tile, ownedFarmNeighbors(tiles, tile));
+    tile.troops = troops;
+    tile.progress = progress;
+  }
+  return tiles;
+}
+
+/** The orders that will be carried out, checked against the post-generation state before anyone moves. */
+function validMoves(
+  generated: GameState,
+  orders: OrdersByPlayer,
+): { player: PlayerId; order: Move }[] {
+  const moves: { player: PlayerId; order: Move }[] = [];
+  for (const player of [...generated.players].sort()) {
+    const order = orders[player];
+    if (order && checkOrder(generated, player, order) === null) moves.push({ player, order });
+  }
+  return moves;
+}
+
+/** An army setting off: what leaves its tile, and what became of it if it met another on the way. */
+interface Departure {
+  readonly player: PlayerId;
+  readonly order: Move;
+  readonly amount: number;
+  /** Set when this army and one marching the other way ran into each other (a swap). */
+  readonly clash?: { readonly survivors: number };
+}
+
+/**
+ * Phase 2: every valid order sends all but one troop off its tile (the tile in `generated.tiles`
+ * is left with one). Two armies that swap places meet in the middle and fight with no defensive
+ * bonus on either side: the bigger one survives with the difference (troops lost one for one),
+ * and a tie wipes out both. The survivors carry on to the tile they were sent to.
+ */
+function depart(generated: GameState, orders: OrdersByPlayer): Departure[] {
+  const tiles = generated.tiles as Record<string, MutableTile>;
+  const departures: {
+    player: PlayerId;
+    order: Move;
+    amount: number;
+    clash?: { survivors: number };
+  }[] = [];
+  for (const { player, order } of validMoves(generated, orders)) {
+    const from = tiles[hexKey(order.from)];
+    if (!from) continue;
+    departures.push({ player, order, amount: from.troops - 1 });
+    from.troops = 1;
+  }
+  for (const a of departures) {
+    for (const b of departures) {
+      if (a === b || a.clash || b.clash) continue;
+      const swapped =
+        hexKey(a.order.from) === hexKey(b.order.to) && hexKey(a.order.to) === hexKey(b.order.from);
+      if (!swapped) continue;
+      const difference = Math.abs(a.amount - b.amount);
+      a.clash = { survivors: a.amount > b.amount ? difference : 0 };
+      b.clash = { survivors: b.amount > a.amount ? difference : 0 };
+    }
+  }
+  return departures;
+}
+
+/** An army that set off this tick, for clients to animate: who, from where to where, and how many. */
+export interface ExecutedMove {
+  readonly player: PlayerId;
+  readonly from: Hex;
+  readonly to: Hex;
+  readonly troops: number;
+  /** Set when it met an army coming the other way: how many of this one were left to go on. */
+  readonly clash?: { readonly survivors: number };
+}
+
+/**
+ * The moves `resolveTick` will carry out for these orders (invalid ones are left out), with the
+ * number of troops each sends. Purely informational: the resulting state comes from `resolveTick`.
+ */
+export function executedMoves(
+  state: GameState,
+  orders: OrdersByPlayer,
+  config: MatchConfig,
+): ExecutedMove[] {
+  if (state.winner !== null) return [];
+  const tiles = generate(state, config);
+  return depart({ ...state, tiles }, orders).map(({ player, order, amount, clash }) => ({
+    player,
+    from: order.from,
+    to: order.to,
+    troops: amount,
+    ...(clash ? { clash } : {}),
+  }));
 }
 
 /**
@@ -147,10 +228,5 @@ function resolveBattle(
  */
 export function surrender(state: GameState, player: PlayerId): GameState {
   if (state.winner !== null || !state.players.includes(player)) return state;
-  const tiles: Record<string, Tile> = {};
-  for (const [key, tile] of Object.entries(state.tiles)) {
-    tiles[key] = tile.owner === player ? { ...tile, owner: null, progress: 0 } : tile;
-  }
-  const next: GameState = { ...state, tiles };
-  return { ...next, ...settlePlayers(next, [player]) };
+  return settle(state, [player]);
 }

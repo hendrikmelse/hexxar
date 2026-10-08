@@ -1,6 +1,8 @@
 import {
+  executedMoves,
   resolveTick,
   surrender,
+  type ExecutedMove,
   type GameState,
   type MatchConfig,
   type Order,
@@ -59,16 +61,17 @@ export class Match {
   }
 
   /** Resolve one tick: pop the head of every queue and apply them all at once. */
-  step(): { previous: GameState; state: GameState } {
+  step(): { previous: GameState; state: GameState; moves: ExecutedMove[] } {
     const previous = this._state;
     const orders: Record<PlayerId, Order> = {};
     for (const [player, queue] of this.queues) {
       const order = queue.shift();
       if (order) orders[player] = order;
     }
+    const moves = executedMoves(previous, orders, this.config);
     this._state = resolveTick(previous, orders, this.config);
     this.log.push({ tick: this._state.tick, orders });
-    return { previous, state: this._state };
+    return { previous, state: this._state, moves };
   }
 
   surrender(player: PlayerId): void {

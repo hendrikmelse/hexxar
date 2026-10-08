@@ -15,7 +15,7 @@
   color: #e8eaf0;
 }
 
-/* ---- Top left: the timer, your queue, and the players -------------------------------------- */
+/* ---- Top left: the timer, the land, and the players -------------------------------------- */
 
 #hud .left {
   position: fixed;
@@ -32,20 +32,20 @@
 #hud .status {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
   flex: none;
-  padding: 12px 16px 12px 12px;
+  padding: 14px;
   background: var(--card);
   border: 1px solid var(--card-edge);
   border-radius: 12px;
   box-shadow: var(--card-shadow);
 }
 
-/* The timer: a hexagon whose edge fills up over each tick */
+/* The timer: a round dial whose rim fills up over each tick */
 #hud .tick-badge {
   position: relative;
-  width: 92px;
-  height: 92px;
+  width: 108px;
+  height: 108px;
   flex: none;
 }
 
@@ -60,24 +60,21 @@
   fill: #14171f;
   stroke: rgba(255, 255, 255, 0.1);
   stroke-width: 1.2;
-  stroke-linejoin: round;
 }
 
 #hud .tick-badge .track {
   fill: none;
   stroke: #232836;
   stroke-width: 7;
-  stroke-linejoin: round;
 }
 
 #hud .tick-badge .ring {
   fill: none;
-  stroke: #6aaeff;
+  stroke: var(--c, #6aaeff);
   stroke-width: 5;
   stroke-linecap: round;
-  stroke-linejoin: round;
   stroke-dasharray: 100 100;
-  filter: drop-shadow(0 0 3px rgba(106, 174, 255, 0.8));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--c, #6aaeff) 80%, transparent));
 }
 
 #hud .tick-badge.prep .ring {
@@ -99,10 +96,6 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #8fa7d1;
-}
-
-#hud .tick-badge.prep .tick-label {
   color: #8fd1b0;
 }
 
@@ -113,22 +106,15 @@
   line-height: 1.05;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 55%, #9cc3ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0 #1b2f57);
-}
-
-#hud .tick-badge.prep .tick-number {
   background: linear-gradient(180deg, #ffffff 0%, #d9ffea 55%, #9fe8c2 100%);
   -webkit-background-clip: text;
   background-clip: text;
+  color: transparent;
   filter: drop-shadow(0 2px 0 #174a31);
 }
 
-/* Each new tick gives the badge a little thump */
-#hud .tick-badge.ticked {
+/* Each new tick gives the timer a little thump */
+#hud .tick-badge.ticked svg {
   animation: thump 0.32s ease-out;
 }
 
@@ -137,60 +123,43 @@
     transform: scale(1);
   }
   30% {
-    transform: scale(1.07);
+    transform: scale(1.04);
   }
   100% {
     transform: scale(1);
   }
 }
 
-#hud .queue {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-  padding: 8px 12px 9px;
-  border-radius: 8px;
-  background: var(--well);
-  box-shadow: var(--well-shadow);
+/* The pie of who makes how many troops, inside the dial, with a faint ring around it that is lit
+   white along your own slice */
+#hud .pie {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #3d4350;
+  box-shadow: 0 0 0 2px #14171f;
 }
 
-#hud .queue[hidden] {
-  display: none;
+#hud .pie::before,
+#hud .pie::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
 }
 
-#hud .queue-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
+#hud .pie::before {
+  background: rgba(255, 255, 255, 0.12);
 }
 
-#hud .queue-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-#hud .queue strong {
-  font-size: 26px;
-  line-height: 1;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: #c4cad8;
-}
-
-#hud .queue.busy strong {
-  color: #ffffff;
-}
-
-#hud .queue.busy .queue-row {
-  color: #8fb8f0;
+#hud .pie::after {
+  background: var(--mine, none);
 }
 
 #hud .players {
@@ -227,8 +196,10 @@
 
 #hud .standings {
   list-style: none;
-  margin: 0;
-  padding: 0;
+  /* Room inside the scrolling box for the highlighted row's outline and glow, which would be
+     cut off at its edge otherwise; the negative margin gives the room back. */
+  margin: -6px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -240,10 +211,10 @@
   --c: #8a93a8;
   position: relative;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 9px;
-  padding: 7px 10px 10px;
+  padding: 7px 10px;
   border-radius: 8px;
   background: var(--well);
   box-shadow: var(--well-shadow);
@@ -277,26 +248,12 @@
   white-space: nowrap;
 }
 
-/* Your own row says so, in your color */
-#hud .standing.me .name::after {
-  content: 'You';
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--c);
-  color: #0e1016;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
 #hud .standing.me {
   background: linear-gradient(180deg, #1a2234 0%, #131a2a 100%);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.55) inset,
     0 0 0 1px color-mix(in srgb, var(--c) 70%, transparent),
-    0 0 14px color-mix(in srgb, var(--c) 25%, transparent);
+    0 0 6px color-mix(in srgb, var(--c) 25%, transparent);
 }
 
 #hud .stat {
@@ -318,31 +275,8 @@
   opacity: 0.55;
 }
 
-#hud .stat.tiles::before {
-  height: 9px;
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-}
-
 #hud .stat.troops::before {
   border-radius: 50%;
-}
-
-/* The player's share of the land, as a thin bar along the bottom of their row */
-#hud .share {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-#hud .share i {
-  display: block;
-  height: 100%;
-  background: var(--c);
-  border-radius: 0 2px 2px 0;
-  transition: width 0.5s ease-out;
 }
 
 #hud .standing.out {
@@ -501,17 +435,13 @@
     0 4px 8px rgba(0, 0, 0, 0.4);
 }
 
-/* The two icon buttons are drawn with CSS: a hexagon outline, and a hexagon with a dot */
-#hud .camera button.icon::before,
-#hud .camera button.icon::after {
+/* The "show the whole board" icon is drawn with CSS: a hexagon outline */
+#hud .camera button.icon::before {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-}
-
-#hud .camera button.icon::before {
   width: 20px;
   height: 22px;
   background: currentColor;
@@ -531,17 +461,6 @@
     86% 32%,
     50% 14%
   );
-}
-
-#hud .camera button.fit::after {
-  display: none;
-}
-
-#hud .camera button.home::after {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 /* ---- Bottom middle: the controls, as key caps ------------------------------------------------ */
@@ -597,16 +516,12 @@
     width: 220px;
   }
 
-  #hud .queue-label {
-    display: none;
-  }
-
   #hud .stat.troops {
     display: none;
   }
 
   #hud .standing {
-    grid-template-columns: 16px minmax(0, 1fr) auto;
+    grid-template-columns: 16px minmax(0, 1fr);
   }
 
   #hud .top {
@@ -631,33 +546,27 @@
   }
 
   #hud .status {
-    gap: 8px;
     padding: 8px;
   }
 
-  #hud .queue {
-    display: none;
-  }
-
   #hud .tick-badge {
-    width: 72px;
-    height: 72px;
+    width: 88px;
+    height: 88px;
   }
 
   #hud .tick-number {
-    font-size: 24px;
+    font-size: 22px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #hud .tick-badge.ticked,
+  #hud .tick-badge.ticked svg,
   #hud .banner.pop {
     animation: none;
   }
 
   #hud .hint,
-  #hud .standing,
-  #hud .share i {
+  #hud .standing {
     transition: none;
   }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseMatchConfig } from './config.js';
 import { hexKey } from './hex.js';
 import type { Order, OrdersByPlayer } from './orders.js';
-import { resolveTick, surrender } from './resolve.js';
+import { executedMoves, resolveTick, surrender } from './resolve.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
@@ -118,10 +118,12 @@ describe('battles', () => {
   });
 
   it('leaves an empty tile and keeps the owner on a tie', () => {
+    // B's city keeps B in the game, so the emptied tile is still B's.
     const s = step(
       row([
         { owner: 'A', troops: 5 },
         { owner: 'B', troops: 4 },
+        { owner: 'B', troops: 1, type: 'city' },
       ]),
       { A: move(0, 1) },
     );
@@ -135,10 +137,13 @@ describe('battles', () => {
       { owner: 'B', troops: 3, type: 'city' },
     ]);
     expect(at(step(city, { A: move(0, 1) }), 1)).toMatchObject({ owner: 'B', troops: 1 });
-    // Same troops on farmland: attacker 4 vs 3 => attacker takes it with 1.
+    // Same troops on farmland: attacker 4 vs 3 => attacker takes it with 1. (A's city, off to the
+    // side, keeps A in the game, and B's city keeps B in.)
     const farm = row([
       { owner: 'A', troops: 5 },
       { owner: 'B', troops: 3 },
+      { owner: 'A', troops: 1, type: 'city' },
+      { owner: 'B', troops: 1, type: 'city' },
     ]);
     expect(at(step(farm, { A: move(0, 1) }), 1)).toMatchObject({ owner: 'A', troops: 1 });
   });
@@ -199,53 +204,42 @@ describe('battles', () => {
     const two = step(start, { B: move(2, 1), A: move(0, 1) });
     expect(one).toEqual(two);
   });
-
-  it('lets armies swap places without fighting each other', () => {
-    const start = row([
-      { owner: 'A', troops: 5 },
-      { owner: 'B', troops: 5 },
-    ]);
-    const s = step(start, { A: move(0, 1), B: move(1, 0) });
-    // Each side attacks the other's tile, which still holds 1 troop.
-    expect(at(s, 0)).toMatchObject({ owner: 'B', troops: 3 });
-    expect(at(s, 1)).toMatchObject({ owner: 'A', troops: 3 });
-  });
 });
 
 describe('generation', () => {
-  // A single city has no farm neighbors, so its cycle is the base 6 ticks.
+  // A single city has no farm neighbors, so its cycle is the base 8 ticks.
   const city = (troops: number, progress: number, owner: string | null = 'A') =>
     row([{ owner, troops, type: 'city', progress }], ['A']);
 
   it('adds a troop when a producer completes its cycle, then restarts the cycle', () => {
-    expect(at(step(city(5, 4), {}), 0)).toMatchObject({ troops: 5, progress: 5 });
-    expect(at(step(city(5, 5), {}), 0)).toMatchObject({ troops: 6, progress: 0 });
+    expect(at(step(city(5, 6), {}), 0)).toMatchObject({ troops: 5, progress: 7 });
+    expect(at(step(city(5, 7), {}), 0)).toMatchObject({ troops: 6, progress: 0 });
   });
 
   it('keeps each producer on its own schedule', () => {
     // Two cities with neutral farmland between them: no farm bonus for either.
     const start = row(
       [
-        { owner: 'A', troops: 5, type: 'city', progress: 5 },
+        { owner: 'A', troops: 5, type: 'city', progress: 7 },
         { troops: 1 },
         { troops: 1 },
-        { owner: 'A', troops: 5, type: 'city', progress: 4 },
+        { owner: 'A', troops: 5, type: 'city', progress: 6 },
       ],
       ['A'],
     );
     const one = step(start, {});
     expect(at(one, 0)).toMatchObject({ troops: 6, progress: 0 });
-    expect(at(one, 3)).toMatchObject({ troops: 5, progress: 5 });
+    expect(at(one, 3)).toMatchObject({ troops: 5, progress: 7 });
     const two = step(one, {});
     expect(at(two, 0)).toMatchObject({ troops: 6, progress: 1 });
     expect(at(two, 3)).toMatchObject({ troops: 6, progress: 0 });
   });
 
   it('owned farmland speeds up the neighboring city', () => {
-    // City with one owned farm next to it: cycle 5 instead of 6.
+    // City with one owned farm next to it: cycle 7 instead of 8.
     const withFarm = row(
       [
-        { owner: 'A', troops: 5, type: 'city', progress: 4 },
+        { owner: 'A', troops: 5, type: 'city', progress: 6 },
         { owner: 'A', troops: 1 },
       ],
       ['A'],
@@ -255,12 +249,12 @@ describe('generation', () => {
     for (const owner of [null, 'B']) {
       const without = row(
         [
-          { owner: 'A', troops: 5, type: 'city', progress: 4 },
+          { owner: 'A', troops: 5, type: 'city', progress: 6 },
           { owner, troops: 1 },
         ],
         ['A', 'B'],
       );
-      expect(at(step(without, {}), 0)).toMatchObject({ troops: 5, progress: 5 });
+      expect(at(step(without, {}), 0)).toMatchObject({ troops: 5, progress: 7 });
     }
   });
 
@@ -268,7 +262,7 @@ describe('generation', () => {
     // A captures the farm this tick; the city only benefits from next tick on.
     const start = row(
       [
-        { owner: 'A', troops: 5, type: 'city', progress: 4 },
+        { owner: 'A', troops: 5, type: 'city', progress: 6 },
         { troops: 1 },
         { owner: 'A', troops: 5 },
       ],
@@ -276,7 +270,7 @@ describe('generation', () => {
     );
     const s = step(start, { A: move(2, 1) });
     expect(at(s, 1).owner).toBe('A');
-    expect(at(s, 0)).toMatchObject({ troops: 5, progress: 5 });
+    expect(at(s, 0)).toMatchObject({ troops: 5, progress: 7 });
     expect(at(step(s, {}), 0)).toMatchObject({ troops: 6, progress: 0 });
   });
 
@@ -289,11 +283,11 @@ describe('generation', () => {
 
   it('scales with the match generation speed', () => {
     const fast = parseMatchConfig({ generationSpeedPercent: 300 });
-    expect(at(resolveTick(city(5, 1), {}, fast), 0).troops).toBe(6); // cycle 2
+    expect(at(resolveTick(city(5, 2), {}, fast), 0).troops).toBe(6); // cycle 3
   });
 
   it('pauses at the cap and keeps its progress', () => {
-    expect(at(step(city(49, 5), {}), 0)).toMatchObject({ troops: 50, progress: 0 });
+    expect(at(step(city(49, 7), {}), 0)).toMatchObject({ troops: 50, progress: 0 });
     expect(at(step(city(50, 3), {}), 0)).toMatchObject({ troops: 50, progress: 3 });
     // Armies can exceed the cap through reinforcement; they just stop growing.
     expect(at(step(city(60, 1), {}), 0)).toMatchObject({ troops: 60, progress: 1 });
@@ -378,7 +372,7 @@ describe('neutral armies', () => {
 describe('generation timing', () => {
   it('a troop generated this tick fights in a battle on that tick', () => {
     const start = row([
-      { owner: 'A', troops: 4, type: 'city', progress: 5 }, // produces this tick: 4 -> 5
+      { owner: 'A', troops: 4, type: 'city', progress: 7 }, // produces this tick: 4 -> 5
       { owner: 'B', troops: 6 },
     ]);
     // B sends 5 (500) against 5 * 150% = 750: A loses floor(500/150) = 3 and keeps 2.
@@ -392,10 +386,71 @@ describe('generation timing', () => {
   });
 
   it('a troop generated this tick can make an order valid and be moved', () => {
-    const start = row([{ owner: 'A', troops: 1, type: 'city', progress: 5 }, { troops: 0 }]);
+    const start = row([{ owner: 'A', troops: 1, type: 'city', progress: 7 }, { troops: 0 }]);
     const s = step(start, { A: move(0, 1) }); // produces to 2, then sends 1
     expect(at(s, 0)).toMatchObject({ owner: 'A', troops: 1 });
     expect(at(s, 1)).toMatchObject({ owner: 'A', troops: 1 });
+  });
+});
+
+describe('armies that swap places', () => {
+  it('meet halfway, and the survivors carry on to the tile they were sent to', () => {
+    // A sends 10, B sends 6: A wins with 4, which then attacks B's tile (one troop left).
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 7 },
+      ],
+      ['A', 'B'],
+    );
+    const s = step(start, { A: move(0, 1), B: move(1, 0) });
+    expect(at(s, 0)).toMatchObject({ owner: 'A', troops: 1 });
+    // 4 attackers beat the single defender and lose one troop doing it.
+    expect(at(s, 1)).toMatchObject({ owner: 'A', troops: 3 });
+    expect(s.eliminated).toEqual(['B']);
+  });
+
+  it('fight without defensive bonuses, but the survivors do meet the target tile bonus', () => {
+    // B's tile is a city (150% defense). The clash itself ignores that.
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 7, type: 'city' },
+      ],
+      ['A', 'B'],
+    );
+    const s = step(start, { A: move(0, 1), B: move(1, 0) });
+    // 10 vs 6 leaves 4. Then 4 attack the city's 1 troop (strength 150): the attackers lose 2.
+    expect(at(s, 1)).toMatchObject({ owner: 'A', troops: 2 });
+  });
+
+  it('wipe each other out on a tie, leaving both tiles with their one troop', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 5, type: 'city' },
+        { owner: 'B', troops: 5, type: 'city' },
+      ],
+      ['A', 'B'],
+    );
+    const s = step(start, { A: move(0, 1), B: move(1, 0) });
+    expect(at(s, 0)).toMatchObject({ owner: 'A', troops: 1 });
+    expect(at(s, 1)).toMatchObject({ owner: 'B', troops: 1 });
+  });
+
+  it('reports the clash for animation, leaving ordinary moves alone', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 7 },
+        { owner: 'C', troops: 6 },
+      ],
+      ['A', 'B', 'C'],
+    );
+    const moves = executedMoves(start, { A: move(0, 1), B: move(1, 0), C: move(2, 1) }, config);
+    const byPlayer = Object.fromEntries(moves.map((m) => [m.player, m]));
+    expect(byPlayer.A).toMatchObject({ troops: 10, clash: { survivors: 4 } });
+    expect(byPlayer.B).toMatchObject({ troops: 6, clash: { survivors: 0 } });
+    expect(byPlayer.C?.clash).toBeUndefined();
   });
 });
 
@@ -411,6 +466,41 @@ describe('winning', () => {
     const s = step(start, { A: move(0, 1) });
     expect(s.eliminated).toEqual(['B']);
     expect(s.winner).toBe('A');
+  });
+
+  it('beats a player with no producers left and only one-troop farms, and frees those farms', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 9 },
+        { owner: 'B', troops: 1 },
+        { owner: 'B', troops: 1 },
+      ],
+      ['A', 'B'],
+    );
+    const s = step(start, {});
+    expect(s.eliminated).toEqual(['B']);
+    expect(s.winner).toBe('A');
+    expect(at(s, 1)).toMatchObject({ owner: null, troops: 1 });
+    expect(at(s, 2)).toMatchObject({ owner: null, troops: 1 });
+  });
+
+  it('keeps a player in the game while they own a producer, or an army that can still move', () => {
+    const withCity = row(
+      [
+        { owner: 'A', troops: 9 },
+        { owner: 'B', troops: 1, type: 'city' },
+      ],
+      ['A', 'B'],
+    );
+    expect(step(withCity, {})).toMatchObject({ eliminated: [], winner: null });
+    const withArmy = row(
+      [
+        { owner: 'A', troops: 9 },
+        { owner: 'B', troops: 2 },
+      ],
+      ['A', 'B'],
+    );
+    expect(step(withArmy, {})).toMatchObject({ eliminated: [], winner: null });
   });
 
   it('stops processing once the match is over', () => {

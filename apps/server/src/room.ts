@@ -10,6 +10,7 @@ import {
   roomCapacity,
   roomMinPlayers,
   roomSettingsSchema,
+  visibleMoves,
   visibleState,
   type Order,
   type Rng,
@@ -25,8 +26,13 @@ import type { Session } from './types.js';
 
 type Timer = ReturnType<typeof setTimeout>;
 
-/** How many seeds are tried for a board before the game is called off. */
-const BOARD_ATTEMPTS = 3;
+/**
+ * How many seeds are tried for a board before the game is called off, and how long that may take
+ * at most. Generation runs on the one thread that also ticks every other game, so a generator
+ * that always fails must not be allowed to keep trying for long.
+ */
+const BOARD_ATTEMPTS = 100;
+const BOARD_BUDGET_MS = 2000;
 
 /**
  * Apply a settings patch on top of the current settings. Returns the new settings, or a
@@ -426,14 +432,19 @@ export class Room {
     order.forEach((member, i) => (member.playerId = players[i] ?? null));
 
     let board: ReturnType<Room['generateBoard']> | null = null;
-    for (let attempt = 0; attempt < BOARD_ATTEMPTS && !board; attempt++) {
+    let failure: unknown = null;
+    let attempts = 0;
+    const started = Date.now();
+    while (!board && attempts < BOARD_ATTEMPTS && Date.now() - started < BOARD_BUDGET_MS) {
       try {
-        board = this.generateBoard(players, seed + attempt);
+        board = this.generateBoard(players, seed + attempts);
       } catch (error) {
-        console.error(`room ${this.id}: could not generate a board (attempt ${attempt + 1})`, error);
+        failure = error;
       }
+      attempts++;
     }
     if (!board) {
+      console.error(`room ${this.id}: no board after ${attempts} attempts`, failure);
       for (const member of this.members) {
         member.session.connection?.send({
           type: 'rejected',
@@ -473,7 +484,7 @@ export class Room {
   private runTick(): void {
     const match = this.match;
     if (!match || this.nextTickAt === null) return;
-    const { previous, state } = match.step();
+    const { previous, state, moves } = match.step();
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
 
     for (const member of this.members) {
@@ -488,6 +499,7 @@ export class Room {
         eliminated: [...state.eliminated],
         winner: state.winner,
         queueLength: match.queueOf(id).length,
+        moves: visibleMoves(moves, id),
       });
     }
 

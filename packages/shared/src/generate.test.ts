@@ -31,7 +31,7 @@ describe('rng', () => {
 
 describe('match config', () => {
   it('fills defaults and validates overrides', () => {
-    expect(parseMatchConfig({}).tickMs).toBe(1000);
+    expect(parseMatchConfig({}).tickMs).toBe(1500);
     expect(parseMatchConfig({ tickMs: 500 }).tickMs).toBe(500);
     expect(() => parseMatchConfig({ tickMs: 5 })).toThrow();
   });
