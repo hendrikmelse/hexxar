@@ -114,7 +114,7 @@ describe('generation parameters', () => {
       expect(total(25)).toBeGreaterThan(total(100));
     });
 
-    it('can add extra cities to free-for-all boards', () => {
+    it('can add extra cities to battle royale boards', () => {
       for (const seed of seeds) {
         expect(count(tilesOf(ffa({}, seed)), 'city')).toBe(8);
       }
@@ -182,7 +182,7 @@ describe('generation parameters', () => {
       expect(starts(3).map((t) => Math.abs(t.q))).toEqual([6, 6]);
     });
 
-    it('sizes free-for-all boards from the tiles per player', () => {
+    it('sizes battle royale boards from the tiles per player', () => {
       expect(recommendedRadius(8, 'freeForAll', 20)).toBeLessThan(
         recommendedRadius(8, 'freeForAll', 60),
       );

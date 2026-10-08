@@ -8,7 +8,7 @@ const MODES: { value: PreviewOptions['mode']; label: string }[] = [
   { value: '3', label: '3 players' },
   { value: '4', label: '4 players' },
   { value: '6', label: '6 players' },
-  { value: 'ffa', label: 'Free-for-all' },
+  { value: 'ffa', label: 'Battle Royale' },
 ];
 const FFA_PLAYERS = [3, 4, 5, 6, 8, 10, 12, 16, 20, 30, 50, 75, 100];
 const RADII = [5, 6, 7, 8, 9, 10, 12, 15, 20, 30, 40];
@@ -149,7 +149,7 @@ export function Preview({ actions, preview }: { actions: Actions; preview: Previ
 
 /** Does the setting do anything for the board being previewed? */
 function isActive(def: ParamDef, options: PreviewOptions): boolean {
-  // City density also applies to free-for-all boards once they are allowed extra cities.
+  // City density also applies to battle royale boards once they are allowed extra cities.
   if (def.key === 'tilesPerCity') return options.mode !== 'ffa' || options.params.freeForAllCities;
   switch (def.applies) {
     case 'always':
@@ -166,7 +166,7 @@ function isActive(def: ParamDef, options: PreviewOptions): boolean {
 const NOTES: Partial<Record<Applies, string>> = {
   random: 'random shapes only',
   symmetric: 'symmetric boards only',
-  ffa: 'free-for-all only',
+  ffa: 'battle royale only',
 };
 
 function ParamControl({

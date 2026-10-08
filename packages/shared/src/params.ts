@@ -37,7 +37,7 @@ export interface GenerationParams {
   tilesPerCity: number;
   /** Cities are never closer than this to each other, starting cities included. */
   minCityDistance: number;
-  /** Add extra cities on free-for-all boards too (normally the starting cities are the only ones). */
+  /** Add extra cities on battle royale boards too (normally the starting cities are the only ones). */
   freeForAllCities: boolean;
   /** Chance (percent) that a village is placed where one fits. 100 packs the board as full as it goes. */
   villageChance: number;
@@ -52,7 +52,7 @@ export interface GenerationParams {
   startInset: number;
   /** Rings of land kept around each starting city on random shapes. */
   startRoom: number;
-  /** Free-for-all boards: tiles of board per player, which decides the board size. */
+  /** Battle Royale boards: tiles of board per player, which decides the board size. */
   tilesPerPlayer: number;
 }
 
@@ -88,3 +88,20 @@ export const withDefaults = (params: Partial<GenerationParams> = {}): Generation
   ...DEFAULT_GENERATION_PARAMS,
   ...params,
 });
+
+/** How big a game's map is, as chosen in a private game. */
+export const MAP_SIZES = ['small', 'normal', 'large'] as const;
+export type MapSize = (typeof MAP_SIZES)[number];
+
+/** Board radius of a duel at each map size. Normal is what quick play uses. */
+export const DUEL_RADIUS: Readonly<Record<MapSize, number>> = { small: 5, normal: 7, large: 9 };
+
+/**
+ * Tiles per player in a battle royale at each map size, which decides the board size. Normal
+ * is what quick play uses.
+ */
+export const ROYALE_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
+  small: 14,
+  normal: DEFAULT_GENERATION_PARAMS.tilesPerPlayer,
+  large: 30,
+};

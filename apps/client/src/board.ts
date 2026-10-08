@@ -16,9 +16,15 @@ export const PLAYER_COLORS = [
   0x4f9dff, 0xff6b6b, 0xffd166, 0x06d6a0, 0xc77dff, 0xff9f43, 0x2ec4b6, 0xf15bb5,
 ];
 
-const BACKGROUND = 0x14161c;
-const NEUTRAL_FILL = { farmland: 0x242932, village: 0x282e39, city: 0x2d3441 } as const;
+/** The sea: land floats on it, and lakes are the holes in the board. */
+const WATER = 0x0e1c27;
+/** What owned tiles are tinted from, so owner colors look the same wherever they are. */
+const OWNED_BASE = 0x14161c;
+/** Unclaimed land: green fields, packed earth around a village, grey flagstones for a city. */
+const NEUTRAL_FILL = { farmland: 0x2a3a2c, village: 0x3a382f, city: 0x3a3e46 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
+/** The foam line where land meets water. */
+const SHORE = 0x5f8ea3;
 /** How much of the owner color is mixed into an owned tile's fill: currently the same for every type. */
 const OWNED_FILL = { farmland: 0.4, village: 0.4, city: 0.4 } as const;
 const MIN_ZOOM = 0.05;
@@ -47,7 +53,7 @@ export function playerColor(game: GameView, owner: string | null): number | null
   const index = Math.max(0, game.players.indexOf(owner));
   const palette = PLAYER_COLORS[index];
   if (palette !== undefined) return palette;
-  // Beyond the hand-picked palette (big free-for-alls), space hues around the color wheel.
+  // Beyond the hand-picked palette (big battle royales), space hues around the color wheel.
   return hslToHex((index * 137.508) % 360, 0.62, 0.6);
 }
 
@@ -116,7 +122,7 @@ export class Board {
     const app = new Application();
     await app.init({
       resizeTo: window,
-      background: BACKGROUND,
+      background: WATER,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
@@ -176,7 +182,7 @@ export class Board {
     const center = hexToPixel(tile);
     const owner = playerColor(game, tile.owner);
     const fill =
-      owner === null ? NEUTRAL_FILL[tile.type] : mix(BACKGROUND, owner, OWNED_FILL[tile.type]);
+      owner === null ? NEUTRAL_FILL[tile.type] : mix(OWNED_BASE, owner, OWNED_FILL[tile.type]);
     const shape = view.shape;
     shape.clear();
     // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.
@@ -197,11 +203,22 @@ export class Board {
       });
     }
 
+    // Where the board meets water (its coast, or a lake), a pale foam line separates land from sea.
+    const boundary = hexCorners(center, 0);
+    EDGE_NEIGHBORS.forEach(([dq, dr], i) => {
+      if (game.tiles[hexKey({ q: tile.q + dq, r: tile.r + dr })]) return;
+      const j = (i + 1) % 6;
+      shape
+        .moveTo(boundary[2 * i]!, boundary[2 * i + 1]!)
+        .lineTo(boundary[2 * j]!, boundary[2 * j + 1]!)
+        .stroke({ width: 2.5, color: SHORE, alpha: 0.75, cap: 'round' });
+    });
+
     // Tile type art sits behind the troop count. Villages and cities have a defensive bonus,
     // shown as an inner border (fainter for villages, riveted for cities).
     // On owned tiles the art is a pale tint of the owner color so it stands out from the fill.
     const iconColor = owner === null ? NEUTRAL_ICON : mix(owner, 0xffffff, 0.65);
-    const art = tileArtColors(fill, iconColor, owner);
+    const art = tileArtColors(fill, iconColor, owner, tile.type);
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
     } else if (tile.type === 'village') {
@@ -417,22 +434,46 @@ interface ArtColors {
   readonly wall: number;
   /** Roofs, towers and other emphasized shapes. */
   readonly roof: number;
+  /** Crops. */
+  readonly crop: number;
   /** Inner border lines on cities. */
   readonly border: number;
   /** Inner border line on villages: fainter than the city one. */
   readonly villageBorder: number;
-  /** Flag and other highlights. */
+  /** Flag, lit windows and other highlights. */
   readonly accent: number;
 }
 
-function tileArtColors(fill: number, icon: number, owner: number | null): ArtColors {
+/**
+ * Unclaimed tiles use natural colors (golden wheat, terracotta roofs, grey stone, blue slate
+ * and a gold banner). Claimed tiles are all tinted from the owner color, so who holds a tile
+ * reads at a glance.
+ */
+function tileArtColors(
+  fill: number,
+  icon: number,
+  owner: number | null,
+  type: Tile['type'],
+): ArtColors {
+  if (owner === null) {
+    return {
+      faint: mix(fill, 0xc9b458, 0.2),
+      crop: 0xb9a548,
+      wall: type === 'city' ? 0x8e96a5 : 0x9c8d74,
+      roof: type === 'city' ? 0x5876a8 : 0xb55d42,
+      border: mix(fill, 0xaab3c8, 0.55),
+      villageBorder: mix(fill, 0xc9b79a, 0.35),
+      accent: type === 'city' ? 0xe0b84c : 0xf0cf7a,
+    };
+  }
   return {
     faint: mix(fill, icon, 0.2),
+    crop: mix(fill, icon, 0.55),
     wall: mix(fill, icon, 0.4),
     roof: mix(fill, icon, 0.7),
     // Owned tiles keep the border in the owner's own color rather than the pale art tint.
-    border: owner === null ? mix(fill, icon, 0.62) : mix(fill, owner, 0.88),
-    villageBorder: owner === null ? mix(fill, icon, 0.38) : mix(fill, owner, 0.52),
+    border: mix(fill, owner, 0.88),
+    villageBorder: mix(fill, owner, 0.52),
     accent: mix(fill, icon, 0.95),
   };
 }
@@ -446,7 +487,13 @@ function drawFarmland(g: Graphics, c: Point, art: ArtColors): void {
     [3, 0.4],
     [9, 1],
   ];
-  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 10, bend, art.faint);
+  // Furrows in the soil under the plants.
+  for (const dy of [13, 16.5]) {
+    g.moveTo(c.x - 12, c.y + dy)
+      .lineTo(c.x + 12, c.y + dy)
+      .stroke({ width: 1.2, color: art.faint, cap: 'round' });
+  }
+  for (const [dx, bend] of stalks) drawWheat(g, c.x + dx, c.y + 10, bend, art.crop);
 }
 
 /**
@@ -494,8 +541,13 @@ function drawVillage(g: Graphics, c: Point, art: ArtColors, cutout: number): voi
   rect(-14, 3, 12, 9).fill(art.wall);
   g.poly([...at(-16, 3), ...at(-8, -6), ...at(0, 3)]).fill(art.roof);
   rect(-9, 7, 4, 5).fill(cutout);
+  // A lit window in the gable, and a wisp of smoke from the chimney.
+  rect(-9.5, -1.5, 3, 3).fill(art.accent);
+  g.circle(...at(-4.5, -7.5), 1.6 * k).fill(art.faint);
+  g.circle(...at(-3.2, -10.5), 1.2 * k).fill(art.faint);
   // Small cottage.
   rect(3, 6, 10, 6).fill(art.wall);
+  rect(5, 7.5, 2.4, 2.4).fill(art.accent);
   g.poly([...at(1, 6), ...at(8, -1), ...at(15, 6)]).fill(art.roof);
 }
 
@@ -515,6 +567,9 @@ function drawCastle(g: Graphics, c: Point, art: ArtColors, cutout: number): void
   // Keep with battlements.
   g.rect(...at(-7, -3), 14, 15).fill(art.wall);
   for (const x of [-7, -1.5, 4]) g.rect(...at(x, -6), 3, 3).fill(art.wall);
+  // Arrow slits in the towers and keep.
+  for (const x of [-13, 11]) g.rect(...at(x, -1), 2, 5).fill(cutout);
+  g.rect(...at(-1, -1), 2, 4.5).fill(cutout);
   // Gate arch.
   g.rect(...at(-2.5, 6), 5, 6).fill(cutout);
   g.circle(...at(0, 6), 2.5).fill(cutout);

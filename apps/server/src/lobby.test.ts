@@ -56,10 +56,12 @@ class FakeClient implements Connection {
 
 const options = {
   allowedModes: ['duel', 'ffa'] as ('duel' | 'ffa')[],
-  defaultRadius: 5,
   tickMs: 1000,
   countdownMs: 3000,
   earlyStartMs: 20_000,
+  joinWaitMs: 5000,
+  voteStartMs: 5000,
+  statsMs: 0,
   afkMs: 120_000,
   finishedLingerMs: 60_000,
 };
@@ -201,7 +203,7 @@ describe('Lobby', () => {
       expect(host.room?.players.map((p) => p.name)).toEqual(['Hana', 'Gus']);
       const stranger = new FakeClient(lobby).hello('Sam');
       stranger.say({ type: 'joinRoom', code: 'ZZZZZ' });
-      expect(stranger.last('rejected').reason).toMatch(/no game/);
+      expect(stranger.last('rejected').reason).toBe('No game with code ZZZZZ');
       stranger.say({ type: 'joinRoom', code: host.room!.code });
       expect(stranger.last('rejected').reason).toMatch(/full/);
     });
@@ -229,37 +231,49 @@ describe('Lobby', () => {
 
     it('lets only the host change settings, and validates them', () => {
       const { host, guest } = hostWithGuest();
-      guest.say({ type: 'updateRoom', settings: { radius: 8 } });
+      expect(host.room?.settings).toMatchObject({ mapSize: 'normal' });
+      expect(host.room?.settings.config.tickMs).toBe(1000);
+
+      guest.say({ type: 'updateRoom', settings: { mapSize: 'large' } });
       expect(guest.last('rejected').reason).toMatch(/only the host/);
 
-      host.say({ type: 'updateRoom', settings: { radius: 8, config: { tickMs: 500 } } });
-      expect(host.room?.settings.radius).toBe(8);
+      host.say({ type: 'updateRoom', settings: { mapSize: 'large', config: { tickMs: 500 } } });
+      expect(host.room?.settings.mapSize).toBe('large');
       expect(host.room?.settings.config.tickMs).toBe(500);
-      expect(guest.room?.settings.radius).toBe(8);
+      expect(guest.room?.settings.mapSize).toBe('large');
 
-      host.say({ type: 'updateRoom', settings: { radius: 99 } });
-      expect(host.last('rejected').reason).toMatch(/out of range/);
+      // Tick length can be set in tenths of a second.
+      host.say({ type: 'updateRoom', settings: { config: { tickMs: 1300 } } });
+      expect(guest.room?.settings.config.tickMs).toBe(1300);
+
+      host.say({ type: 'updateRoom', settings: { mapSize: 'enormous' as never } });
+      expect(host.last('rejected').reason).toMatch(/invalid/);
       host.say({ type: 'updateRoom', settings: { config: { tickMs: 1 } } });
       expect(host.last('rejected').reason).toMatch(/invalid/);
-      expect(host.room?.settings.radius).toBe(8);
+      expect(host.room?.settings.mapSize).toBe('large');
     });
 
-    it('starts the match with the chosen settings', () => {
-      const { host } = hostWithGuest();
-      host.say({
-        type: 'updateRoom',
-        settings: { radius: 6, config: { tickMs: 250, startingTroops: 17 } },
-      });
-      host.say({ type: 'startGame' });
-      vi.advanceTimersByTime(options.countdownMs);
-      const snapshot = host.last('snapshot');
-      expect(snapshot.config).toMatchObject({ tickMs: 250, startingTroops: 17 });
-      const radius = Math.max(
-        ...Object.values(snapshot.state.tiles).map((t) =>
-          Math.max(Math.abs(t.q), Math.abs(t.r), Math.abs(t.q + t.r)),
-        ),
-      );
-      expect(radius).toBe(6);
+    it('starts the match with the chosen settings, and sizes the board by map size', () => {
+      const radiusAt = (mapSize: 'small' | 'normal' | 'large') => {
+        const { host } = hostWithGuest();
+        host.say({
+          type: 'updateRoom',
+          settings: { mapSize, config: { tickMs: 250, startingTroops: 17 } },
+        });
+        host.say({ type: 'startGame' });
+        vi.advanceTimersByTime(options.countdownMs);
+        const snapshot = host.last('snapshot');
+        expect(snapshot.config).toMatchObject({ tickMs: 250, startingTroops: 17 });
+        host.say({ type: 'leaveRoom' });
+        return Math.max(
+          ...Object.values(snapshot.state.tiles).map((t) =>
+            Math.max(Math.abs(t.q), Math.abs(t.r), Math.abs(t.q + t.r)),
+          ),
+        );
+      };
+      expect(radiusAt('small')).toBe(5);
+      expect(radiusAt('normal')).toBe(7);
+      expect(radiusAt('large')).toBe(9);
     });
 
     it('passes the host to the next player when the host leaves', () => {
@@ -272,7 +286,7 @@ describe('Lobby', () => {
     it('has no settings changes for public rooms', () => {
       const a = new FakeClient(lobby).hello('Ann');
       a.say({ type: 'quickPlay', mode: 'duel' });
-      a.say({ type: 'updateRoom', settings: { radius: 8 } });
+      a.say({ type: 'updateRoom', settings: { mapSize: 'large' } });
       expect(a.last('rejected').reason).toMatch(/public/);
     });
   });
@@ -414,7 +428,7 @@ describe('Lobby', () => {
   });
 });
 
-describe('Lobby free-for-all', () => {
+describe('Lobby battle royale', () => {
   let lobby: Lobby;
 
   beforeEach(() => {
@@ -427,7 +441,7 @@ describe('Lobby free-for-all', () => {
     vi.useRealTimers();
   });
 
-  /** `count` guests, each in the same public free-for-all (quick play). */
+  /** `count` guests, each in the same public battle royale (quick play). */
   function joinPublic(count: number): FakeClient[] {
     return Array.from({ length: count }, (_, i) => {
       const client = new FakeClient(lobby).hello(`Guest ${i + 1}`);
@@ -484,17 +498,54 @@ describe('Lobby free-for-all', () => {
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
     });
 
-    it('restarts the wait whenever someone joins', () => {
+    it('starts the wait when the room reaches 3 players, and a join does not reset it', () => {
       const clients = joinPublic(3);
-      vi.advanceTimersByTime(options.earlyStartMs - 1000);
+      const end = clients[0]!.room?.earlyStartAt;
+      expect(end).toBeGreaterThan(Date.now());
+      vi.advanceTimersByTime(5000);
       const late = new FakeClient(lobby).hello('Late');
       late.say({ type: 'quickPlay', mode: 'ffa' });
-      vi.advanceTimersByTime(options.earlyStartMs - 1000);
-      expect(clients[0]!.room?.state).toBe('lobby');
-      vi.advanceTimersByTime(1000);
+      // Plenty of time left, so the end of the wait is unchanged.
+      expect(clients[0]!.room?.earlyStartAt).toBe(end);
+      vi.advanceTimersByTime(options.earlyStartMs - 5000);
       expect(clients[0]!.room?.state).toBe('starting');
       vi.advanceTimersByTime(options.countdownMs);
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(4);
+    });
+
+    it('tops the wait up to the join minimum when someone joins near the end', () => {
+      const clients = joinPublic(3);
+      vi.advanceTimersByTime(options.earlyStartMs - 2000);
+      const late = new FakeClient(lobby).hello('Late');
+      late.say({ type: 'quickPlay', mode: 'ffa' });
+      vi.advanceTimersByTime(options.joinWaitMs - 1);
+      expect(clients[0]!.room?.state).toBe('lobby');
+      vi.advanceTimersByTime(1);
+      expect(clients[0]!.room?.state).toBe('starting');
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(4);
+    });
+
+    it('does not reset the wait when a player leaves, as long as 3 remain', () => {
+      const clients = joinPublic(4);
+      vi.advanceTimersByTime(8000);
+      const end = clients[0]!.room?.earlyStartAt;
+      clients[3]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room?.earlyStartAt).toBe(end);
+      vi.advanceTimersByTime(options.earlyStartMs - 8000);
+      expect(clients[0]!.room?.state).toBe('starting');
+    });
+
+    it('starts the wait afresh if the room drops below 3 and gets back to 3', () => {
+      const clients = joinPublic(3);
+      vi.advanceTimersByTime(10_000);
+      clients[2]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room?.earlyStartAt).toBeNull();
+      const again = new FakeClient(lobby).hello('Again');
+      again.say({ type: 'quickPlay', mode: 'ffa' });
+      expect(clients[0]!.room?.earlyStartAt).toBeGreaterThanOrEqual(
+        Date.now() + options.earlyStartMs - 1,
+      );
     });
 
     it('stops the wait if players leave and too few are left', () => {
@@ -521,7 +572,7 @@ describe('Lobby free-for-all', () => {
       expect(clients[0]!.last('snapshot').state.players).toHaveLength(11);
     });
 
-    it('does not mix duels and free-for-alls', () => {
+    it('does not mix duels and battle royales', () => {
       const duelist = new FakeClient(lobby).hello('Dee');
       duelist.say({ type: 'quickPlay', mode: 'duel' });
       const [ffa] = joinPublic(1);
@@ -568,7 +619,7 @@ describe('Lobby free-for-all', () => {
       expect(host.room?.settings.size).toBe(12);
     });
 
-    it('switches between duel and free-for-all while gathering', () => {
+    it('switches between duel and battle royale while gathering', () => {
       const host = new FakeClient(lobby).hello('Hana');
       host.say({ type: 'createRoom' });
       expect(host.room?.settings).toMatchObject({ mode: 'duel', size: 2 });
@@ -587,7 +638,129 @@ describe('Lobby free-for-all', () => {
     });
   });
 
-  it('plays a full free-for-all: random shaped board, everyone gets a starting city', () => {
+  describe('voting to start early', () => {
+    const vote = (client: FakeClient, value = true) =>
+      client.say({ type: 'voteStart', vote: value });
+
+    it('needs 3 players, and only exists in public battle royales', () => {
+      const two = joinPublic(2);
+      vote(two[0]!);
+      expect(two[0]!.last('rejected').reason).toMatch(/at least 3/);
+
+      const { host } = privateRoom(3);
+      vote(host);
+      expect(host.last('rejected').reason).toMatch(/nothing to vote on/);
+
+      const duelist = new FakeClient(lobby).hello('Dee');
+      duelist.say({ type: 'quickPlay', mode: 'duel' });
+      vote(duelist);
+      expect(duelist.last('rejected').reason).toMatch(/nothing to vote on/);
+    });
+
+    it('asks for two thirds of the room, rounded up', () => {
+      for (const [players, needed] of [
+        [3, 2],
+        [4, 3],
+        [6, 4],
+        [7, 5],
+        [11, 8],
+      ] as const) {
+        lobby.stop();
+        lobby = new Lobby(options);
+        const clients = joinPublic(players);
+        expect(clients[0]!.room?.votesNeeded).toBe(needed);
+      }
+    });
+
+    it('cuts the wait to 5 seconds once enough have voted, then counts down to the match', () => {
+      const clients = joinPublic(3);
+      vi.advanceTimersByTime(2000);
+      vote(clients[0]!);
+      expect(clients[0]!.room).toMatchObject({ startVotes: 1, votesNeeded: 2, youVoted: true });
+      expect(clients[1]!.room).toMatchObject({ startVotes: 1, youVoted: false });
+      // One vote is not enough: the wait carries on as before.
+      expect(clients[0]!.room?.earlyStartAt).toBeGreaterThan(Date.now() + 10_000);
+
+      vote(clients[1]!);
+      const dropsTo = clients[0]!.room?.earlyStartAt ?? 0;
+      expect(dropsTo - Date.now()).toBeLessThanOrEqual(options.voteStartMs);
+      vi.advanceTimersByTime(options.voteStartMs - 1);
+      expect(clients[0]!.room?.state).toBe('lobby');
+      vi.advanceTimersByTime(1);
+      expect(clients[0]!.room?.state).toBe('starting');
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
+    });
+
+    it('lets a vote be taken back before the vote passes', () => {
+      const clients = joinPublic(3);
+      vote(clients[0]!);
+      vote(clients[0]!, false);
+      expect(clients[0]!.room).toMatchObject({ startVotes: 0, youVoted: false });
+      vote(clients[1]!);
+      expect(clients[0]!.room?.startVotes).toBe(1);
+    });
+
+    it('does not shorten a wait that is already shorter than 5 seconds', () => {
+      const clients = joinPublic(3);
+      vi.advanceTimersByTime(options.earlyStartMs - 2000);
+      vote(clients[0]!);
+      vote(clients[1]!);
+      vi.advanceTimersByTime(2000);
+      expect(clients[0]!.room?.state).toBe('starting');
+    });
+
+    it('closes the room to newcomers once the vote has passed', () => {
+      const clients = joinPublic(3);
+      vote(clients[0]!);
+      vote(clients[1]!);
+      const late = new FakeClient(lobby).hello('Late');
+      late.say({ type: 'quickPlay', mode: 'ffa' });
+      expect(late.room?.id).not.toBe(clients[0]!.room?.id);
+      vi.advanceTimersByTime(options.voteStartMs + options.countdownMs);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
+    });
+
+    it('keeps the early start if a player leaves and 3 or more remain', () => {
+      const clients = joinPublic(4);
+      vote(clients[0]!);
+      vote(clients[1]!);
+      vote(clients[2]!);
+      expect(clients[0]!.room?.earlyStartAt).not.toBeNull();
+      clients[3]!.say({ type: 'leaveRoom' });
+      vi.advanceTimersByTime(options.voteStartMs + options.countdownMs);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
+    });
+
+    it('calls the early start off if too few players are left', () => {
+      const clients = joinPublic(3);
+      vote(clients[0]!);
+      vote(clients[1]!);
+      clients[2]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room).toMatchObject({ earlyStartAt: null, startVotes: 0, state: 'lobby' });
+      vi.advanceTimersByTime(options.earlyStartMs * 5);
+      expect(clients[0]!.room?.state).toBe('lobby');
+    });
+
+    it('counts a leaving voter out, and a lowered bar can then be met', () => {
+      const clients = joinPublic(6); // 4 votes needed
+      vote(clients[0]!);
+      vote(clients[1]!);
+      vote(clients[2]!);
+      expect(clients[0]!.room?.earlyStartAt).toBeGreaterThan(Date.now() + 10_000);
+      // A non-voter leaves: 5 players need 4 votes, still not enough.
+      clients[5]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room).toMatchObject({ votesNeeded: 4, startVotes: 3 });
+      // Another non-voter leaves: 4 players need 3 votes, and there are 3.
+      clients[4]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room?.votesNeeded).toBe(3);
+      vi.advanceTimersByTime(options.voteStartMs);
+      expect(clients[0]!.room?.state).toBe('starting');
+    });
+  });
+
+  it('plays a full battle royale: random shaped board, everyone gets a starting city', () => {
     const clients = joinPublic(12);
     vi.advanceTimersByTime(options.countdownMs);
     const snapshot = clients[0]!.last('snapshot');
@@ -601,5 +774,47 @@ describe('Lobby free-for-all', () => {
     for (const client of clients.slice(1)) client.say({ type: 'surrender' });
     expect(clients[0]!.room?.state).toBe('finished');
     expect(clients[0]!.last('snapshot').state.winner).toBe(snapshot.you);
+  });
+});
+
+describe('Lobby activity counts', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('tells people in the menu how many are playing each mode, as it changes', () => {
+    const lobby = new Lobby({ ...options, statsMs: 1000 });
+    const watcher = new FakeClient(lobby).hello('Watcher');
+    expect(watcher.last('stats')).toMatchObject({ duel: 0, ffa: 0 });
+
+    const a = new FakeClient(lobby).hello('Ann');
+    a.say({ type: 'quickPlay', mode: 'duel' });
+    const crowd = Array.from({ length: 3 }, (_, i) => new FakeClient(lobby).hello(`P${i}`));
+    for (const c of crowd) c.say({ type: 'quickPlay', mode: 'ffa' });
+    vi.advanceTimersByTime(1000);
+    expect(watcher.last('stats')).toMatchObject({ duel: 1, ffa: 3 });
+
+    // Leaving, or losing your connection, takes you out of the count.
+    crowd[0]!.say({ type: 'leaveRoom' });
+    crowd[1]!.disconnect();
+    vi.advanceTimersByTime(1000);
+    expect(watcher.last('stats')).toMatchObject({ duel: 1, ffa: 1 });
+
+    // Private games are left out of the count.
+    const host = new FakeClient(lobby).hello('Hana');
+    host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+    const friend = new FakeClient(lobby).hello('Fay');
+    friend.say({ type: 'joinRoom', code: host.room!.code });
+    vi.advanceTimersByTime(1000);
+    expect(watcher.last('stats')).toMatchObject({ duel: 1, ffa: 1 });
+
+    // People already in a game are not sent the menu's numbers.
+    const before = a.all('stats').length;
+    vi.advanceTimersByTime(5000);
+    expect(a.all('stats').length).toBe(before);
+    lobby.stop();
   });
 });

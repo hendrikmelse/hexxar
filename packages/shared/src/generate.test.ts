@@ -34,7 +34,7 @@ describe('rng', () => {
 
 describe('match config', () => {
   it('fills defaults and validates overrides', () => {
-    expect(parseMatchConfig({}).tickMs).toBe(2000);
+    expect(parseMatchConfig({}).tickMs).toBe(1000);
     expect(parseMatchConfig({ tickMs: 500 }).tickMs).toBe(500);
     expect(() => parseMatchConfig({ tickMs: 5 })).toThrow();
   });
@@ -290,7 +290,7 @@ describe('terrain rules', () => {
   });
 });
 
-describe('free-for-all boards', () => {
+describe('battle royale boards', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
   const board = (n: number, seed: number, radius?: number) =>
     createFreeForAllMatch({ players: ids(n), seed, radius, params: { villageChance: 100 } }).state;
@@ -373,7 +373,7 @@ describe('free-for-all boards', () => {
           });
           expect(blocked).toBe(true);
         }
-        // Free-for-all boards have no cities beyond the starting ones.
+        // Battle Royale boards have no cities beyond the starting ones.
         expect(cities).toHaveLength(n);
       }
     }

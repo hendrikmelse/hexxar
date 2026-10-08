@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { PlayerId, RoomView } from '@hexxar/shared';
+import { randomName } from './names.js';
 
 const NAME_KEY = 'hexxar.name';
 
@@ -13,11 +14,15 @@ export interface AppState {
   room: RoomView | null;
   /** Add to `Date.now()` to get the server's clock. */
   clockOffset: number;
-  /** The last thing the server refused, for the menu and lobby to show. */
+  /** The last thing the server refused, shown as a toast. */
   error: string | null;
+  /** Goes up with every refusal, so the same message can pop up again. */
+  errorSeq: number;
   /** The match's winner (a match player id) and your own id in it, for the results screen. */
   winner: PlayerId | null;
   matchPlayerId: PlayerId | null;
+  /** How many people are playing each mode, once the server has said. */
+  activity: { duel: number; ffa: number } | null;
   /** Set while looking at a generated map instead of playing. */
   preview: { seed: number; summary: string; error: string | null } | null;
 }
@@ -27,9 +32,9 @@ function loadName(): string {
     const saved = localStorage.getItem(NAME_KEY);
     if (saved) return saved;
   } catch {
-    // Storage can be unavailable; a fresh guest name is fine.
+    // Storage can be unavailable; a fresh random name is fine.
   }
-  return `Guest ${1000 + Math.floor(Math.random() * 9000)}`;
+  return randomName();
 }
 
 export function saveName(name: string): void {
@@ -48,6 +53,8 @@ class Store {
     room: null,
     clockOffset: 0,
     error: null,
+    errorSeq: 0,
+    activity: null,
     winner: null,
     matchPlayerId: null,
     preview: null,

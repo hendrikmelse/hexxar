@@ -191,8 +191,8 @@ export const PARAM_GROUPS: readonly ParamGroup[] = [
       {
         kind: 'bool',
         key: 'freeForAllCities',
-        label: 'Extra cities in free-for-all',
-        hint: 'Free-for-all boards normally have no cities except the starting ones. Turn this on to add extra cities at the density above.',
+        label: 'Extra cities in battle royale',
+        hint: 'Battle Royale boards normally have no cities except the starting ones. Turn this on to add extra cities at the density above.',
         applies: 'ffa',
       },
       {
@@ -262,7 +262,7 @@ export const PARAM_GROUPS: readonly ParamGroup[] = [
         kind: 'number',
         key: 'tilesPerPlayer',
         label: 'Tiles per player',
-        hint: 'Free-for-all boards: how much board each player gets, which decides the board size.',
+        hint: 'Battle Royale boards: how much board each player gets, which decides the board size.',
         min: 15,
         max: 100,
         step: 1,

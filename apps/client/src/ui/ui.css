@@ -340,3 +340,1633 @@
   color: #8a93a8;
   font-size: 13px;
 }
+
+/* ------------------------------------------------------------------------------------
+   Depth: slabs, raised buttons, sunken inputs, and the title.
+   ------------------------------------------------------------------------------------ */
+
+#ui .screen {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(79, 157, 255, 0.14), transparent 60%),
+    radial-gradient(ellipse at 50% 120%, rgba(199, 125, 255, 0.1), transparent 55%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M0 16.17 28 0 56 16.17M56 16.17V48.5M0 16.17V48.5M0 48.5 28 64.66 56 48.5M28 64.66V97' fill='none' stroke='%23ffffff' stroke-opacity='0.04' stroke-width='1.5'/%3E%3C/svg%3E")
+      0 0 / 56px 97px,
+    #12141a;
+}
+
+#ui .card {
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 6px 0 #10131a,
+    0 22px 38px rgba(0, 0, 0, 0.55);
+}
+
+#ui .menu {
+  transform: perspective(1100px) rotateX(2deg);
+  transform-origin: 50% 100%;
+}
+
+#ui button {
+  background: linear-gradient(180deg, #3a4156 0%, #2b3042 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 4px 0 #151922,
+    0 6px 10px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 0.06s ease,
+    box-shadow 0.06s ease,
+    filter 0.12s ease;
+}
+
+#ui button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #444c64 0%, #323850 100%);
+  filter: brightness(1.06);
+}
+
+#ui button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 1px 0 #151922;
+}
+
+#ui button.primary {
+  /* White text needs a slightly deeper blue than dark text did. */
+  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(8, 24, 60, 0.45);
+  font-weight: 400;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 4px 0 #151922,
+    0 6px 10px rgba(0, 0, 0, 0.35);
+}
+
+#ui button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #6bb0ff 0%, #3c88f0 100%);
+}
+
+#ui button.primary:active:not(:disabled) {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 1px 0 #151922;
+}
+
+#ui button.link,
+#ui button.link:hover:not(:disabled),
+#ui button.link:active:not(:disabled) {
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+#ui input,
+#ui select {
+  background: #0f1117;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui .players li,
+#ui .invite {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* The title */
+
+#ui .logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+#ui .logo-mark {
+  width: 150px;
+  height: auto;
+  filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.55));
+  overflow: visible;
+}
+
+#ui .logo-hex {
+  animation: hex-bob 3.4s ease-in-out infinite;
+}
+
+@keyframes hex-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+#ui .logo h1 {
+  margin: 4px 0 0;
+  font-size: 54px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  padding-left: 0.14em;
+  /* A bright face with a single solid dark side, like a chunky block letter. */
+  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 50%, #8dbaff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57)
+    drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57)
+    drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57)
+    drop-shadow(0 14px 14px rgba(0, 0, 0, 0.55));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .logo-hex {
+    animation: none;
+  }
+}
+
+/* Battle Royale lobby: head count, early-start vote, and the starting screen */
+
+#ui .head-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 16px 12px;
+  background: #0f1117;
+  border-radius: 10px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#ui .head-count strong {
+  font-size: 52px;
+  line-height: 1;
+  font-weight: 800;
+  color: #eef5ff;
+}
+
+#ui .head-count strong small {
+  font-size: 24px;
+  font-weight: 600;
+  color: #6f7890;
+}
+
+#ui .wait {
+  text-align: center;
+}
+
+#ui .vote {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+#ui .vote button {
+  width: 100%;
+}
+
+#ui .vote button.voted {
+  background: linear-gradient(180deg, #3d9b6e 0%, #2d7a55 100%);
+  color: #eafff4;
+}
+
+#ui .starting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+#ui .starting h2 {
+  font-size: 28px;
+  letter-spacing: 0.04em;
+}
+
+#ui .starting-count {
+  font-size: 120px;
+  line-height: 1;
+  font-weight: 900;
+  color: #eef5ff;
+  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 2px 0 #1b2f57) drop-shadow(0 3px 0 #1b2f57)
+    drop-shadow(0 4px 0 #1b2f57) drop-shadow(0 5px 0 #1b2f57) drop-shadow(0 6px 0 #1b2f57)
+    drop-shadow(0 16px 16px rgba(0, 0, 0, 0.55));
+  animation: count-pop 0.5s ease-out;
+}
+
+@keyframes count-pop {
+  from {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .starting-count {
+    animation: none;
+  }
+}
+
+#ui .wait-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1b2a45 0%, #14203a 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 3px 0 #0d1526;
+}
+
+#ui .wait-timer .wait-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8fa7d1;
+}
+
+#ui .wait-timer strong {
+  font-size: 46px;
+  line-height: 1.05;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #eef5ff;
+  text-shadow: 0 2px 0 #0d1526;
+}
+
+#ui .wait-timer.locked {
+  background: linear-gradient(180deg, #1d3d30 0%, #152d24 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 3px 0 #0c1b15;
+}
+
+#ui .wait-timer.locked .wait-label {
+  color: #8fd1b0;
+}
+
+#ui .count-bump {
+  display: inline-block;
+  animation: count-bump 0.45s ease-out;
+}
+
+#ui .count-shrink {
+  display: inline-block;
+  animation: count-shrink 0.45s ease-out;
+}
+
+/* A calm bounce: sits at normal size for a couple of frames, grows a little, settles. */
+@keyframes count-bump {
+  0%,
+  8% {
+    transform: translateY(0) scale(1);
+  }
+  34% {
+    transform: translateY(-3px) scale(1.08);
+  }
+  66% {
+    transform: translateY(1px) scale(0.985);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* The same bounce in reverse, for a player leaving: it shrinks instead of growing. */
+@keyframes count-shrink {
+  0%,
+  8% {
+    transform: translateY(0) scale(1);
+  }
+  34% {
+    transform: translateY(3px) scale(0.92);
+  }
+  66% {
+    transform: translateY(-1px) scale(1.015);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .count-bump,
+  #ui .count-shrink {
+    animation: none;
+  }
+}
+
+/* Lobby heading: the title's look, turned down: same bright face and solid side, but smaller, with a thinner side. */
+#ui .lobby h2 {
+  text-align: center;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding-left: 0.1em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 55%, #9cc3ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57)
+    drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45));
+}
+
+
+/* Duel lobby: you versus your opponent */
+
+#ui .versus {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+#ui .versus .slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 8px;
+  background: #0f1117;
+  border-radius: 10px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#ui .versus .slot .name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+#ui .versus .slot em {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #2a2f3d;
+  font-size: 11px;
+  font-style: normal;
+  color: #8a93a8;
+}
+
+#ui .versus .slot.you {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 0 0 1px rgba(79, 157, 255, 0.45);
+}
+
+#ui .versus .slot.you em {
+  background: rgba(79, 157, 255, 0.2);
+  color: #9cc3ff;
+}
+
+#ui .versus .slot.away {
+  opacity: 0.6;
+}
+
+#ui .versus .slot.open {
+  border: 1px dashed #343a4b;
+  background: none;
+  box-shadow: none;
+}
+
+#ui .versus .slot.pop {
+  animation: slot-pop 0.45s ease-out;
+}
+
+@keyframes slot-pop {
+  0%,
+  8% {
+    transform: scale(1);
+  }
+  34% {
+    transform: scale(1.06);
+  }
+  66% {
+    transform: scale(0.99);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+#ui .vs {
+  font-size: 20px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 55%, #9cc3ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 1px 0 #1b2f57)
+    drop-shadow(0 5px 6px rgba(0, 0, 0, 0.45));
+}
+
+#ui .searching {
+  display: inline-flex;
+  gap: 6px;
+}
+
+#ui .searching i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6f7890;
+  animation: searching 1.2s ease-in-out infinite;
+}
+
+#ui .searching i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+#ui .searching i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes searching {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+#ui .muted.center {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .versus .slot.pop,
+  #ui .searching i {
+    animation: none;
+  }
+}
+
+/* Connecting screen */
+
+#ui .connecting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+#ui .connecting-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #8fa7d1;
+}
+
+#ui .connecting-text .dots i {
+  font-style: normal;
+  animation: dot-blink 1.2s ease-in-out infinite;
+}
+
+#ui .connecting-text .dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+#ui .connecting-text .dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .connecting-text .dots i {
+    animation: none;
+  }
+}
+
+/* Title screen: Quick play and Private games sections */
+
+#ui .menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#ui .menu-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+/* A line running out to the right of the section name */
+#ui .menu-section h3::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent);
+}
+
+#ui .tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+#ui button.mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+  padding: 18px 12px;
+  line-height: 1.2;
+}
+
+#ui button.mode strong {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#ui button.mode small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+#ui button.primary.mode small {
+  opacity: 0.88;
+}
+
+#ui .join-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 10px;
+  background: #0f1117;
+  border-radius: 10px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#ui .join-tile input {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+#ui .join-tile button {
+  padding: 8px 10px;
+}
+
+@media (max-width: 420px) {
+  #ui .tiles {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* All buttons get the roomier, white-text treatment the blue ones have */
+#ui button {
+  padding: 12px 18px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+#ui button.link {
+  text-shadow: none;
+}
+
+/* Same type as the title screen tiles: bold, and a size to match */
+#ui button {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#ui button.primary {
+  font-weight: 700;
+}
+
+#ui button.link {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+#ui .preview button,
+#ui .params button {
+  font-size: 13px;
+}
+
+#ui .join-tile button {
+  font-size: 15px;
+}
+
+/* Toast: a refusal from the server, popping up at the bottom of the screen */
+#ui .toast {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  z-index: 10;
+  max-width: calc(100% - 32px);
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #4a2830 0%, #3a1f26 100%);
+  border: 1px solid rgba(255, 130, 130, 0.35);
+  color: #ffd9d9;
+  font-weight: 600;
+  text-align: center;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 0 #1c0e12,
+    0 14px 24px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+  animation: toast 4s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 24px) scale(0.92);
+  }
+  6% {
+    opacity: 1;
+    transform: translate(-50%, -4px) scale(1.03);
+  }
+  10% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  88% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .toast {
+    animation: none;
+  }
+}
+
+/* A game code inside a toast: monospace in a little pill, so it stands out from the sentence */
+#ui .toast-code {
+  margin-left: 2px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  color: #fff;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.95em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+/* Private game settings seen by everyone but the host: plain information, not controls */
+#ui .game-info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 12px 14px;
+  background: #0f1117;
+  border-radius: 10px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#ui .game-info dt {
+  color: #8a93a8;
+  font-size: 13px;
+}
+
+#ui .game-info dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+/* Tick length: a number field with its unit next to it */
+#ui .stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#ui .stepper input {
+  width: 84px;
+  text-align: right;
+}
+
+#ui .stepper em {
+  font-style: normal;
+  color: #8a93a8;
+}
+
+
+/* Settings controls: one width and one look, so the rows line up */
+#ui .settings .select,
+#ui .settings .number-control {
+  width: 210px;
+}
+
+#ui .settings .select-button,
+#ui .settings .number-control {
+  height: 42px;
+}
+
+#ui .select-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ui .select {
+  position: relative;
+}
+
+#ui button.select-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: #0f1117;
+  border: 1px solid #343a4b;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #e8eaf0;
+  text-shadow: none;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui button.select-button:hover:not(:disabled),
+#ui button.select-button[aria-expanded='true'] {
+  background: #14171f;
+  border-color: #4f9dff;
+  filter: none;
+}
+
+#ui button.select-button:active:not(:disabled) {
+  transform: none;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui .chevron {
+  flex: none;
+  color: #8a93a8;
+}
+
+#ui .select-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 4px 0 #10131a,
+    0 16px 28px rgba(0, 0, 0, 0.55);
+  animation: select-open 0.12s ease-out;
+}
+
+@keyframes select-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#ui .select-list li {
+  padding: 9px 10px;
+  border-radius: 7px;
+  color: #c4cad8;
+  cursor: pointer;
+}
+
+#ui .select-list li.highlight {
+  background: rgba(79, 157, 255, 0.2);
+  color: #ffffff;
+}
+
+#ui .select-list li.selected {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* The tick length box: same size and frame as the dropdown, with tidy step buttons */
+#ui .number-control {
+  display: flex;
+  align-items: stretch;
+  background: #0f1117;
+  border: 1px solid #343a4b;
+  border-radius: 8px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+#ui .number-control:focus-within {
+  border-color: #4f9dff;
+}
+
+#ui .number-control input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 4px 9px 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+#ui .number-control input:focus {
+  outline: none;
+}
+
+/* The browser's own up/down arrows are replaced by the buttons on the right */
+#ui .number-control input::-webkit-outer-spin-button,
+#ui .number-control input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#ui .number-control .unit {
+  align-self: center;
+  padding-right: 8px;
+  color: #8a93a8;
+}
+
+#ui .number-control .spin {
+  display: flex;
+  flex-direction: column;
+  width: 30px;
+  border-left: 1px solid #343a4b;
+}
+
+#ui .number-control .spin button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  color: #8a93a8;
+  box-shadow: none;
+  text-shadow: none;
+  border-radius: 0;
+}
+
+#ui .number-control .spin button + button {
+  border-top: 1px solid #343a4b;
+}
+
+#ui .number-control .spin button:hover:not(:disabled) {
+  background: rgba(79, 157, 255, 0.2);
+  color: #ffffff;
+  filter: none;
+}
+
+#ui .number-control .spin button:active:not(:disabled) {
+  transform: none;
+  background: rgba(79, 157, 255, 0.35);
+  box-shadow: none;
+}
+
+
+/* A bar of options (game mode, map size): click one to select it */
+#ui .field.stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+#ui .segmented {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: #0f1117;
+  border: 1px solid #343a4b;
+  border-radius: 10px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui button.segment {
+  flex: 1;
+  padding: 9px 8px;
+  background: transparent;
+  border-radius: 7px;
+  color: #8a93a8;
+  font-size: 15px;
+  letter-spacing: 0;
+  text-shadow: none;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+#ui button.segment:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8eaf0;
+  filter: none;
+}
+
+#ui button.segment.selected,
+#ui button.segment.selected:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(8, 24, 60, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 2px 0 #1a3f78;
+}
+
+#ui button.segment:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+#ui button.segment.selected:active:not(:disabled) {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 2px 0 #1a3f78;
+}
+
+/* Both controls measure their width the same way, so their edges line up exactly */
+#ui .settings .select,
+#ui .settings .number-control,
+#ui .select-button {
+  box-sizing: border-box;
+}
+
+
+/* Private battle royale: twelve boxes in a 3 x 4 grid that fill in as players join */
+#ui .roster {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+#ui .roster-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px 6px;
+  background: #0f1117;
+  border-radius: 8px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#ui .roster-slot .name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+#ui .roster-slot em {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #2a2f3d;
+  font-size: 11px;
+  font-style: normal;
+  color: #8a93a8;
+}
+
+#ui .roster-slot.away {
+  opacity: 0.6;
+}
+
+#ui .roster-slot.open {
+  border: 1px dashed #343a4b;
+  background: none;
+  box-shadow: none;
+}
+
+#ui .roster-slot.pop {
+  animation: slot-pop 0.45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .roster-slot.pop {
+    animation: none;
+  }
+}
+
+/* Roster boxes: one line tall. Empty ones are pressed in; filled ones stand proud. */
+#ui .roster {
+  gap: 6px;
+}
+
+#ui .roster-slot {
+  flex-direction: row;
+  gap: 5px;
+  min-height: 0;
+  padding: 5px 8px;
+  line-height: 1.25;
+  background: linear-gradient(180deg, #313950 0%, #272d40 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 2px 0 #141821;
+}
+
+#ui .roster-slot .name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+#ui .roster-slot em {
+  flex: none;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+#ui .roster-slot.open {
+  /* Same one-line height as a filled box, holding a blank space where a name would be. */
+  border: 0;
+  background: #0c0e13;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.75) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+#ui .roster-slot.open::before {
+  content: '\00a0';
+  font-size: 14px;
+}
+
+
+/* Tick length slider: a sunken track filled with blue up to a raised round thumb */
+#ui .slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+#ui .slider-head output {
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+#ui input.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+#ui input.slider:focus {
+  outline: none;
+}
+
+#ui input.slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border: 1px solid #343a4b;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #3f8cf0 var(--fill), #0f1117 var(--fill));
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui input.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border: 1px solid #7db4ff;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #c9dcff 100%);
+  box-shadow:
+    0 2px 0 #1a3f78,
+    0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+#ui input.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 3px rgba(79, 157, 255, 0.45),
+    0 2px 0 #1a3f78;
+}
+
+#ui input.slider::-moz-range-track {
+  height: 8px;
+  border: 1px solid #343a4b;
+  border-radius: 6px;
+  background: #0f1117;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55) inset;
+}
+
+#ui input.slider::-moz-range-progress {
+  height: 8px;
+  border-radius: 6px;
+  background: #3f8cf0;
+}
+
+#ui input.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #7db4ff;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #c9dcff 100%);
+  box-shadow:
+    0 2px 0 #1a3f78,
+    0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+
+/* A player leaving: their box swells a little, then shrinks away to nothing */
+#ui .roster-slot.leaving,
+#ui .versus .slot.leaving {
+  animation: pop-out 0.4s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes pop-out {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  25% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.1);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .roster-slot.leaving,
+  #ui .versus .slot.leaving {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+
+/* A box that becomes empty after a player leaves fades in rather than blinking into place */
+#ui .roster-slot.open.appear,
+#ui .versus .slot.open.appear {
+  animation: slot-appear 0.3s ease-out;
+}
+
+@keyframes slot-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .roster-slot.open.appear,
+  #ui .versus .slot.open.appear {
+    animation: none;
+  }
+}
+
+/* Layering in the roster: names slide over the empty boxes, never under them */
+#ui .roster-slot {
+  position: relative;
+  z-index: 1;
+}
+
+#ui .roster-slot.open {
+  z-index: 0;
+}
+
+/* The duel's empty slot uses the same pressed-in box as the battle royale roster (dots stay) */
+#ui .versus .slot.open {
+  border: 0;
+  background: #0c0e13;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.75) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* The duel's filled slots use the roster's raised box too, replacing the sunken look and blue ring */
+#ui .versus .slot:not(.open),
+#ui .versus .slot.you {
+  border-radius: 8px;
+  background: linear-gradient(180deg, #313950 0%, #272d40 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 2px 0 #141821;
+}
+
+#ui .versus .slot.open {
+  border-radius: 8px;
+}
+
+/*
+ * In a private game, the duel's two panels and the battle royale roster take up exactly the same
+ * height (four 28px boxes and three 6px gaps), so switching mode moves nothing below them. The
+ * quick play duel lobby keeps its natural height.
+ */
+#ui .roster-slot {
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+#ui .versus.roster-height {
+  height: calc(4 * 28px + 3 * 6px);
+}
+
+/* A wrapper that carries a tooltip for a button that may be disabled */
+#ui .tip {
+  display: flex;
+  flex: 1;
+}
+
+#ui .tip button {
+  flex: 1;
+}
+
+/* Let the pointer reach the wrapper, so its tooltip shows over a disabled button */
+#ui .tip button:disabled {
+  pointer-events: none;
+}
+
+/* The tooltip: the app's own raised dark panel, shown the instant the pointer arrives (or after a tap) */
+#ui .tip {
+  position: relative;
+}
+
+#ui .tip[data-tip]::after,
+#ui .tip[data-tip]::before {
+  position: absolute;
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.08s ease-out,
+    transform 0.08s ease-out;
+}
+
+#ui .tip[data-tip]::after {
+  content: attr(data-tip);
+  bottom: calc(100% + 11px);
+  z-index: 30;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #2a2f3f 0%, #1e222d 100%);
+  color: #e8eaf0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 3px 0 #10131a,
+    0 10px 20px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, 4px);
+}
+
+/* A little arrow pointing down at the button */
+#ui .tip[data-tip]::before {
+  content: '';
+  bottom: calc(100% + 5px);
+  z-index: 31;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1e222d;
+  transform: translate(-50%, 4px) rotate(45deg);
+}
+
+#ui .tip[data-tip].tapped::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#ui .tip[data-tip].tapped::before {
+  opacity: 1;
+  transform: translate(-50%, 0) rotate(45deg);
+}
+
+/*
+ * Hovering only counts on devices that really hover. On a touch screen a tap leaves the
+ * element "hovered" until you tap elsewhere, which would keep the tooltip up for good.
+ */
+@media (hover: hover) and (pointer: fine) {
+  #ui .tip[data-tip]:hover::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  #ui .tip[data-tip]:hover::before {
+    opacity: 1;
+    transform: translate(-50%, 0) rotate(45deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .tip[data-tip]::after,
+  #ui .tip[data-tip]::before {
+    transition: none;
+  }
+}
+
+/* Slider rows: the slider, with its value large on the right instead of small above it */
+#ui .slider-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#ui .slider-row input.slider {
+  flex: 1;
+  min-width: 0;
+}
+
+#ui .slider-row output {
+  flex: none;
+  min-width: 64px;
+  text-align: right;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #eef5ff;
+}
+
+/* The value beside a slider, as a text box you can type into */
+#ui .slider-row .value-box {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 4px;
+  /* nudged up a little to sit level with the slider */
+  position: relative;
+  top: -3px;
+}
+
+#ui input.slider-value {
+  box-sizing: border-box;
+  width: 62px;
+  padding: 4px 8px;
+  border: 1px solid #343a4b;
+  border-radius: 8px;
+  background: #0f1117;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+  color: #eef5ff;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+#ui input.slider-value:focus {
+  outline: none;
+  border-color: #4f9dff;
+}
+
+#ui .slider-row .value-box .unit {
+  min-width: 12px;
+  color: #8a93a8;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* The selected option's blue box is its own element, so it can slide from one option to the next */
+#ui .segmented {
+  position: relative;
+}
+
+#ui .segment-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  /* One option's share of the bar: the room inside the padding, minus the gaps, split evenly */
+  width: calc((100% - 6px - 3px * (var(--count) - 1)) / var(--count));
+  border-radius: 7px;
+  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 2px 0 #1a3f78;
+  transform: translateX(calc(var(--index) * (100% + 3px)));
+  transition: transform 0.2s cubic-bezier(0.3, 1, 0.5, 1);
+}
+
+#ui button.segment {
+  position: relative;
+  z-index: 1;
+  transition: color 0.2s ease-out;
+}
+
+/* The highlight now lives in the indicator; the selected option itself only turns its text white */
+#ui button.segment.selected,
+#ui button.segment.selected:hover:not(:disabled),
+#ui button.segment.selected:active:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .segment-indicator,
+  #ui button.segment {
+    transition: none;
+  }
+}
+
+/* The copy button: both labels sit in one cell, so it never changes size when the text does */
+#ui button.copy-button {
+  display: inline-grid;
+  justify-items: center;
+}
+
+#ui button.copy-button span {
+  grid-area: 1 / 1;
+}
+
+#ui button.copy-button span.hidden {
+  visibility: hidden;
+}
+
+/* A roster box that still has to be filled shows the pulsing dots instead of a blank */
+#ui .roster-slot.open.waiting::before {
+  content: none;
+}
+
+/*
+ * The dots start staggered. Without this, the delayed ones sit at full brightness until their
+ * delay ends and then suddenly drop to dim, which shows up as a flash. Holding the first
+ * keyframe during the delay keeps them dim until their turn.
+ */
+#ui .searching i {
+  animation-fill-mode: backwards;
+}
+
+
+/* "N playing" on the quick play buttons */
+#ui button.mode small.activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+#ui .live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7dffb3;
+  box-shadow: 0 0 6px rgba(125, 255, 179, 0.8);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .live-dot {
+    animation: none;
+  }
+}
+
+
+/* Battle royale lobby: the timer shows (paused) and the vote has a placeholder before 3 players */
+#ui .wait-timer.paused {
+  opacity: 0.7;
+}
+
+#ui .wait-timer .pause-icon {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 7px;
+  vertical-align: -1px;
+}
+
+#ui .wait-timer .pause-icon i {
+  width: 3px;
+  height: 10px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+/* The button and its placeholder are the same height, so swapping them moves nothing */
+#ui .vote {
+  height: 48px;
+}
+
+#ui .vote button {
+  height: 100%;
+}
+
+#ui .vote .vote-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  border: 1px dashed #343a4b;
+  border-radius: 8px;
+  color: #8a93a8;
+  font-size: 14px;
+  text-align: center;
+}

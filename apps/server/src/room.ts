@@ -1,7 +1,7 @@
 import {
   FFA_MAX_PLAYERS,
-  MAX_ROOM_RADIUS,
-  MIN_ROOM_RADIUS,
+  DUEL_RADIUS,
+  ROYALE_TILES_PER_PLAYER,
   createFreeForAllMatch,
   createRng,
   createSymmetricMatch,
@@ -38,15 +38,14 @@ export function applySettingsPatch(
   if (!allowedModes.includes(mode)) return 'that kind of game is not available';
   // The number of players is decided by the kind of game.
   const size = roomCapacity(mode);
-  const radius = patch.radius ?? current.radius;
-  if (radius < MIN_ROOM_RADIUS || radius > MAX_ROOM_RADIUS) return 'board size is out of range';
+  const mapSize = patch.mapSize ?? current.mapSize;
   let config;
   try {
     config = parseMatchConfig({ ...current.config, ...patch.config });
   } catch {
     return 'invalid game settings';
   }
-  const parsed = roomSettingsSchema.safeParse({ mode, size, radius, config });
+  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, config });
   return parsed.success ? parsed.data : 'invalid game settings';
 }
 
@@ -61,10 +60,14 @@ export interface RoomOptions {
   readonly allowedModes: readonly RoomMode[];
   readonly countdownMs: number;
   /**
-   * In a public free-for-all with enough players, how long the room waits with nobody new
-   * joining before starting without the rest.
+   * In a public battle royale, how long the room waits for more players once it has enough
+   * to start, before starting with whoever is there.
    */
   readonly earlyStartMs: number;
+  /** A player joining tops the wait up to at least this long, so newcomers have time to settle in. */
+  readonly joinWaitMs: number;
+  /** Once enough players have voted to start early, how long until the countdown begins. */
+  readonly voteStartMs: number;
   /** How long a disconnected player is given before their army surrenders. */
   readonly afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
@@ -111,6 +114,10 @@ export class Room {
   private lingerTimer: Timer | null = null;
   private earlyStartTimer: Timer | null = null;
   private earlyStartAt: number | null = null;
+  /** Users who have voted to start early (public battle royale). */
+  private readonly votes = new Set<string>();
+  /** Enough votes are in: the wait has been cut short and the room takes no more players. */
+  private lockedIn = false;
   private closed = false;
 
   constructor(private readonly options: RoomOptions) {
@@ -125,6 +132,7 @@ export class Room {
 
   join(session: Session): string | null {
     if (this.state !== 'lobby') return 'that game has already started';
+    if (this.lockedIn) return 'that game is about to start';
     if (this.activeMembers().length >= this.capacity) return 'that game is full';
     this.members.push({ session, playerId: null, left: false, afkTimer: null });
     session.room = this;
@@ -133,6 +141,7 @@ export class Room {
       this.startCountdown();
     } else {
       this.scheduleEarlyStart();
+      this.topUpWaitForJoin();
       this.broadcastRoom();
     }
     return null;
@@ -144,6 +153,7 @@ export class Room {
     if (!member || member.left) return;
     if (this.state === 'lobby' || this.state === 'starting') {
       this.members.splice(this.members.indexOf(member), 1);
+      this.votes.delete(session.userId);
       this.detach(session);
       if (this.members.length === 0) return this.close();
       if (this.host === session) this.host = this.members[0]!.session;
@@ -151,6 +161,8 @@ export class Room {
         this.cancelCountdown();
       } else if (this.state === 'lobby') {
         this.scheduleEarlyStart();
+        // With one fewer player, the votes already in may now be enough.
+        this.checkVotes();
       }
       this.broadcastRoom();
       return;
@@ -243,22 +255,32 @@ export class Room {
         playerId: m.playerId,
       })),
       minPlayers: this.minPlayers,
+      waitMs: this.options.earlyStartMs,
       startsAt: this.startsAt,
       earlyStartAt: this.earlyStartAt,
+      startVotes: this.votes.size,
+      votesNeeded: this.votesApply ? this.votesNeeded() : 0,
+      youVoted: this.votes.has(session.userId),
       serverTime: Date.now(),
       you: session.userId,
     };
   }
 
   get isOpen(): boolean {
-    return this.state === 'lobby' && this.activeMembers().length < this.capacity;
+    return this.state === 'lobby' && !this.lockedIn && this.activeMembers().length < this.capacity;
+  }
+
+  /** People currently in this game, lobby or match, and connected. Finished games count for nobody. */
+  get activePlayers(): number {
+    if (this.state === 'finished') return 0;
+    return this.members.filter((m) => !m.left && m.session.connection !== null).length;
   }
 
   get mode(): RoomMode {
     return this.settings.mode;
   }
 
-  /** The most players the room takes. A free-for-all never starts with more than 12. */
+  /** The most players the room takes. A battle royale never starts with more than 12. */
   private get capacity(): number {
     return Math.min(this.settings.size, roomCapacity(this.settings.mode));
   }
@@ -317,33 +339,92 @@ export class Room {
     this.options.onClose(this);
   }
 
-  /**
-   * A public free-for-all with enough players but not a full room waits for more; if nobody
-   * joins for a while, it starts with whoever is there. Every join (or leave) restarts the wait.
-   */
-  private scheduleEarlyStart(): void {
+  /** Does a vote to start early apply here? Public battle royales only. */
+  private get votesApply(): boolean {
+    return this.visibility === 'public' && this.settings.mode === 'ffa';
+  }
+
+  /** Two thirds of the players in the room, rounded up, once there are enough to start. */
+  private votesNeeded(): number {
+    const players = this.activeMembers().length;
+    return players >= this.minPlayers ? Math.ceil((players * 2) / 3) : 0;
+  }
+
+  /** Forget the wait: no timer, no votes, and the room is open again. */
+  private resetEarlyStart(): void {
     if (this.earlyStartTimer) clearTimeout(this.earlyStartTimer);
     this.earlyStartTimer = null;
     this.earlyStartAt = null;
-    const players = this.activeMembers().length;
-    const applies =
-      this.visibility === 'public' &&
-      this.settings.mode === 'ffa' &&
-      this.state === 'lobby' &&
-      players >= this.minPlayers &&
-      players < this.capacity;
-    if (!applies) return;
-    this.earlyStartAt = Date.now() + this.options.earlyStartMs;
+    this.votes.clear();
+    this.lockedIn = false;
+  }
+
+  /** Run the wait out in `waitMs`, after which the start countdown begins. */
+  private armEarlyStart(waitMs: number): void {
+    if (this.earlyStartTimer) clearTimeout(this.earlyStartTimer);
+    this.earlyStartAt = Date.now() + waitMs;
     this.earlyStartTimer = setTimeout(() => {
       this.earlyStartTimer = null;
       this.startCountdown();
-    }, this.options.earlyStartMs);
+    }, waitMs);
+  }
+
+  /**
+   * A public battle royale with enough players but not a full room waits for more, then starts
+   * with whoever is there. The wait begins when the room reaches the minimum, and only a drop
+   * below the minimum cancels it: players leaving do not reset it. A vote to start early cuts
+   * it short for good. Joining never lengthens it beyond `topUpWaitForJoin`.
+   */
+  private scheduleEarlyStart(): void {
+    const players = this.activeMembers().length;
+    const applies =
+      this.votesApply &&
+      this.state === 'lobby' &&
+      players >= this.minPlayers &&
+      players < this.capacity;
+    if (!applies) {
+      this.resetEarlyStart();
+      return;
+    }
+    if (this.lockedIn || this.earlyStartAt !== null) return;
+    this.armEarlyStart(this.options.earlyStartMs);
+  }
+
+  /** Someone joined: make sure they get at least `joinWaitMs` before the match starts without more. */
+  private topUpWaitForJoin(): void {
+    if (this.lockedIn || this.earlyStartAt === null) return;
+    if (this.earlyStartAt - Date.now() < this.options.joinWaitMs) {
+      this.armEarlyStart(this.options.joinWaitMs);
+    }
+  }
+
+  /** Players vote to skip the rest of the wait. */
+  vote(session: Session, vote: boolean): string | null {
+    if (!this.votesApply) return 'there is nothing to vote on in this game';
+    if (this.state !== 'lobby') return 'the game has already started';
+    if (this.activeMembers().length < this.minPlayers) {
+      return `at least ${this.minPlayers} players are needed to start`;
+    }
+    if (!this.memberOf(session)) return 'you are not in this game';
+    if (vote) this.votes.add(session.userId);
+    else if (!this.lockedIn) this.votes.delete(session.userId);
+    this.checkVotes();
+    this.broadcastRoom();
+    return null;
+  }
+
+  /** With two thirds of the room in favor, the wait drops to a few seconds and the room closes to newcomers. */
+  private checkVotes(): void {
+    if (this.lockedIn || !this.votesApply || this.state !== 'lobby') return;
+    const needed = this.votesNeeded();
+    if (needed === 0 || this.votes.size < needed) return;
+    this.lockedIn = true;
+    const remaining = this.earlyStartAt === null ? Infinity : this.earlyStartAt - Date.now();
+    this.armEarlyStart(Math.min(remaining, this.options.voteStartMs));
   }
 
   private startCountdown(): void {
-    if (this.earlyStartTimer) clearTimeout(this.earlyStartTimer);
-    this.earlyStartTimer = null;
-    this.earlyStartAt = null;
+    this.resetEarlyStart();
     this.state = 'starting';
     this.startsAt = Date.now() + this.options.countdownMs;
     this.countdownTimer = setTimeout(() => this.begin(), this.options.countdownMs);
@@ -366,14 +447,20 @@ export class Room {
     const order = shuffle(this.members, createRng(seed));
     const players = order.map((_, i) => `P${i + 1}`);
     order.forEach((member, i) => (member.playerId = players[i] ?? null));
-    // Free-for-alls get a random board shape, sized by how many are playing.
+    // Battle Royales get a random board shape, sized by how many are playing.
     const { state, config } =
       this.settings.mode === 'ffa'
-        ? createFreeForAllMatch({ players, seed, shape: 'random', config: this.settings.config })
+        ? createFreeForAllMatch({
+            players,
+            seed,
+            shape: 'random',
+            config: this.settings.config,
+            params: { tilesPerPlayer: ROYALE_TILES_PER_PLAYER[this.settings.mapSize] },
+          })
         : createSymmetricMatch({
             players,
             seed,
-            radius: this.settings.radius,
+            radius: DUEL_RADIUS[this.settings.mapSize],
             config: this.settings.config,
           });
     this.match = new Match(this.id, state, config);

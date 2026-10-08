@@ -34,16 +34,16 @@ Both generators take a `shape`: `hexagon` (the default, a regular hexagonal boar
 
 Neutral tiles start with their type's base garrison.
 
-## Free-for-all boards
+## Battle Royale boards
 
-A free-for-all board has no symmetry; the terrain is simply random, within the tile rules above.
+A battle royale board has no symmetry; the terrain is simply random, within the tile rules above.
 
 - **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. The size is not a setting; `recommendedRadius` decides it. Symmetric games have fixed recommended sizes (radius 7 for a duel up to 10 for 6 players).
 - **Starting cities:** one per player, at least 3 tiles apart and at least one tile in from the edge, spread as evenly as the board allows. The generator tries many random layouts, each time putting the next player as far as it can from the ones already placed, and keeps the layout whose closest pair of players is furthest apart. It rejects boards too small to hold everyone 3 tiles apart.
 - **Who starts where:** players are assigned to the starting cities at random.
 - **Cities and villages:** there are no cities except the starting ones, so each player's start is the only city nearby. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.
 
-Because nothing about the layout is symmetric, free-for-all boards are not perfectly fair. The spacing and the farm rings around every producer keep it close, and we can tune it further as we play.
+Because nothing about the layout is symmetric, battle royale boards are not perfectly fair. The spacing and the farm rings around every producer keep it close, and we can tune it further as we play.
 
 ## Settings
 
@@ -53,9 +53,9 @@ Every number above is a generation setting (`GenerationParams` in `packages/shar
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Outline             | outline size (0.91), waves (4), wave strength (1.5), wave detail (6), jagged coast (1.2), smallest and largest area (50% and 130% of the matching hexagon)                                        |
 | Lakes               | lake frequency (about one per 60 tiles, 0 for none), smallest lake (6), biggest lake (8% of the board), lake size cap (60), shore room (3)                                                        |
-| Cities and villages | city density (one extra city per 50 tiles), extra cities in free-for-all (off), city spacing (3), village chance (40%), village spacing (2, so they never touch), villages may touch cities (off) |
-| Starts and size     | start inset (1), start room on random shapes (1), tiles per player for free-for-all (20)                                                                                                          |
+| Cities and villages | city density (one extra city per 50 tiles), extra cities in battle royale (off), city spacing (3), village chance (40%), village spacing (2, so they never touch), villages may touch cities (off) |
+| Starts and size     | start inset (1), start room on random shapes (1), tiles per player for battle royale (20)                                                                                                          |
 
 ## Previewing maps
 
-The menu's **Preview generated maps (dev)** link shows boards locally without a server, with a random shape or a plain hexagon. It can generate a 2, 3, 4 or 6 player symmetric board, or a free-for-all with 3 to 100 players, at the recommended size or a chosen radius. For 2 players there is a symmetry toggle (mirror or rotational); the other counts have it fixed and the control is locked. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities, villages and lakes. A panel on the right has a slider or checkbox for every generation setting (hover for what each one does; settings that do nothing for the current board are dimmed), regenerating as you drag, and a "Reset all" button. Tick **Keep this seed while changing settings** to see exactly what a setting does to the same board. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.
+Opening the app at `/?preview` shows boards locally without a server, with a random shape or a plain hexagon. It can generate a 2, 3, 4 or 6 player symmetric board, or a battle royale with 3 to 100 players, at the recommended size or a chosen radius. For 2 players there is a symmetry toggle (mirror or rotational); the other counts have it fixed and the control is locked. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities, villages and lakes. A panel on the right has a slider or checkbox for every generation setting (hover for what each one does; settings that do nothing for the current board are dimmed), regenerating as you drag, and a "Reset all" button. Tick **Keep this seed while changing settings** to see exactly what a setting does to the same board. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.

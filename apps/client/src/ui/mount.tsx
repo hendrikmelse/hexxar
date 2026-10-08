@@ -1,8 +1,14 @@
 import { createRoot } from 'react-dom/client';
-import { App, effectiveSymmetry, type Actions, type PreviewOptions } from './App.js';
+import {
+  App,
+  DEFAULT_PREVIEW,
+  effectiveSymmetry,
+  type Actions,
+  type PreviewOptions,
+} from './App.js';
 import './ui.css';
 
-export { effectiveSymmetry };
+export { DEFAULT_PREVIEW, effectiveSymmetry };
 export type { Actions, PreviewOptions };
 
 /** Render the menu, lobby and results screens into `root`. */

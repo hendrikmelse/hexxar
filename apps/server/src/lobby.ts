@@ -15,12 +15,17 @@ import type { Connection, ConnectionHandler, Session } from './types.js';
 export interface LobbyOptions {
   /** The kinds of game that can be played right now. */
   allowedModes: readonly RoomMode[];
-  defaultRadius: number;
   tickMs: number;
   /** Countdown between a room filling up (or the host starting it) and the match. */
   countdownMs: number;
-  /** How long a public free-for-all with enough players waits for more before starting anyway. */
+  /** How long a public battle royale waits for more players, once it has enough, before starting anyway. */
   earlyStartMs: number;
+  /** A player joining tops that wait up to at least this long. */
+  joinWaitMs: number;
+  /** Once enough players have voted to start early, how long until the countdown begins. */
+  voteStartMs: number;
+  /** How often to tell people in the menu how many are playing each mode (0 turns it off). */
+  statsMs: number;
   /** How long a disconnected player is given before their army surrenders. */
   afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
@@ -39,8 +44,14 @@ export class Lobby {
   private readonly sessions = new Map<string, Session>();
   private readonly rooms = new Map<string, Room>();
   private readonly codes = new Map<string, Room>();
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
+  private lastStats = '';
 
-  constructor(private readonly options: LobbyOptions) {}
+  constructor(private readonly options: LobbyOptions) {
+    if (options.statsMs > 0) {
+      this.statsTimer = setInterval(() => this.broadcastStats(), options.statsMs);
+    }
+  }
 
   connect(connection: Connection): ConnectionHandler {
     let session: Session | null = null;
@@ -71,6 +82,8 @@ export class Lobby {
 
   /** Stop all timers (for shutdown and tests). */
   stop(): void {
+    if (this.statsTimer) clearInterval(this.statsTimer);
+    this.statsTimer = null;
     for (const room of this.rooms.values()) room.dispose();
   }
 
@@ -92,8 +105,31 @@ export class Lobby {
     }
     connection.send({ type: 'welcome', token: session.token, userId: session.userId });
     if (session.room) session.room.reconnect(session);
-    else connection.send({ type: 'room', room: null });
+    else {
+      connection.send({ type: 'room', room: null });
+      connection.send({ type: 'stats', ...this.stats() });
+    }
     return session;
+  }
+
+  /** How many people are in each kind of public game right now. Private games do not count. */
+  private stats(): { duel: number; ffa: number } {
+    const counts = { duel: 0, ffa: 0 };
+    for (const room of this.rooms.values()) {
+      if (room.visibility === 'public') counts[room.mode] += room.activePlayers;
+    }
+    return counts;
+  }
+
+  /** Tell everyone in the menu, but only when the numbers have changed. */
+  private broadcastStats(): void {
+    const stats = this.stats();
+    const key = `${stats.duel}/${stats.ffa}`;
+    if (key === this.lastStats) return;
+    this.lastStats = key;
+    for (const session of this.sessions.values()) {
+      if (!session.room) session.connection?.send({ type: 'stats', ...stats });
+    }
   }
 
   private disconnected(session: Session): void {
@@ -125,6 +161,8 @@ export class Lobby {
         switch (message.type) {
           case 'updateRoom':
             return room.updateSettings(session, message.settings);
+          case 'voteStart':
+            return room.vote(session, message.vote);
           case 'startGame':
             return room.start(session);
           case 'leaveRoom':
@@ -171,7 +209,7 @@ export class Lobby {
   private joinByCode(session: Session, code: string): string | null {
     if (session.room) return 'you are already in a game';
     const room = this.codes.get(code.toUpperCase());
-    if (!room) return 'no game has that code';
+    if (!room) return `No game with code ${code.toUpperCase()}`;
     return room.join(session);
   }
 
@@ -179,7 +217,7 @@ export class Lobby {
     return {
       mode,
       size: roomCapacity(mode),
-      radius: this.options.defaultRadius,
+      mapSize: 'normal',
       config: parseMatchConfig({ tickMs: this.options.tickMs }),
     };
   }
@@ -195,6 +233,8 @@ export class Lobby {
       allowedModes: this.options.allowedModes,
       countdownMs: this.options.countdownMs,
       earlyStartMs: this.options.earlyStartMs,
+      joinWaitMs: this.options.joinWaitMs,
+      voteStartMs: this.options.voteStartMs,
       afkMs: this.options.afkMs,
       finishedLingerMs: this.options.finishedLingerMs,
       onClose: (closed) => this.forget(closed),

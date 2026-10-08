@@ -1,0 +1,288 @@
+/* The in-match overlay: scoreboard, tick timer, surrender, messages and the controls reminder. */
+
+#hud {
+  --panel-top: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  --panel-edge: rgba(255, 255, 255, 0.1);
+  --panel-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 4px 0 #10131a, 0 14px 24px rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+}
+
+#hud .panel {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  width: 276px;
+  max-height: calc(100% - 28px);
+  box-sizing: border-box;
+  padding: 12px 12px 8px;
+  background: var(--panel-top);
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  box-shadow: var(--panel-shadow);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#hud .panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: #8a93a8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#hud .panel-head .tick-count,
+#hud .panel-head .queue-count {
+  color: #e8eaf0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* An order queue with something in it lights up, so you can tell moves are on their way */
+#hud .panel-head .queue.busy .queue-count {
+  color: #7dd3ff;
+}
+
+#hud .tick-bar {
+  height: 5px;
+  margin: 8px 0 10px;
+  background: #0f1117;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) inset;
+}
+
+#hud .tick-bar-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #5d6a86, #9fb0d6);
+  border-radius: 3px;
+}
+
+#hud .standings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#hud .standing {
+  display: grid;
+  grid-template-columns: 14px 10px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 7px;
+  color: #c4cad8;
+}
+
+#hud .standing.me {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+#hud .standing.out {
+  opacity: 0.4;
+}
+
+#hud .standing.out .name {
+  text-decoration: line-through;
+}
+
+#hud .rank {
+  color: #6b7389;
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.25) inset;
+}
+
+#hud .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#hud .stat {
+  min-width: 26px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #8a93a8;
+}
+
+/* Tiles and troops each get a tiny icon so the two columns are told apart without a header */
+#hud .stat::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+#hud .stat.tiles::before {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+  width: 9px;
+  height: 8px;
+}
+
+#hud .stat.troops::before {
+  border-radius: 50%;
+}
+
+#hud .standing.me .stat {
+  color: #e8eaf0;
+}
+
+/* Surrender: a raised red button like the ones in the menus */
+#hud .surrender {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  padding: 9px 16px;
+  border: 1px solid rgba(255, 130, 130, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #4a2830 0%, #3a1f26 100%);
+  color: #ffd0d0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 0 #1c0e12,
+    0 10px 18px rgba(0, 0, 0, 0.4);
+  transition:
+    transform 0.08s,
+    box-shadow 0.08s,
+    filter 0.12s;
+}
+
+#hud .surrender:hover {
+  filter: brightness(1.15);
+}
+
+#hud .surrender:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 1px 0 #1c0e12,
+    0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Messages from the game (a refused order, being eliminated) */
+#hud .banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  max-width: calc(100% - 560px);
+  min-width: 160px;
+  box-sizing: border-box;
+  padding: 11px 22px;
+  background: linear-gradient(180deg, #4a3a22 0%, #3a2d1a 100%);
+  border: 1px solid rgba(255, 205, 120, 0.35);
+  border-radius: 10px;
+  color: #ffe9bf;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 0 #1b140a,
+    0 14px 24px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+  animation: banner-in 0.22s ease-out;
+  pointer-events: none;
+}
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* Controls reminder along the bottom edge: key caps that fade once you've had time to read them */
+#hud .hint {
+  position: fixed;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: max-content;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  max-width: calc(100% - 28px);
+  padding: 8px 16px;
+  background: rgba(20, 23, 31, 0.78);
+  border-radius: 999px;
+  color: #aab3c8;
+  font-size: 12px;
+  transition: opacity 1.2s ease;
+  pointer-events: none;
+}
+
+#hud .hint.faded {
+  opacity: 0.3;
+}
+
+#hud .hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+#hud kbd {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #343a4b 0%, #262b39 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 2px 0 #10131a;
+  color: #e8eaf0;
+  font: inherit;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  #hud .panel {
+    width: 208px;
+  }
+
+  #hud .banner {
+    top: auto;
+    bottom: 64px;
+    max-width: calc(100% - 28px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #hud .banner {
+    animation: none;
+  }
+
+  #hud .hint {
+    transition: none;
+  }
+}

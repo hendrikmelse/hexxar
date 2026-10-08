@@ -327,13 +327,13 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
 }
 
 /**
- * How many tiles each player gets on a free-for-all board: as few as keep every player room
+ * How many tiles each player gets on a battle royale board: as few as keep every player room
  * of their own. Starting cities end up about 6 tiles apart, with farmland for a full ring
  * around each city and space for a few villages.
  */
 const FFA_TILES_PER_PLAYER = DEFAULT_GENERATION_PARAMS.tilesPerPlayer;
 
-/** The board radius for a game. Free-for-all boards are always the smallest that gives each player their share. */
+/** The board radius for a game. Battle Royale boards are always the smallest that gives each player their share. */
 export function recommendedRadius(
   players: number,
   kind: 'symmetric' | 'freeForAll',
@@ -437,7 +437,7 @@ function chooseFreeForAllLayout(
 }
 
 /**
- * A free-for-all board: random terrain with no symmetry, and starting cities spread out as
+ * A battle royale board: random terrain with no symmetry, and starting cities spread out as
  * evenly as the board allows. The same terrain rules apply as on symmetric boards.
  * Players are assigned to the starting cities at random.
  */

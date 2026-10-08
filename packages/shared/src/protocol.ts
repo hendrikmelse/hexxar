@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { matchConfigSchema } from './config.js';
+import { MAP_SIZES } from './params.js';
 import { orderSchema } from './orders.js';
 import { TILE_TYPE_IDS } from './tiles.js';
 
@@ -26,15 +27,15 @@ export const gameStateSchema = z.object({
 
 /**
  * - `duel`: two players on a symmetric board.
- * - `ffa`: a free-for-all on a random board, for anything from `FFA_MIN_PLAYERS` to
+ * - `ffa`: a battle royale on a random board, for anything from `FFA_MIN_PLAYERS` to
  *   `FFA_MAX_PLAYERS` players.
  */
 export const ROOM_MODES = ['duel', 'ffa'] as const;
 export type RoomMode = (typeof ROOM_MODES)[number];
 
-/** A free-for-all never has more than this many players, in any kind of game. */
+/** A battle royale never has more than this many players, in any kind of game. */
 export const FFA_MAX_PLAYERS = 12;
-/** The fewest players a free-for-all can start with. */
+/** The fewest players a battle royale can start with. */
 export const FFA_MIN_PLAYERS = 3;
 
 /** How many players a room of this mode holds. */
@@ -43,16 +44,13 @@ export const roomCapacity = (mode: RoomMode): number => (mode === 'ffa' ? FFA_MA
 /** The fewest players a room of this mode can start with. */
 export const roomMinPlayers = (mode: RoomMode): number => (mode === 'ffa' ? FFA_MIN_PLAYERS : 2);
 
-export const MIN_ROOM_RADIUS = 5;
-export const MAX_ROOM_RADIUS = 15;
-
 /** What a room's match will be played with. */
 export const roomSettingsSchema = z.object({
   mode: z.enum(ROOM_MODES),
   /** The most players the room holds; fixed by the mode. */
   size: z.number().int().min(2).max(FFA_MAX_PLAYERS),
-  /** Board radius in hexes, for duels. Free-for-all boards are sized by the number of players. */
-  radius: z.number().int().min(MIN_ROOM_RADIUS).max(MAX_ROOM_RADIUS),
+  /** How big the map is. A duel's board radius, or a battle royale's tiles per player, follows from it. */
+  mapSize: z.enum(MAP_SIZES),
   config: matchConfigSchema,
 });
 export type RoomSettings = z.infer<typeof roomSettingsSchema>;
@@ -63,7 +61,7 @@ export type RoomSettings = z.infer<typeof roomSettingsSchema>;
  */
 export const roomSettingsPatchSchema = z.object({
   mode: z.enum(ROOM_MODES).optional(),
-  radius: z.number().int().optional(),
+  mapSize: z.enum(MAP_SIZES).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type RoomSettingsPatch = z.infer<typeof roomSettingsPatchSchema>;
@@ -101,13 +99,20 @@ export const roomViewSchema = z.object({
   players: z.array(roomPlayerSchema),
   /** The fewest players the match can start with. */
   minPlayers: z.number().int(),
+  /** How long a public battle royale waits for more players, once it has enough (the full timer). */
+  waitMs: z.number().int(),
   /** Server timestamp (ms since epoch) when a countdown ends, while `starting`. */
   startsAt: z.number().nullable(),
   /**
-   * In a public free-for-all with enough players, when the countdown will begin if nobody
+   * In a public battle royale with enough players, when the countdown will begin if nobody
    * else joins before then.
    */
   earlyStartAt: z.number().nullable(),
+  /** Public battle royale: votes so far to start early, and how many are needed (0 if no vote applies). */
+  startVotes: z.number().int(),
+  votesNeeded: z.number().int(),
+  /** Whether the receiving player has voted. */
+  youVoted: z.boolean(),
   serverTime: z.number(),
   /** The receiving player's own user id. */
   you: z.string(),
@@ -135,6 +140,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('joinRoom'), code: z.string().trim().min(1).max(12) }),
   /** Host only, while the room is still gathering players. */
   z.object({ type: z.literal('updateRoom'), settings: roomSettingsPatchSchema }),
+  /** Public battle royale: vote to start early (or take the vote back). */
+  z.object({ type: z.literal('voteStart'), vote: z.boolean() }),
   /** Host only: start the countdown once there are enough players. */
   z.object({ type: z.literal('startGame') }),
   /** Leave the room. In a running match this is a surrender. */
@@ -178,6 +185,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     /** How many orders the receiving player still has queued (the oldest were consumed). */
     queueLength: z.number().int().nonnegative(),
   }),
+  /** How many people are playing each mode right now (sent to players in the main menu). */
+  z.object({ type: z.literal('stats'), duel: z.number().int(), ffa: z.number().int() }),
   /** The order was added to your queue. */
   z.object({ type: z.literal('queued'), order: orderSchema }),
   z.object({ type: z.literal('rejected'), reason: z.string() }),

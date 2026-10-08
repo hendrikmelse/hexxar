@@ -14,7 +14,7 @@ import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { appStore, saveName } from './store.js';
-import { effectiveSymmetry, mountUi, type PreviewOptions } from './ui/mount.js';
+import { DEFAULT_PREVIEW, effectiveSymmetry, mountUi, type PreviewOptions } from './ui/mount.js';
 
 /** The match being played. Reset whenever you are back in the menu. */
 const game = emptyGame();
@@ -118,7 +118,7 @@ function showPreview(options: PreviewOptions): void {
   const freeForAll = options.mode === 'ffa';
   const count = freeForAll ? options.players : Number(options.mode);
   const players = Array.from({ length: count }, (_, i) => `P${i + 1}`);
-  // Free-for-all boards are always as small as they can be; only symmetric ones have a size choice.
+  // Battle Royale boards are always as small as they can be; only symmetric ones have a size choice.
   const radius = freeForAll
     ? recommendedRadius(count, 'freeForAll', options.params.tilesPerPlayer)
     : (options.radius ?? recommendedRadius(count, 'symmetric'));
@@ -212,11 +212,15 @@ mountUi(document.getElementById('ui')!, {
     connection.send({ type: 'updateRoom', settings });
   },
   startGame: () => connection.send({ type: 'startGame' }),
+  voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
   leaveRoom: () => connection.send({ type: 'leaveRoom' }),
   startPreview: showPreview,
   newPreview: showPreview,
   exitPreview: leavePreview,
 });
+
+// The map preview has no menu button any more; open it with /?preview.
+if (new URLSearchParams(location.search).has('preview')) showPreview(DEFAULT_PREVIEW);
 
 appStore.subscribe(updateVisibility);
 updateVisibility();
@@ -248,15 +252,17 @@ const connection = connect(url, appStore.get().name, {
         appStore.set({
           room,
           clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,
-          error: null,
-        });
+                  });
         if (!room || previous?.id !== room.id) clearMatch();
         if (!room) joinFromUrl();
         return;
       }
+      case 'stats':
+        appStore.set({ activity: { duel: message.duel, ffa: message.ffa } });
+        return;
       case 'rejected':
         if (inMatch()) render(applyMessage(game, message));
-        else appStore.set({ error: message.reason });
+        else appStore.set({ error: message.reason, errorSeq: appStore.get().errorSeq + 1 });
         return;
       default:
         render(applyMessage(game, message));

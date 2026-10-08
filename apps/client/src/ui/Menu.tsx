@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../store.js';
-import { DEFAULT_PREVIEW, type Actions } from './App.js';
+import type { Actions } from './App.js';
+import { Logo } from './Logo.js';
 
 export function Menu({ actions }: { actions: Actions }) {
   const app = useApp();
@@ -9,7 +10,7 @@ export function Menu({ actions }: { actions: Actions }) {
   return (
     <div className="screen">
       <div className="card menu">
-        <h1>Hexxar</h1>
+        <Logo />
         <label className="field">
           <span>Your name</span>
           <input
@@ -18,35 +19,59 @@ export function Menu({ actions }: { actions: Actions }) {
             onChange={(e) => actions.setName(e.target.value)}
           />
         </label>
-        <button className="primary" onClick={() => actions.quickPlay('ffa')}>
-          Quick play · Free-for-all
-        </button>
-        <button className="primary" onClick={() => actions.quickPlay('duel')}>
-          Quick play · Duel
-        </button>
-        <button onClick={actions.createRoom}>Create a private game</button>
-        <form
-          className="join"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (code.trim()) actions.joinRoom(code.trim());
-          }}
-        >
-          <input
-            placeholder="Game code"
-            value={code}
-            maxLength={12}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-          />
-          <button type="submit" disabled={!code.trim()}>
-            Join
-          </button>
-        </form>
-        {app.error && <p className="error">{app.error}</p>}
-        <button className="link" onClick={() => actions.startPreview(DEFAULT_PREVIEW)}>
-          Preview generated maps (dev)
-        </button>
+
+        <section className="menu-section">
+          <h3>Quick play</h3>
+          <div className="tiles">
+            <button className="primary mode" onClick={() => actions.quickPlay('ffa')}>
+              <strong>Battle Royale</strong>
+              <Activity count={app.activity?.ffa} />
+            </button>
+            <button className="primary mode" onClick={() => actions.quickPlay('duel')}>
+              <strong>Duel</strong>
+              <Activity count={app.activity?.duel} />
+            </button>
+          </div>
+        </section>
+
+        <section className="menu-section">
+          <h3>Private games</h3>
+          <div className="tiles">
+            <button className="mode" onClick={actions.createRoom}>
+              <strong>Create game</strong>
+              <small>Get a code to share</small>
+            </button>
+            <form
+              className="join-tile"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (code.trim()) actions.joinRoom(code.trim());
+              }}
+            >
+              <input
+                placeholder="Game code"
+                value={code}
+                maxLength={12}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+              />
+              <button type="submit" disabled={!code.trim()}>
+                Join game
+              </button>
+            </form>
+          </div>
+        </section>
+
       </div>
     </div>
+  );
+}
+
+/** How many people are online in a mode right now, with a small pulsing "live" dot. */
+function Activity({ count }: { count: number | undefined }) {
+  return (
+    <small className="activity">
+      <span className="live-dot" aria-hidden="true" />
+      {count === undefined ? '...' : count} online
+    </small>
   );
 }

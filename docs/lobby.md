@@ -6,29 +6,35 @@ Everything before and after a match happens in a **room**. A room owns its match
 
 `lobby` (gathering players) → `starting` (countdown) → `running` (the match) → `finished` (the result stays up) → closed.
 
-- **Public rooms** (from Quick play) start by themselves: when the room is full, a countdown begins. A public free-for-all can also start early (see below). If someone leaves during a countdown and the room is still big enough, the countdown carries on; otherwise it is cancelled.
+- **Public rooms** (from Quick play) start by themselves: when the room is full, a countdown begins. A public battle royale can also start early (see below). If someone leaves during a countdown and the room is still big enough, the countdown carries on; otherwise it is cancelled.
 - **Private rooms** (Create a private game) have a host, who chooses the settings and presses Start once the room is full. Everyone then sees the same countdown. If the host leaves, the next player becomes host.
-- A duel needs exactly 2 players. A free-for-all takes 3 to 12, and **never starts with more than 12 players**, in public or private games. The cap is enforced when players join, and a room's size is fixed by its mode, so even a host cannot raise it.
+- A duel needs exactly 2 players. A battle royale takes 3 to 12, and **never starts with more than 12 players**, in public or private games. The cap is enforced when players join, and a room's size is fixed by its mode, so even a host cannot raise it.
 - A finished room stays open for ten minutes or until everyone has left, so players can look at the result. Players leave with the "Main menu" button.
 
 ## Ways in
 
-1. **Quick play:** join an open public room of the chosen mode (duel or free-for-all), or open one.
+1. **Quick play:** join an open public room of the chosen mode (duel or battle royale), or open one.
 2. **Create a private game:** get a short code and an invite link (`/?join=CODE`). Opening the link joins that game.
 3. **Join with a code:** codes are 5 characters and ignore case.
 
 Both modes are enabled; the server has a list of allowed modes, so either can be switched off.
 
-## Free-for-all rooms
+## Battle Royale rooms
 
 - **Size:** a room holds up to 12 players and needs at least 3 to start. The board is generated for however many are playing (a random shape, sized at about 20 tiles per player), and everyone is placed at random on a starting city.
-- **Early start (public rooms):** once 3 or more players are waiting, the room waits for more. If nobody new joins for a while (45 seconds by default, `EARLY_START_MS`), the usual countdown begins and the match starts with whoever is there. Every join restarts the wait, a drop below 3 players stops it, and a full room (12) starts at once. Players see a note with the time left.
+- **Early start (public rooms):** when the room reaches 3 players, a countdown starts at 60 seconds (`EARLY_START_MS`). When it ends, the start countdown begins and the match starts with whoever is there. A player joining doesn't reset it, but tops it up to at least 10 seconds (`JOIN_WAIT_MS`) so newcomers have time to settle in. A player leaving doesn't reset it either; only dropping below 3 players cancels it, and it starts again at 60 seconds when the room gets back to 3. A full room (12) starts at once.
 - **Private rooms:** no early start. The host starts the game whenever at least 3 players are in, with however many there are.
-- **Late joiners:** once a countdown has begun, the player list is locked; anyone arriving through Quick play goes to a new room.
+- **Voting to start early (public rooms):** the lobby shows a head count ("7 / 12 players") instead of a player list, then the big countdown, then a **Vote to start early (votes/needed)** button, which only appears once there are 3 players. When at least two thirds of the players in the room (rounded up) have voted, the wait drops to 5 seconds (`VOTE_START_MS`; a wait that is already shorter is left alone) and the room stops taking newcomers. Votes can be taken back until the vote passes; players who leave have their vote removed, and fewer than 3 players calls the early start off.
+- **Starting screen:** when the wait ends, everyone sees a "Starting match…" screen with a 3 second countdown (`COUNTDOWN_MS`) before the match begins. Duels and private games use the same screen.
+- **Late joiners:** once the vote has passed or the countdown has begun, the room is closed; anyone arriving through Quick play goes to a new room.
+
+## Duel lobbies
+
+A duel lobby shows you and your opponent side by side ("VS"), with a pulsing placeholder and "Waiting for an opponent..." until someone joins.
 
 ## Settings
 
-A private room's host can change the game mode (duel or free-for-all), board size (duels only; free-for-all boards are sized by the number of players), tick length, troop production speed and starting troops while the room is still gathering players. Everything is a `MatchConfig` field, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults.
+A private room's host can change the game mode (duel or battle royale), the **map size** (small, normal or large), the **tick length** (any value from 0.1 to 10 seconds in steps of 0.1) and starting troops, while the room is still gathering players. Everyone else sees the same information as plain text, not as disabled controls. Everything is a `MatchConfig` field or a room setting, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults. The troop production speed is no longer offered in the lobby (it is still a match setting).
 
 ## Leaving, disconnecting and coming back
 
@@ -45,9 +51,19 @@ A private room's host can change the game mode (duel or free-for-all), board siz
 
 ## Protocol
 
-- Client: `hello`, `setName`, `quickPlay` (with a mode), `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, plus the in-match `order` and `surrender`.
+- Client: `hello`, `setName`, `quickPlay` (with a mode), `voteStart`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, plus the in-match `order` and `surrender`.
 - Server: `welcome`, `room` (your room, or `null` for the menu; sent on every change), `snapshot`, `tick`, `queued`, `rejected`.
 
 ## Not built yet
 
 A public game list, spectators, bots, ranked rooms and reconnecting after a server restart.
+
+## Map sizes
+
+| Size   | Duel (board radius) | Battle royale (tiles per player) |
+| ------ | ------------------- | -------------------------------- |
+| Small  | 5 (91 tiles)        | 14                               |
+| Normal | 7 (169 tiles)       | 20                               |
+| Large  | 9 (271 tiles)       | 30                               |
+
+Normal is what quick play uses. A battle royale board is sized from the number of players, so a small 12-player board is radius 8 and a large one radius 11 (fewer players give smaller boards, down to the minimum radius of 5).

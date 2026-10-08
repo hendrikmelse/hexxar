@@ -257,7 +257,7 @@ describe('random board shapes in matches', () => {
     }
   });
 
-  it('works for free-for-all boards, with interior starts spread apart', () => {
+  it('works for battle royale boards, with interior starts spread apart', () => {
     for (const count of [3, 8, 20, 100]) {
       for (const seed of [1, 2]) {
         const ids = Array.from({ length: count }, (_, i) => `P${i}`);
