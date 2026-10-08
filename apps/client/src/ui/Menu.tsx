@@ -18,7 +18,10 @@ export function Menu({ actions }: { actions: Actions }) {
             onChange={(e) => actions.setName(e.target.value)}
           />
         </label>
-        <button className="primary" onClick={actions.quickPlay}>
+        <button className="primary" onClick={() => actions.quickPlay('ffa')}>
+          Quick play · Free-for-all
+        </button>
+        <button className="primary" onClick={() => actions.quickPlay('duel')}>
           Quick play · Duel
         </button>
         <button onClick={actions.createRoom}>Create a private game</button>

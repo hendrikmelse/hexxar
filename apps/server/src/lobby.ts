@@ -2,8 +2,10 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import {
   clientMessageSchema,
   parseMatchConfig,
+  roomCapacity,
   type ClientMessage,
   type Order,
+  type RoomMode,
   type RoomSettings,
   type RoomSettingsPatch,
 } from '@hexxar/shared';
@@ -11,12 +13,14 @@ import { Room, applySettingsPatch } from './room.js';
 import type { Connection, ConnectionHandler, Session } from './types.js';
 
 export interface LobbyOptions {
-  /** Game sizes that can be played right now (the rest of the sizes are coming). */
-  allowedSizes: readonly number[];
+  /** The kinds of game that can be played right now. */
+  allowedModes: readonly RoomMode[];
   defaultRadius: number;
   tickMs: number;
   /** Countdown between a room filling up (or the host starting it) and the match. */
   countdownMs: number;
+  /** How long a public free-for-all with enough players waits for more before starting anyway. */
+  earlyStartMs: number;
   /** How long a disconnected player is given before their army surrenders. */
   afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
@@ -110,7 +114,7 @@ export class Lobby {
         session.name = message.name;
         return null;
       case 'quickPlay':
-        return this.quickPlay(session, message.size);
+        return this.quickPlay(session, message.mode);
       case 'createRoom':
         return this.createRoom(session, message.settings ?? {});
       case 'joinRoom':
@@ -142,23 +146,23 @@ export class Lobby {
     return reason;
   }
 
-  private quickPlay(session: Session, size: number): string | null {
+  private quickPlay(session: Session, mode: RoomMode): string | null {
     if (session.room) return 'you are already in a game';
-    if (!this.options.allowedSizes.includes(size)) return 'that game size is not available';
+    if (!this.options.allowedModes.includes(mode)) return 'that kind of game is not available';
     const open = [...this.rooms.values()].find(
-      (room) => room.visibility === 'public' && room.size === size && room.isOpen,
+      (room) => room.visibility === 'public' && room.mode === mode && room.isOpen,
     );
     if (open) return open.join(session);
-    const room = this.openRoom(session, 'public', this.defaultSettings(size));
+    const room = this.openRoom(session, 'public', this.defaultSettings(mode));
     return room.join(session);
   }
 
   private createRoom(session: Session, patch: RoomSettingsPatch): string | null {
     if (session.room) return 'you are already in a game';
     const settings = applySettingsPatch(
-      this.defaultSettings(this.options.allowedSizes[0] ?? 2),
+      this.defaultSettings(this.options.allowedModes[0] ?? 'duel'),
       patch,
-      this.options.allowedSizes,
+      this.options.allowedModes,
     );
     if (typeof settings === 'string') return settings;
     return this.openRoom(session, 'private', settings).join(session);
@@ -171,9 +175,10 @@ export class Lobby {
     return room.join(session);
   }
 
-  private defaultSettings(size: number): RoomSettings {
+  private defaultSettings(mode: RoomMode): RoomSettings {
     return {
-      size,
+      mode,
+      size: roomCapacity(mode),
       radius: this.options.defaultRadius,
       config: parseMatchConfig({ tickMs: this.options.tickMs }),
     };
@@ -187,8 +192,9 @@ export class Lobby {
       visibility,
       host,
       settings,
-      allowedSizes: this.options.allowedSizes,
+      allowedModes: this.options.allowedModes,
       countdownMs: this.options.countdownMs,
+      earlyStartMs: this.options.earlyStartMs,
       afkMs: this.options.afkMs,
       finishedLingerMs: this.options.finishedLingerMs,
       onClose: (closed) => this.forget(closed),

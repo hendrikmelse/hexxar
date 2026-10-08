@@ -1,6 +1,7 @@
 import {
   DEFAULT_GENERATION_PARAMS,
   type GenerationParams,
+  type RoomMode,
   type RoomSettingsPatch,
 } from '@hexxar/shared';
 import { useApp } from '../store.js';
@@ -58,7 +59,7 @@ export function effectiveSymmetry(options: PreviewOptions): 'mirror' | 'rotation
 /** Everything the screens can ask the app to do. */
 export interface Actions {
   setName(name: string): void;
-  quickPlay(): void;
+  quickPlay(mode: RoomMode): void;
   createRoom(): void;
   joinRoom(code: string): void;
   updateRoom(patch: RoomSettingsPatch): void;

@@ -55,10 +55,11 @@ class FakeClient implements Connection {
 }
 
 const options = {
-  allowedSizes: [2],
+  allowedModes: ['duel', 'ffa'] as ('duel' | 'ffa')[],
   defaultRadius: 5,
   tickMs: 1000,
   countdownMs: 3000,
+  earlyStartMs: 20_000,
   afkMs: 120_000,
   finishedLingerMs: 60_000,
 };
@@ -80,8 +81,8 @@ describe('Lobby', () => {
   function runningDuel() {
     const a = new FakeClient(lobby).hello('Ann');
     const b = new FakeClient(lobby).hello('Bob');
-    a.say({ type: 'quickPlay', size: 2 });
-    b.say({ type: 'quickPlay', size: 2 });
+    a.say({ type: 'quickPlay', mode: 'duel' });
+    b.say({ type: 'quickPlay', mode: 'duel' });
     vi.advanceTimersByTime(options.countdownMs);
     return { a, b };
   }
@@ -95,17 +96,19 @@ describe('Lobby', () => {
 
     it('rejects messages before hello and malformed messages', () => {
       const a = new FakeClient(lobby);
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       expect(a.last('rejected').reason).toMatch(/hello/);
       a.say({ nonsense: true });
       expect(a.last('rejected').reason).toMatch(/invalid/);
     });
 
-    it('rejects sizes that are not available yet', () => {
+    it('rejects kinds of game that are switched off', () => {
+      lobby.stop();
+      lobby = new Lobby({ ...options, allowedModes: ['duel'] });
       const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'quickPlay', size: 4 });
+      a.say({ type: 'quickPlay', mode: 'ffa' });
       expect(a.last('rejected').reason).toMatch(/not available/);
-      a.say({ type: 'createRoom', settings: { size: 6 } });
+      a.say({ type: 'createRoom', settings: { mode: 'ffa' } });
       expect(a.last('rejected').reason).toMatch(/not available/);
     });
 
@@ -119,7 +122,7 @@ describe('Lobby', () => {
   describe('quick play', () => {
     it('puts the first player in a public room and waits', () => {
       const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       expect(a.room).toMatchObject({ state: 'lobby', visibility: 'public' });
       expect(a.room?.players).toHaveLength(1);
     });
@@ -127,8 +130,8 @@ describe('Lobby', () => {
     it('pairs two players, counts down, then starts the match', () => {
       const a = new FakeClient(lobby).hello('Ann');
       const b = new FakeClient(lobby).hello('Bob');
-      a.say({ type: 'quickPlay', size: 2 });
-      b.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'quickPlay', mode: 'duel' });
 
       expect(a.room?.id).toBe(b.room?.id);
       expect(a.room).toMatchObject({ state: 'starting' });
@@ -146,7 +149,7 @@ describe('Lobby', () => {
     it('does not put a third player into a full room', () => {
       const { a, b } = runningDuel();
       const c = new FakeClient(lobby).hello('Cy');
-      c.say({ type: 'quickPlay', size: 2 });
+      c.say({ type: 'quickPlay', mode: 'duel' });
       expect(c.room?.id).not.toBe(a.room?.id);
       expect(c.room?.state).toBe('lobby');
       expect(b.room?.players).toHaveLength(2);
@@ -155,8 +158,8 @@ describe('Lobby', () => {
     it('cancels the countdown if someone leaves', () => {
       const a = new FakeClient(lobby).hello('Ann');
       const b = new FakeClient(lobby).hello('Bob');
-      a.say({ type: 'quickPlay', size: 2 });
-      b.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'quickPlay', mode: 'duel' });
       b.say({ type: 'leaveRoom' });
       expect(b.room).toBeNull();
       expect(a.room).toMatchObject({ state: 'lobby', startsAt: null });
@@ -166,11 +169,11 @@ describe('Lobby', () => {
 
     it('closes a room when its last player leaves', () => {
       const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       const first = a.room?.id;
       a.say({ type: 'leaveRoom' });
       expect(a.room).toBeNull();
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       expect(a.room?.id).not.toBe(first);
     });
   });
@@ -268,7 +271,7 @@ describe('Lobby', () => {
 
     it('has no settings changes for public rooms', () => {
       const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       a.say({ type: 'updateRoom', settings: { radius: 8 } });
       expect(a.last('rejected').reason).toMatch(/public/);
     });
@@ -299,7 +302,7 @@ describe('Lobby', () => {
 
     it('turns away orders from outside the match', () => {
       const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       a.say({ type: 'order', order: { type: 'move', from: { q: 0, r: 0 }, to: { q: 1, r: 0 } } });
       expect(a.last('rejected').reason).toMatch(/not started/);
     });
@@ -402,11 +405,201 @@ describe('Lobby', () => {
     it('removes a guest who drops out of a lobby', () => {
       const a = new FakeClient(lobby).hello('Ann');
       const b = new FakeClient(lobby).hello('Bob');
-      a.say({ type: 'quickPlay', size: 2 });
+      a.say({ type: 'quickPlay', mode: 'duel' });
       a.disconnect();
-      b.say({ type: 'quickPlay', size: 2 });
+      b.say({ type: 'quickPlay', mode: 'duel' });
       // Ann's room was empty and closed, so Bob has a room of his own.
       expect(b.room?.players).toHaveLength(1);
     });
+  });
+});
+
+describe('Lobby free-for-all', () => {
+  let lobby: Lobby;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lobby = new Lobby(options);
+  });
+
+  afterEach(() => {
+    lobby.stop();
+    vi.useRealTimers();
+  });
+
+  /** `count` guests, each in the same public free-for-all (quick play). */
+  function joinPublic(count: number): FakeClient[] {
+    return Array.from({ length: count }, (_, i) => {
+      const client = new FakeClient(lobby).hello(`Guest ${i + 1}`);
+      client.say({ type: 'quickPlay', mode: 'ffa' });
+      return client;
+    });
+  }
+
+  function privateRoom(joiners: number) {
+    const host = new FakeClient(lobby).hello('Hana');
+    host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+    const guests = Array.from({ length: joiners }, (_, i) => {
+      const guest = new FakeClient(lobby).hello(`Gus ${i + 1}`);
+      guest.say({ type: 'joinRoom', code: host.room!.code });
+      return guest;
+    });
+    return { host, guests };
+  }
+
+  describe('public rooms', () => {
+    it('holds 12 players and starts as soon as it is full', () => {
+      const clients = joinPublic(12);
+      expect(clients[0]!.room).toMatchObject({ state: 'starting' });
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(12);
+      const ids = clients.map((c) => c.last('snapshot').you);
+      expect(new Set(ids).size).toBe(12);
+    });
+
+    it('never puts a 13th player in the room', () => {
+      const clients = joinPublic(13);
+      expect(clients[12]!.room?.id).not.toBe(clients[0]!.room?.id);
+      expect(clients[12]!.room?.state).toBe('lobby');
+      expect(clients[0]!.room?.players).toHaveLength(12);
+    });
+
+    it('does not start with fewer than 3 players, however long they wait', () => {
+      const clients = joinPublic(2);
+      vi.advanceTimersByTime(options.earlyStartMs * 10);
+      expect(clients[0]!.room).toMatchObject({ state: 'lobby', earlyStartAt: null });
+    });
+
+    it('starts early once 3 or more players have waited with nobody new joining', () => {
+      const clients = joinPublic(3);
+      const early = clients[0]!.room?.earlyStartAt;
+      expect(early).toBeGreaterThan(Date.now());
+      vi.advanceTimersByTime(options.earlyStartMs - 1);
+      expect(clients[0]!.room?.state).toBe('lobby');
+      vi.advanceTimersByTime(1);
+      expect(clients[0]!.room?.state).toBe('starting');
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.room?.state).toBe('running');
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(3);
+    });
+
+    it('restarts the wait whenever someone joins', () => {
+      const clients = joinPublic(3);
+      vi.advanceTimersByTime(options.earlyStartMs - 1000);
+      const late = new FakeClient(lobby).hello('Late');
+      late.say({ type: 'quickPlay', mode: 'ffa' });
+      vi.advanceTimersByTime(options.earlyStartMs - 1000);
+      expect(clients[0]!.room?.state).toBe('lobby');
+      vi.advanceTimersByTime(1000);
+      expect(clients[0]!.room?.state).toBe('starting');
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(4);
+    });
+
+    it('stops the wait if players leave and too few are left', () => {
+      const clients = joinPublic(3);
+      clients[2]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room?.earlyStartAt).toBeNull();
+      vi.advanceTimersByTime(options.earlyStartMs * 2);
+      expect(clients[0]!.room?.state).toBe('lobby');
+    });
+
+    it('turns away late joiners once the countdown has begun', () => {
+      const clients = joinPublic(12);
+      expect(clients[0]!.room?.state).toBe('starting');
+      const late = new FakeClient(lobby).hello('Late');
+      late.say({ type: 'quickPlay', mode: 'ffa' });
+      expect(late.room?.id).not.toBe(clients[0]!.room?.id);
+    });
+
+    it('carries on counting down when someone leaves, as long as 3 remain', () => {
+      const clients = joinPublic(12);
+      clients[11]!.say({ type: 'leaveRoom' });
+      expect(clients[0]!.room?.state).toBe('starting');
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(11);
+    });
+
+    it('does not mix duels and free-for-alls', () => {
+      const duelist = new FakeClient(lobby).hello('Dee');
+      duelist.say({ type: 'quickPlay', mode: 'duel' });
+      const [ffa] = joinPublic(1);
+      expect(ffa!.room?.id).not.toBe(duelist.room?.id);
+    });
+  });
+
+  describe('private rooms', () => {
+    it('has a room for 12, and the host starts it with whoever is there once there are 3', () => {
+      const { host, guests } = privateRoom(1);
+      expect(host.room?.settings).toMatchObject({ mode: 'ffa', size: 12 });
+      host.say({ type: 'startGame' });
+      expect(host.last('rejected').reason).toMatch(/more players/);
+
+      const third = new FakeClient(lobby).hello('Third');
+      third.say({ type: 'joinRoom', code: host.room!.code });
+      guests[0]!.say({ type: 'startGame' });
+      expect(guests[0]!.last('rejected').reason).toMatch(/only the host/);
+
+      // No early start in a private room: the host decides.
+      vi.advanceTimersByTime(options.earlyStartMs * 5);
+      expect(host.room?.state).toBe('lobby');
+
+      host.say({ type: 'startGame' });
+      expect(host.room?.state).toBe('starting');
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(host.last('snapshot').state.players).toHaveLength(3);
+    });
+
+    it('never takes more than 12 players', () => {
+      const { host } = privateRoom(11);
+      expect(host.room?.players).toHaveLength(12);
+      const extra = new FakeClient(lobby).hello('Extra');
+      extra.say({ type: 'joinRoom', code: host.room!.code });
+      expect(extra.last('rejected').reason).toMatch(/full/);
+      host.say({ type: 'startGame' });
+      vi.advanceTimersByTime(options.countdownMs);
+      expect(host.last('snapshot').state.players).toHaveLength(12);
+    });
+
+    it('cannot be given a bigger size', () => {
+      const { host } = privateRoom(0);
+      host.say({ type: 'updateRoom', settings: { size: 20 } as never });
+      expect(host.room?.settings.size).toBe(12);
+    });
+
+    it('switches between duel and free-for-all while gathering', () => {
+      const host = new FakeClient(lobby).hello('Hana');
+      host.say({ type: 'createRoom' });
+      expect(host.room?.settings).toMatchObject({ mode: 'duel', size: 2 });
+      host.say({ type: 'updateRoom', settings: { mode: 'ffa' } });
+      expect(host.room?.settings).toMatchObject({ mode: 'ffa', size: 12 });
+      expect(host.room?.minPlayers).toBe(3);
+      host.say({ type: 'updateRoom', settings: { mode: 'duel' } });
+      expect(host.room?.settings).toMatchObject({ mode: 'duel', size: 2 });
+    });
+
+    it('will not switch to a duel with more than two players in the room', () => {
+      const { host } = privateRoom(3);
+      host.say({ type: 'updateRoom', settings: { mode: 'duel' } });
+      expect(host.last('rejected').reason).toMatch(/too many players/);
+      expect(host.room?.settings.mode).toBe('ffa');
+    });
+  });
+
+  it('plays a full free-for-all: random shaped board, everyone gets a starting city', () => {
+    const clients = joinPublic(12);
+    vi.advanceTimersByTime(options.countdownMs);
+    const snapshot = clients[0]!.last('snapshot');
+    const starts = Object.values(snapshot.state.tiles).filter((t) => t.owner !== null);
+    expect(starts).toHaveLength(12);
+    expect(new Set(starts.map((t) => t.owner)).size).toBe(12);
+    for (const start of starts) expect(start.type).toBe('city');
+    // Ticks run, and the last player standing wins as in any match.
+    vi.advanceTimersByTime(3000);
+    expect(clients[0]!.last('tick').tick).toBe(3);
+    for (const client of clients.slice(1)) client.say({ type: 'surrender' });
+    expect(clients[0]!.room?.state).toBe('finished');
+    expect(clients[0]!.last('snapshot').state.winner).toBe(snapshot.you);
   });
 });

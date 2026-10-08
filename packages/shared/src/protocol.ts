@@ -24,20 +24,34 @@ export const gameStateSchema = z.object({
 // Rooms
 // ---------------------------------------------------------------------------
 
-/** Player counts the symmetric board generator supports. */
-export const ROOM_SIZES = [2, 3, 4, 6] as const;
+/**
+ * - `duel`: two players on a symmetric board.
+ * - `ffa`: a free-for-all on a random board, for anything from `FFA_MIN_PLAYERS` to
+ *   `FFA_MAX_PLAYERS` players.
+ */
+export const ROOM_MODES = ['duel', 'ffa'] as const;
+export type RoomMode = (typeof ROOM_MODES)[number];
+
+/** A free-for-all never has more than this many players, in any kind of game. */
+export const FFA_MAX_PLAYERS = 12;
+/** The fewest players a free-for-all can start with. */
+export const FFA_MIN_PLAYERS = 3;
+
+/** How many players a room of this mode holds. */
+export const roomCapacity = (mode: RoomMode): number => (mode === 'ffa' ? FFA_MAX_PLAYERS : 2);
+
+/** The fewest players a room of this mode can start with. */
+export const roomMinPlayers = (mode: RoomMode): number => (mode === 'ffa' ? FFA_MIN_PLAYERS : 2);
 
 export const MIN_ROOM_RADIUS = 5;
 export const MAX_ROOM_RADIUS = 15;
 
 /** What a room's match will be played with. */
 export const roomSettingsSchema = z.object({
-  /** Players in the match. */
-  size: z
-    .number()
-    .int()
-    .refine((n) => (ROOM_SIZES as readonly number[]).includes(n)),
-  /** Board radius in hexes. */
+  mode: z.enum(ROOM_MODES),
+  /** The most players the room holds; fixed by the mode. */
+  size: z.number().int().min(2).max(FFA_MAX_PLAYERS),
+  /** Board radius in hexes, for duels. Free-for-all boards are sized by the number of players. */
   radius: z.number().int().min(MIN_ROOM_RADIUS).max(MAX_ROOM_RADIUS),
   config: matchConfigSchema,
 });
@@ -48,7 +62,7 @@ export type RoomSettings = z.infer<typeof roomSettingsSchema>;
  * result is validated by the server.
  */
 export const roomSettingsPatchSchema = z.object({
-  size: z.number().int().optional(),
+  mode: z.enum(ROOM_MODES).optional(),
   radius: z.number().int().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
@@ -85,8 +99,15 @@ export const roomViewSchema = z.object({
   host: z.string(),
   settings: roomSettingsSchema,
   players: z.array(roomPlayerSchema),
+  /** The fewest players the match can start with. */
+  minPlayers: z.number().int(),
   /** Server timestamp (ms since epoch) when a countdown ends, while `starting`. */
   startsAt: z.number().nullable(),
+  /**
+   * In a public free-for-all with enough players, when the countdown will begin if nobody
+   * else joins before then.
+   */
+  earlyStartAt: z.number().nullable(),
   serverTime: z.number(),
   /** The receiving player's own user id. */
   you: z.string(),
@@ -107,14 +128,14 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   }),
   /** Change the name shown to other players. Not possible once in a room. */
   z.object({ type: z.literal('setName'), name: z.string().trim().min(1).max(24) }),
-  /** Join an open public room of this size, or open one. */
-  z.object({ type: z.literal('quickPlay'), size: z.number().int() }),
+  /** Join an open public room of this mode, or open one. */
+  z.object({ type: z.literal('quickPlay'), mode: z.enum(ROOM_MODES) }),
   /** Open a private room and become its host. */
   z.object({ type: z.literal('createRoom'), settings: roomSettingsPatchSchema.optional() }),
   z.object({ type: z.literal('joinRoom'), code: z.string().trim().min(1).max(12) }),
   /** Host only, while the room is still gathering players. */
   z.object({ type: z.literal('updateRoom'), settings: roomSettingsPatchSchema }),
-  /** Host only: start the countdown once the room is full. */
+  /** Host only: start the countdown once there are enough players. */
   z.object({ type: z.literal('startGame') }),
   /** Leave the room. In a running match this is a surrender. */
   z.object({ type: z.literal('leaveRoom') }),

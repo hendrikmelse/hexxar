@@ -1,14 +1,19 @@
 import {
+  FFA_MAX_PLAYERS,
   MAX_ROOM_RADIUS,
   MIN_ROOM_RADIUS,
+  createFreeForAllMatch,
   createRng,
   createSymmetricMatch,
   diffTiles,
   parseMatchConfig,
+  roomCapacity,
+  roomMinPlayers,
   roomSettingsSchema,
   visibleState,
   type Order,
   type Rng,
+  type RoomMode,
   type RoomSettings,
   type RoomSettingsPatch,
   type RoomState,
@@ -27,10 +32,12 @@ type Timer = ReturnType<typeof setTimeout>;
 export function applySettingsPatch(
   current: RoomSettings,
   patch: RoomSettingsPatch,
-  allowedSizes: readonly number[],
+  allowedModes: readonly RoomMode[],
 ): RoomSettings | string {
-  const size = patch.size ?? current.size;
-  if (!allowedSizes.includes(size)) return 'that game size is not available';
+  const mode = patch.mode ?? current.mode;
+  if (!allowedModes.includes(mode)) return 'that kind of game is not available';
+  // The number of players is decided by the kind of game.
+  const size = roomCapacity(mode);
   const radius = patch.radius ?? current.radius;
   if (radius < MIN_ROOM_RADIUS || radius > MAX_ROOM_RADIUS) return 'board size is out of range';
   let config;
@@ -39,7 +46,7 @@ export function applySettingsPatch(
   } catch {
     return 'invalid game settings';
   }
-  const parsed = roomSettingsSchema.safeParse({ size, radius, config });
+  const parsed = roomSettingsSchema.safeParse({ mode, size, radius, config });
   return parsed.success ? parsed.data : 'invalid game settings';
 }
 
@@ -51,8 +58,13 @@ export interface RoomOptions {
   readonly visibility: 'public' | 'private';
   readonly host: Session;
   readonly settings: RoomSettings;
-  readonly allowedSizes: readonly number[];
+  readonly allowedModes: readonly RoomMode[];
   readonly countdownMs: number;
+  /**
+   * In a public free-for-all with enough players, how long the room waits with nobody new
+   * joining before starting without the rest.
+   */
+  readonly earlyStartMs: number;
   /** How long a disconnected player is given before their army surrenders. */
   readonly afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
@@ -97,6 +109,8 @@ export class Room {
   private tickTimer: Timer | null = null;
   private countdownTimer: Timer | null = null;
   private lingerTimer: Timer | null = null;
+  private earlyStartTimer: Timer | null = null;
+  private earlyStartAt: number | null = null;
   private closed = false;
 
   constructor(private readonly options: RoomOptions) {
@@ -111,13 +125,15 @@ export class Room {
 
   join(session: Session): string | null {
     if (this.state !== 'lobby') return 'that game has already started';
-    if (this.activeMembers().length >= this.settings.size) return 'that game is full';
+    if (this.activeMembers().length >= this.capacity) return 'that game is full';
     this.members.push({ session, playerId: null, left: false, afkTimer: null });
     session.room = this;
-    this.broadcastRoom();
-    // Public games start by themselves as soon as they are full.
-    if (this.visibility === 'public' && this.activeMembers().length === this.settings.size) {
+    // Public games start by themselves as soon as they are full, or after a wait with nobody new.
+    if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
       this.startCountdown();
+    } else {
+      this.scheduleEarlyStart();
+      this.broadcastRoom();
     }
     return null;
   }
@@ -131,7 +147,11 @@ export class Room {
       this.detach(session);
       if (this.members.length === 0) return this.close();
       if (this.host === session) this.host = this.members[0]!.session;
-      if (this.state === 'starting') this.cancelCountdown();
+      if (this.state === 'starting' && this.members.length < this.minPlayers) {
+        this.cancelCountdown();
+      } else if (this.state === 'lobby') {
+        this.scheduleEarlyStart();
+      }
       this.broadcastRoom();
       return;
     }
@@ -173,19 +193,21 @@ export class Room {
     if (session !== this.host) return 'only the host can change the settings';
     if (this.visibility !== 'private') return 'public games have fixed settings';
     if (this.state !== 'lobby') return 'the game has already started';
-    const next = applySettingsPatch(this.settings, patch, this.options.allowedSizes);
+    const next = applySettingsPatch(this.settings, patch, this.options.allowedModes);
     if (typeof next === 'string') return next;
-    if (this.activeMembers().length > next.size) return 'there are too many players for that size';
+    if (this.activeMembers().length > Math.min(next.size, FFA_MAX_PLAYERS)) {
+      return 'there are too many players for that kind of game';
+    }
     this.settings = next;
     this.broadcastRoom();
     return null;
   }
 
-  /** Host only: start the countdown. The board needs exactly `size` players. */
+  /** Host only: start the countdown, once there are enough players (never more than fit). */
   start(session: Session): string | null {
     if (session !== this.host) return 'only the host can start the game';
     if (this.state !== 'lobby') return 'the game has already started';
-    if (this.activeMembers().length !== this.settings.size) return 'waiting for more players';
+    if (this.activeMembers().length < this.minPlayers) return 'waiting for more players';
     this.startCountdown();
     return null;
   }
@@ -220,24 +242,40 @@ export class Room {
         connected: !m.left && m.session.connection !== null,
         playerId: m.playerId,
       })),
+      minPlayers: this.minPlayers,
       startsAt: this.startsAt,
+      earlyStartAt: this.earlyStartAt,
       serverTime: Date.now(),
       you: session.userId,
     };
   }
 
   get isOpen(): boolean {
-    return this.state === 'lobby' && this.activeMembers().length < this.settings.size;
+    return this.state === 'lobby' && this.activeMembers().length < this.capacity;
   }
 
-  get size(): number {
-    return this.settings.size;
+  get mode(): RoomMode {
+    return this.settings.mode;
+  }
+
+  /** The most players the room takes. A free-for-all never starts with more than 12. */
+  private get capacity(): number {
+    return Math.min(this.settings.size, roomCapacity(this.settings.mode));
+  }
+
+  private get minPlayers(): number {
+    return roomMinPlayers(this.settings.mode);
   }
 
   /** Stop all timers without telling anyone (shutdown and tests). */
   dispose(): void {
     this.closed = true;
-    for (const timer of [this.tickTimer, this.countdownTimer, this.lingerTimer]) {
+    for (const timer of [
+      this.tickTimer,
+      this.countdownTimer,
+      this.lingerTimer,
+      this.earlyStartTimer,
+    ]) {
       if (timer) clearTimeout(timer);
     }
     for (const member of this.members) if (member.afkTimer) clearTimeout(member.afkTimer);
@@ -279,7 +317,33 @@ export class Room {
     this.options.onClose(this);
   }
 
+  /**
+   * A public free-for-all with enough players but not a full room waits for more; if nobody
+   * joins for a while, it starts with whoever is there. Every join (or leave) restarts the wait.
+   */
+  private scheduleEarlyStart(): void {
+    if (this.earlyStartTimer) clearTimeout(this.earlyStartTimer);
+    this.earlyStartTimer = null;
+    this.earlyStartAt = null;
+    const players = this.activeMembers().length;
+    const applies =
+      this.visibility === 'public' &&
+      this.settings.mode === 'ffa' &&
+      this.state === 'lobby' &&
+      players >= this.minPlayers &&
+      players < this.capacity;
+    if (!applies) return;
+    this.earlyStartAt = Date.now() + this.options.earlyStartMs;
+    this.earlyStartTimer = setTimeout(() => {
+      this.earlyStartTimer = null;
+      this.startCountdown();
+    }, this.options.earlyStartMs);
+  }
+
   private startCountdown(): void {
+    if (this.earlyStartTimer) clearTimeout(this.earlyStartTimer);
+    this.earlyStartTimer = null;
+    this.earlyStartAt = null;
     this.state = 'starting';
     this.startsAt = Date.now() + this.options.countdownMs;
     this.countdownTimer = setTimeout(() => this.begin(), this.options.countdownMs);
@@ -291,6 +355,7 @@ export class Room {
     this.countdownTimer = null;
     this.startsAt = null;
     this.state = 'lobby';
+    this.scheduleEarlyStart();
   }
 
   /** Create the match and start ticking. */
@@ -301,12 +366,16 @@ export class Room {
     const order = shuffle(this.members, createRng(seed));
     const players = order.map((_, i) => `P${i + 1}`);
     order.forEach((member, i) => (member.playerId = players[i] ?? null));
-    const { state, config } = createSymmetricMatch({
-      players,
-      seed,
-      radius: this.settings.radius,
-      config: this.settings.config,
-    });
+    // Free-for-alls get a random board shape, sized by how many are playing.
+    const { state, config } =
+      this.settings.mode === 'ffa'
+        ? createFreeForAllMatch({ players, seed, shape: 'random', config: this.settings.config })
+        : createSymmetricMatch({
+            players,
+            seed,
+            radius: this.settings.radius,
+            config: this.settings.config,
+          });
     this.match = new Match(this.id, state, config);
     this.state = 'running';
     this.startsAt = null;

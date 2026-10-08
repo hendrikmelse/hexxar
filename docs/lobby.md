@@ -6,22 +6,29 @@ Everything before and after a match happens in a **room**. A room owns its match
 
 `lobby` (gathering players) → `starting` (countdown) → `running` (the match) → `finished` (the result stays up) → closed.
 
-- **Public rooms** (from Quick play) start by themselves: when the room is full, a countdown begins. If someone leaves during the countdown, it is cancelled.
+- **Public rooms** (from Quick play) start by themselves: when the room is full, a countdown begins. A public free-for-all can also start early (see below). If someone leaves during a countdown and the room is still big enough, the countdown carries on; otherwise it is cancelled.
 - **Private rooms** (Create a private game) have a host, who chooses the settings and presses Start once the room is full. Everyone then sees the same countdown. If the host leaves, the next player becomes host.
-- The board needs exactly as many players as the chosen game size (the symmetric generator supports 2, 3, 4 and 6), so a room starts when it is full, not before.
+- A duel needs exactly 2 players. A free-for-all takes 3 to 12, and **never starts with more than 12 players**, in public or private games. The cap is enforced when players join, and a room's size is fixed by its mode, so even a host cannot raise it.
 - A finished room stays open for ten minutes or until everyone has left, so players can look at the result. Players leave with the "Main menu" button.
 
 ## Ways in
 
-1. **Quick play:** join an open public room of that size, or open one.
+1. **Quick play:** join an open public room of the chosen mode (duel or free-for-all), or open one.
 2. **Create a private game:** get a short code and an invite link (`/?join=CODE`). Opening the link joins that game.
 3. **Join with a code:** codes are 5 characters and ignore case.
 
-Only duels (size 2) are enabled for now. Free-for-all sizes arrive with the random board generator; the room model and protocol already handle any size the generator supports.
+Both modes are enabled; the server has a list of allowed modes, so either can be switched off.
+
+## Free-for-all rooms
+
+- **Size:** a room holds up to 12 players and needs at least 3 to start. The board is generated for however many are playing (a random shape, sized at about 20 tiles per player), and everyone is placed at random on a starting city.
+- **Early start (public rooms):** once 3 or more players are waiting, the room waits for more. If nobody new joins for a while (45 seconds by default, `EARLY_START_MS`), the usual countdown begins and the match starts with whoever is there. Every join restarts the wait, a drop below 3 players stops it, and a full room (12) starts at once. Players see a note with the time left.
+- **Private rooms:** no early start. The host starts the game whenever at least 3 players are in, with however many there are.
+- **Late joiners:** once a countdown has begun, the player list is locked; anyone arriving through Quick play goes to a new room.
 
 ## Settings
 
-A private room's host can change board size, tick length, troop production speed and starting troops while the room is still gathering players. Everything is a `MatchConfig` field, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults.
+A private room's host can change the game mode (duel or free-for-all), board size (duels only; free-for-all boards are sized by the number of players), tick length, troop production speed and starting troops while the room is still gathering players. Everything is a `MatchConfig` field, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults.
 
 ## Leaving, disconnecting and coming back
 
@@ -38,7 +45,7 @@ A private room's host can change board size, tick length, troop production speed
 
 ## Protocol
 
-- Client: `hello`, `setName`, `quickPlay`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, plus the in-match `order` and `surrender`.
+- Client: `hello`, `setName`, `quickPlay` (with a mode), `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, plus the in-match `order` and `surrender`.
 - Server: `welcome`, `room` (your room, or `null` for the menu; sent on every change), `snapshot`, `tick`, `queued`, `rejected`.
 
 ## Not built yet

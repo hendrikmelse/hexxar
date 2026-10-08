@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MAX_ROOM_RADIUS, MIN_ROOM_RADIUS, type RoomView } from '@hexxar/shared';
+import { MAX_ROOM_RADIUS, MIN_ROOM_RADIUS, type RoomMode, type RoomView } from '@hexxar/shared';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 
@@ -17,13 +17,27 @@ export function Lobby({ actions }: { actions: Actions }) {
   const isHost = room.host === room.you;
   const isPrivate = room.visibility === 'private';
   const editable = isHost && isPrivate && room.state === 'lobby';
-  const full = room.players.length === room.settings.size;
+  const { mode, size } = room.settings;
+  const players = room.players.length;
+  const canStart = players >= room.minPlayers;
   const seconds = useCountdown(room.startsAt, app.clockOffset);
+  const earlySeconds = useCountdown(room.earlyStartAt, app.clockOffset);
 
   return (
     <div className="screen">
       <div className="card lobby">
-        <h2>{isPrivate ? 'Private game' : 'Looking for an opponent…'}</h2>
+        <h2>
+          {isPrivate
+            ? `Private ${mode === 'ffa' ? 'free-for-all' : 'duel'}`
+            : mode === 'ffa'
+              ? 'Free-for-all'
+              : 'Looking for an opponent…'}
+        </h2>
+        {mode === 'ffa' && (
+          <p className="muted">
+            {players} of {size} players · needs at least {room.minPlayers} to start
+          </p>
+        )}
 
         {isPrivate && <InviteCode code={room.code} />}
 
@@ -36,11 +50,13 @@ export function Lobby({ actions }: { actions: Actions }) {
               {!p.connected && <em>disconnected</em>}
             </li>
           ))}
-          {Array.from({ length: room.settings.size - room.players.length }, (_, i) => (
-            <li key={`open-${i}`} className="open">
-              Waiting for a player…
-            </li>
-          ))}
+          {/* Big rooms just say how many spots are left, rather than listing every empty slot. */}
+          {size <= 6 &&
+            Array.from({ length: size - players }, (_, i) => (
+              <li key={`open-${i}`} className="open">
+                Waiting for a player…
+              </li>
+            ))}
         </ul>
 
         {isPrivate && <Settings room={room} editable={editable} onChange={actions.updateRoom} />}
@@ -50,11 +66,20 @@ export function Lobby({ actions }: { actions: Actions }) {
         {room.state === 'starting' && seconds !== null && (
           <p className="countdown">Starting in {seconds}…</p>
         )}
+        {room.state === 'lobby' && earlySeconds !== null && (
+          <p className="muted">
+            Starting without the rest in {earlySeconds}s, unless someone else joins first
+          </p>
+        )}
 
         <div className="buttons">
           {isHost && isPrivate && room.state === 'lobby' && (
-            <button className="primary" disabled={!full} onClick={actions.startGame}>
-              {full ? 'Start game' : 'Waiting for players'}
+            <button className="primary" disabled={!canStart} onClick={actions.startGame}>
+              {canStart
+                ? mode === 'ffa'
+                  ? `Start game (${players} players)`
+                  : 'Start game'
+                : 'Waiting for players'}
             </button>
           )}
           <button onClick={actions.leaveRoom}>Leave</button>
@@ -93,17 +118,31 @@ function Settings({
   editable: boolean;
   onChange: Actions['updateRoom'];
 }) {
-  const { radius, config } = room.settings;
+  const { mode, radius, config } = room.settings;
   return (
     <div className="settings">
-      <Setting
-        label="Board size"
-        value={radius}
-        options={RADII}
-        format={(r) => `${r} (${tilesOnBoard(r)} tiles)`}
-        disabled={!editable}
-        onChange={(value) => onChange({ radius: value })}
-      />
+      <label className="field row">
+        <span>Game mode</span>
+        <select
+          value={mode}
+          disabled={!editable}
+          onChange={(e) => onChange({ mode: e.target.value as RoomMode })}
+        >
+          <option value="duel">Duel (2 players)</option>
+          <option value="ffa">Free-for-all (up to 12)</option>
+        </select>
+      </label>
+      {/* Free-for-all boards are sized by the number of players. */}
+      {mode === 'duel' && (
+        <Setting
+          label="Board size"
+          value={radius}
+          options={RADII}
+          format={(r) => `${r} (${tilesOnBoard(r)} tiles)`}
+          disabled={!editable}
+          onChange={(value) => onChange({ radius: value })}
+        />
+      )}
       <Setting
         label="Tick length"
         value={config.tickMs}

@@ -193,10 +193,10 @@ mountUi(document.getElementById('ui')!, {
     appStore.set({ name });
     saveName(name);
   },
-  quickPlay() {
+  quickPlay(mode) {
     appStore.set({ error: null });
     sendName();
-    connection.send({ type: 'quickPlay', size: 2 });
+    connection.send({ type: 'quickPlay', mode });
   },
   createRoom() {
     appStore.set({ error: null });
