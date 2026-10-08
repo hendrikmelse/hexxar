@@ -65,8 +65,8 @@ A public game list, spectators, bots, ranked rooms and reconnecting after a serv
 
 | Size   | Duel (board radius) | Battle royale (tiles per player) |
 | ------ | ------------------- | -------------------------------- |
-| Small  | 5                   | 14                               |
-| Normal | 7                   | 20                               |
-| Large  | 9                   | 30                               |
+| Small  | 4                   | 14                               |
+| Normal | 5                   | 20                               |
+| Large  | 7                   | 30                               |
 
 Normal is what quick play uses. The radius is that of the hexagon the random outline stands in for, so real boards are a little ragged around it (see `docs/map-generation.md`). A battle royale board is sized from the number of players, with a minimum radius of 5.

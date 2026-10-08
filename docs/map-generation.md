@@ -10,7 +10,7 @@ The board is split into **orbits**: sets of tiles that map onto each other under
 - **Mirror** (2 or 4 players, the default for both). With 4 players: left-right and top-bottom mirrors, plus the 180 degree turn they imply. With 2 players: only the left-right mirror, so the two halves face each other but neither half is symmetric itself.
 - 5 players is unsupported, and mirror boards are rejected for 3 and 6 players (and rotational for 4).
 
-Starting positions are matching spots one tile in from the edge of the board: left and right for 2 players, and one per quadrant for 4. Every image of a start tile under the board's symmetry is a starting city, and the symmetry groups are exactly as big as the player count, so every starting city belongs to a player and there are no spare ones. Start cities are at least 3 tiles apart (the same minimum as for any two cities). Boards need a radius of at least 5.
+Starting positions are matching spots one tile in from the edge of the board: left and right for 2 players, and one per quadrant for 4. Every image of a start tile under the board's symmetry is a starting city, and the symmetry groups are exactly as big as the player count, so every starting city belongs to a player and there are no spare ones. Start cities are at least 3 tiles apart (the same minimum as for any two cities). Symmetric boards need a radius of at least 4.
 
 ## Board shape
 
@@ -38,7 +38,7 @@ Neutral tiles start with their type's base garrison.
 
 A battle royale board has no symmetry; the terrain is simply random, within the tile rules above.
 
-- **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. `recommendedRadius` decides it from the number of players and the tiles per player of the chosen map size. A duel's radius comes from the map size (5, 7 or 9).
+- **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. `recommendedRadius` decides it from the number of players and the tiles per player of the chosen map size. A duel's radius comes from the map size (4, 5 or 7).
 - **Starting cities:** one per player, at least 3 tiles apart and at least one tile in from the edge, spread as evenly as the board allows. The generator tries many random layouts, each time putting the next player as far as it can from the ones already placed, and keeps the layout whose closest pair of players is furthest apart. It rejects boards too small to hold everyone 3 tiles apart.
 - **Who starts where:** players are assigned to the starting cities at random.
 - **Cities and villages:** there are no cities except the starting ones, so each player's start is the only city nearby. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.

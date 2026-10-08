@@ -25,6 +25,9 @@ import type { Session } from './types.js';
 
 type Timer = ReturnType<typeof setTimeout>;
 
+/** How many seeds are tried for a board before the game is called off. */
+const BOARD_ATTEMPTS = 3;
+
 /**
  * Apply a settings patch on top of the current settings. Returns the new settings, or a
  * message saying why the patch is not allowed.
@@ -409,7 +412,11 @@ export class Room {
     this.armEarlyStart(Math.min(remaining, this.options.voteStartMs));
   }
 
-  /** Create the match. The first tick comes after `prepMs`, so everyone can plan their opening. */
+  /**
+   * Create the match. The first tick comes after `prepMs`, so everyone can plan their opening.
+   * Board generation can fail (it is random, and its rules may change), which must never take the
+   * server down: other seeds are tried, and if none works the room is closed with an apology.
+   */
   private begin(): void {
     this.resetEarlyStart();
     const seed = Math.floor(Math.random() * 2 ** 32);
@@ -417,27 +424,45 @@ export class Room {
     const order = shuffle(this.members, createRng(seed));
     const players = order.map((_, i) => `P${i + 1}`);
     order.forEach((member, i) => (member.playerId = players[i] ?? null));
-    // Battle Royales get a random board shape, sized by how many are playing.
-    const { state, config } =
-      this.settings.mode === 'ffa'
-        ? createFreeForAllMatch({
-            players,
-            seed,
-            config: this.settings.config,
-            params: { tilesPerPlayer: ROYALE_TILES_PER_PLAYER[this.settings.mapSize] },
-          })
-        : createSymmetricMatch({
-            players,
-            seed,
-            radius: DUEL_RADIUS[this.settings.mapSize],
-            config: this.settings.config,
-          });
-    this.match = new Match(this.id, state, config);
+
+    let board: ReturnType<Room['generateBoard']> | null = null;
+    for (let attempt = 0; attempt < BOARD_ATTEMPTS && !board; attempt++) {
+      try {
+        board = this.generateBoard(players, seed + attempt);
+      } catch (error) {
+        console.error(`room ${this.id}: could not generate a board (attempt ${attempt + 1})`, error);
+      }
+    }
+    if (!board) {
+      for (const member of this.members) {
+        member.session.connection?.send({
+          type: 'rejected',
+          reason: 'the game could not be set up, please try again',
+        });
+      }
+      this.close();
+      return;
+    }
+
+    this.match = new Match(this.id, board.state, board.config);
     this.state = 'running';
     this.nextTickAt = Date.now() + this.options.prepMs;
     this.broadcastRoom();
     this.broadcastSnapshots();
     this.scheduleTick();
+  }
+
+  /** The board for this room's settings: a battle royale sized by its players, or a duel by map size. */
+  private generateBoard(players: string[], seed: number) {
+    const { mode, mapSize, config } = this.settings;
+    return mode === 'ffa'
+      ? createFreeForAllMatch({
+          players,
+          seed,
+          config,
+          params: { tilesPerPlayer: ROYALE_TILES_PER_PLAYER[mapSize] },
+        })
+      : createSymmetricMatch({ players, seed, radius: DUEL_RADIUS[mapSize], config });
   }
 
   private scheduleTick(): void {

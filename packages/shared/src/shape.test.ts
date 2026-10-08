@@ -10,7 +10,7 @@ import {
   hexagonalBoard,
   type Hex,
 } from './hex.js';
-import { DEFAULT_GENERATION_PARAMS } from './params.js';
+import { DEFAULT_GENERATION_PARAMS, DUEL_RADIUS } from './params.js';
 import { createRng } from './rng.js';
 import { randomShape } from './shape.js';
 import type { Tile } from './state.js';
@@ -282,7 +282,7 @@ describe('random board shapes in matches', () => {
     const options = { players: ['A', 'B'], seed: 9, radius: 8 };
     expect(createSymmetricMatch(options).state).toEqual(createSymmetricMatch(options).state);
     // Small boards are where a random outline is hardest to find; none may end up a hexagon.
-    for (const radius of [5, 7]) {
+    for (const radius of Object.values(DUEL_RADIUS)) {
       for (let seed = 0; seed < 150; seed++) {
         const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius });
         const hexagon = new Set(hexagonalBoard(radius).map(hexKey));

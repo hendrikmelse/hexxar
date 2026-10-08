@@ -251,7 +251,7 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
     options.symmetry ?? (players.length === 2 || players.length === 4 ? 'mirror' : 'rotational');
   const config = parseMatchConfig(options.config);
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
-  if (radius < 5) throw new Error('radius must be at least 5');
+  if (radius < 4) throw new Error('radius must be at least 4');
 
   const params = withDefaults(options.params);
   const { terrain, starts } = layout(players.length, symmetry, radius, params);

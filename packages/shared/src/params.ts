@@ -94,7 +94,7 @@ export const MAP_SIZES = ['small', 'normal', 'large'] as const;
 export type MapSize = (typeof MAP_SIZES)[number];
 
 /** Board radius of a duel at each map size. Normal is what quick play uses. */
-export const DUEL_RADIUS: Readonly<Record<MapSize, number>> = { small: 5, normal: 7, large: 9 };
+export const DUEL_RADIUS: Readonly<Record<MapSize, number>> = { small: 4, normal: 5, large: 7 };
 
 /**
  * Tiles per player in a battle royale at each map size, which decides the board size. Normal
