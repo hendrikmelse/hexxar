@@ -1,10 +1,13 @@
+import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_TICK_MS } from '@hexxar/shared';
+import { createHttpHandler } from './http.js';
 import { Lobby } from './lobby.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
 const lobby = new Lobby({
+  betaCode: process.env.BETA_CODE,
   allowedModes: ['duel', 'ffa'],
   tickMs: Number(process.env.TICK_MS ?? DEFAULT_TICK_MS),
   prepMs: Number(process.env.PREP_MS ?? 5000),
@@ -16,7 +19,11 @@ const lobby = new Lobby({
   finishedLingerMs: Number(process.env.FINISHED_LINGER_MS ?? 10 * 60_000),
 });
 
-const wss = new WebSocketServer({ port: PORT, maxPayload: 16 * 1024 });
+// One port serves the built client (when STATIC_DIR is set), a health check, and the game's
+// WebSocket at /ws.
+const handleHttp = createHttpHandler(process.env.STATIC_DIR);
+const http = createServer((req, res) => void handleHttp(req, res));
+const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 16 * 1024 });
 
 wss.on('connection', (ws) => {
   const handler = lobby.connect({
@@ -35,4 +42,5 @@ wss.on('connection', (ws) => {
   ws.on('close', () => handler.onClose());
 });
 
-console.log(`hexxar server listening on ws://localhost:${PORT}`);
+http.listen(PORT, () => console.log(`hexxar server listening on port ${PORT}`));
+if (!process.env.BETA_CODE) console.log('BETA_CODE is not set: anyone can connect');

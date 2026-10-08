@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   clientMessageSchema,
   parseMatchConfig,
@@ -13,6 +13,8 @@ import { Room, applySettingsPatch } from './room.js';
 import type { Connection, ConnectionHandler, Session } from './types.js';
 
 export interface LobbyOptions {
+  /** Beta access code. When set, nobody gets in without it; when empty, the server is open. */
+  betaCode?: string;
   /** The kinds of game that can be played right now. */
   allowedModes: readonly RoomMode[];
   tickMs: number;
@@ -30,6 +32,15 @@ export interface LobbyOptions {
   afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
   finishedLingerMs: number;
+}
+
+/** Wrong access codes a single connection may try before it is dropped. */
+const MAX_CODE_ATTEMPTS = 5;
+
+/** Compare two strings without leaking, through timing, how much of the guess was right. */
+function sameSecret(a: string, b: string): boolean {
+  const hash = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(hash(a), hash(b));
 }
 
 /** Characters for room codes, leaving out the ones that are easy to confuse. */
@@ -55,6 +66,7 @@ export class Lobby {
 
   connect(connection: Connection): ConnectionHandler {
     let session: Session | null = null;
+    let wrongCodes = 0;
     return {
       onMessage: (raw) => {
         const parsed = clientMessageSchema.safeParse(raw);
@@ -64,7 +76,17 @@ export class Lobby {
         }
         const message = parsed.data;
         if (message.type === 'hello') {
-          if (!session) session = this.hello(connection, message.name, message.token);
+          if (session) return;
+          const { betaCode } = this.options;
+          if (betaCode && !sameSecret(message.code ?? '', betaCode)) {
+            connection.send({
+              type: 'denied',
+              reason: message.code ? 'wrong code' : 'code required',
+            });
+            if (message.code && ++wrongCodes >= MAX_CODE_ATTEMPTS) connection.close();
+            return;
+          }
+          session = this.hello(connection, message.name, message.token);
           return;
         }
         if (!session) {

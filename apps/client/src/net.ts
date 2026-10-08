@@ -1,6 +1,7 @@
 import { serverMessageSchema, type ClientMessage, type ServerMessage } from '@hexxar/shared';
 
 const TOKEN_KEY = 'hexxar.token';
+const CODE_KEY = 'hexxar.code';
 
 /**
  * Guest token, kept per tab (sessionStorage) so two tabs can play against each
@@ -19,6 +20,24 @@ export const saveToken = (token: string): void => {
     sessionStorage.setItem(TOKEN_KEY, token);
   } catch {
     // Storage can be unavailable (private windows); reconnecting just starts fresh.
+  }
+};
+
+/** The beta access code, kept across visits so it is only asked for once. */
+export const loadCode = (): string | undefined => {
+  try {
+    return localStorage.getItem(CODE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const saveCode = (code: string | null): void => {
+  try {
+    if (code) localStorage.setItem(CODE_KEY, code);
+    else localStorage.removeItem(CODE_KEY);
+  } catch {
+    // Storage can be unavailable; the code is just asked for again next time.
   }
 };
 
@@ -43,7 +62,7 @@ export function connect(url: string, name: string, events: ConnectionEvents): Co
     socket = ws;
     ws.onopen = () => {
       events.onOpen();
-      ws.send(JSON.stringify({ type: 'hello', name, token: loadToken() }));
+      ws.send(JSON.stringify({ type: 'hello', name, token: loadToken(), code: loadCode() }));
     };
     ws.onmessage = (event) => {
       let raw: unknown;

@@ -1,0 +1,29 @@
+# Hexxar: one container that serves the built client and the game's WebSocket. Its image is
+# built and pushed by CI (.github/workflows); deploy.sh sets IMAGE to the commit being deployed.
+# Settings such as BETA_CODE live in .env next to this file (see .env.example).
+services:
+  game:
+    image: ${IMAGE:?set IMAGE, e.g. by running deploy.sh}
+    container_name: hexxar
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    networks:
+      - web # reached by Caddy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: '{{.Name}}'
+
+networks:
+  web:
+    external: true
+    name: web

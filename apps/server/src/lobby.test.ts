@@ -788,3 +788,42 @@ describe('Lobby activity counts', () => {
     lobby.stop();
   });
 });
+
+describe('Lobby beta code', () => {
+  const closed = () => new Lobby({ ...options, betaCode: 'sesame' });
+
+  it('lets nobody in without the code, and everybody in with it', () => {
+    const lobby = closed();
+    const guest = new FakeClient(lobby);
+    guest.say({ type: 'hello', name: 'Ann' });
+    expect(guest.last('denied').reason).toBe('code required');
+    // Nothing works until the right code is sent.
+    guest.say({ type: 'quickPlay', mode: 'duel' });
+    expect(guest.last('rejected').reason).toMatch(/hello/);
+
+    guest.say({ type: 'hello', name: 'Ann', code: 'nope' });
+    expect(guest.last('denied').reason).toBe('wrong code');
+    expect(guest.all('welcome')).toHaveLength(0);
+
+    guest.say({ type: 'hello', name: 'Ann', code: 'sesame' });
+    expect(guest.last('welcome').userId).toBeTruthy();
+    guest.say({ type: 'quickPlay', mode: 'duel' });
+    expect(guest.room).toMatchObject({ visibility: 'public' });
+    lobby.stop();
+  });
+
+  it('drops a connection that keeps guessing', () => {
+    const lobby = closed();
+    const guest = new FakeClient(lobby);
+    for (let i = 0; i < 5; i++) guest.say({ type: 'hello', name: 'Eve', code: `guess${i}` });
+    expect(guest.closed).toBe(true);
+    lobby.stop();
+  });
+
+  it('is open when no code is set', () => {
+    const lobby = new Lobby(options);
+    const guest = new FakeClient(lobby).hello('Ann');
+    expect(guest.last('welcome').userId).toBeTruthy();
+    lobby.stop();
+  });
+});

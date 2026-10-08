@@ -7,6 +7,8 @@ const NAME_KEY = 'hexxar.name';
 /** What the menu, lobby and results screens need to know. The match itself lives in `GameView`. */
 export interface AppState {
   connected: boolean;
+  /** Set when the server wants a (new) beta access code before letting us in. */
+  denied: 'code required' | 'wrong code' | null;
   userId: string | null;
   /** The name shown to other players. */
   name: string;
@@ -46,6 +48,7 @@ export function saveName(name: string): void {
 class Store {
   private state: AppState = {
     connected: false,
+    denied: null,
     userId: null,
     name: loadName(),
     room: null,

@@ -1,0 +1,12 @@
+# Add these blocks to /srv/caddy/Caddyfile on the server, next to the other sites. The container
+# is on the "web" network (see hexxar/compose.yaml), so Caddy reaches it by name. One upstream
+# serves the page and the WebSocket (/ws); Caddy proxies the upgrade by itself.
+
+hexxar.io {
+	encode zstd gzip
+	reverse_proxy hexxar:8080
+}
+
+www.hexxar.io {
+	redir https://hexxar.io{uri} permanent
+}

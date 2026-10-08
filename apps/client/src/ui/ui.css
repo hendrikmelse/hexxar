@@ -1804,3 +1804,13 @@
   font-size: 14px;
   text-align: center;
 }
+
+/* The beta access screen */
+#ui .gate .error.center {
+  text-align: center;
+}
+
+#ui .gate input {
+  text-align: center;
+  letter-spacing: 0.12em;
+}

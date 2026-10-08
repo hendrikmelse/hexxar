@@ -2,7 +2,7 @@ import { hexEquals, hexKey, type Hex, type RoomSettingsPatch } from '@hexxar/sha
 import { Board, playerColor } from './board.js';
 import { applyMessage, emptyGame } from './game.js';
 import { Hud } from './hud.js';
-import { connect, saveToken } from './net.js';
+import { connect, loadToken, saveCode, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { appStore, saveName } from './store.js';
 import { mountUi } from './ui/mount.js';
@@ -164,6 +164,10 @@ mountUi(document.getElementById('ui')!, {
   updateRoom(settings: RoomSettingsPatch) {
     connection.send({ type: 'updateRoom', settings });
   },
+  submitCode(code) {
+    saveCode(code);
+    connection.send({ type: 'hello', name: appStore.get().name, token: loadToken(), code });
+  },
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
   leaveRoom: () => connection.send({ type: 'leaveRoom' }),
@@ -183,15 +187,25 @@ function joinFromUrl(): void {
   connection.send({ type: 'joinRoom', code });
 }
 
-const url = import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:8080`;
+// In development the server runs on its own port; in production it serves this page too.
+const url =
+  import.meta.env.VITE_SERVER_URL ??
+  (import.meta.env.DEV
+    ? `ws://${location.hostname}:8080/ws`
+    : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
 const connection = connect(url, appStore.get().name, {
   onOpen: () => appStore.set({ connected: true }),
-  onClose: () => appStore.set({ connected: false }),
+  onClose: () => appStore.set({ connected: false, denied: null }),
   onMessage: (message) => {
     switch (message.type) {
       case 'welcome':
         saveToken(message.token);
-        appStore.set({ userId: message.userId });
+        appStore.set({ userId: message.userId, denied: null });
+        return;
+      case 'denied':
+        // A saved code that no longer works is forgotten, so it is not tried again.
+        if (message.reason === 'wrong code') saveCode(null);
+        appStore.set({ denied: message.reason });
         return;
       case 'room': {
         const previous = appStore.get().room;

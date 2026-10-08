@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { RoomMode, RoomSettingsPatch } from '@hexxar/shared';
 import { useApp } from '../store.js';
 import { Connecting } from './Connecting.js';
+import { Gate } from './Gate.js';
 import { Lobby } from './Lobby.js';
 import { Menu } from './Menu.js';
 import { Results } from './Results.js';
@@ -13,6 +14,7 @@ export interface Actions {
   createRoom(): void;
   joinRoom(code: string): void;
   updateRoom(patch: RoomSettingsPatch): void;
+  submitCode(code: string): void;
   startGame(): void;
   voteStart(vote: boolean): void;
   leaveRoom(): void;
@@ -71,6 +73,9 @@ function Screen({ actions }: { actions: Actions }) {
     // Once we have been connected, a dropped connection is a reconnect.
     return <Connecting reconnecting={app.userId !== null} />;
   }
+  if (app.denied) return <Gate actions={actions} />;
+  // Wait for the server's welcome (or its refusal) before showing the menu.
+  if (app.userId === null) return <Connecting reconnecting={false} />;
   const room = app.room;
   if (!room) return <Menu actions={actions} />;
   if (room.state === 'lobby') return <Lobby actions={actions} />;
