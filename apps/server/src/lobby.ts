@@ -15,8 +15,6 @@ import type { Connection, ConnectionHandler, Session } from './types.js';
 export interface LobbyOptions {
   /** Beta access code. When set, nobody gets in without it; when empty, the server is open. */
   betaCode?: string;
-  /** The kinds of game that can be played right now. */
-  allowedModes: readonly RoomMode[];
   tickMs: number;
   /** Time between a match being created and its first tick, for planning the opening. */
   prepMs: number;
@@ -208,7 +206,6 @@ export class Lobby {
 
   private quickPlay(session: Session, mode: RoomMode): string | null {
     if (session.room) return 'you are already in a game';
-    if (!this.options.allowedModes.includes(mode)) return 'that kind of game is not available';
     const open = [...this.rooms.values()].find(
       (room) => room.visibility === 'public' && room.mode === mode && room.isOpen,
     );
@@ -219,11 +216,7 @@ export class Lobby {
 
   private createRoom(session: Session, patch: RoomSettingsPatch): string | null {
     if (session.room) return 'you are already in a game';
-    const settings = applySettingsPatch(
-      this.defaultSettings(this.options.allowedModes[0] ?? 'duel'),
-      patch,
-      this.options.allowedModes,
-    );
+    const settings = applySettingsPatch(this.defaultSettings('duel'), patch);
     if (typeof settings === 'string') return settings;
     return this.openRoom(session, 'private', settings).join(session);
   }
@@ -252,7 +245,6 @@ export class Lobby {
       visibility,
       host,
       settings,
-      allowedModes: this.options.allowedModes,
       prepMs: this.options.prepMs,
       earlyStartMs: this.options.earlyStartMs,
       joinWaitMs: this.options.joinWaitMs,

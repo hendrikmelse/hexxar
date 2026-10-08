@@ -55,7 +55,6 @@ class FakeClient implements Connection {
 }
 
 const options = {
-  allowedModes: ['duel', 'ffa'] as ('duel' | 'ffa')[],
   tickMs: 1000,
   prepMs: 3000,
   earlyStartMs: 20_000,
@@ -101,16 +100,6 @@ describe('Lobby', () => {
       expect(a.last('rejected').reason).toMatch(/hello/);
       a.say({ nonsense: true });
       expect(a.last('rejected').reason).toMatch(/invalid/);
-    });
-
-    it('rejects kinds of game that are switched off', () => {
-      lobby.stop();
-      lobby = new Lobby({ ...options, allowedModes: ['duel'] });
-      const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'quickPlay', mode: 'ffa' });
-      expect(a.last('rejected').reason).toMatch(/not available/);
-      a.say({ type: 'createRoom', settings: { mode: 'ffa' } });
-      expect(a.last('rejected').reason).toMatch(/not available/);
     });
 
     it('rejects room commands from someone who is not in a room', () => {
@@ -329,18 +318,6 @@ describe('Lobby', () => {
       vi.advanceTimersByTime(options.finishedLingerMs);
       expect(a.room).toBeNull();
       expect(b.room).toBeNull();
-    });
-
-    it('never reuses room ids', () => {
-      const ids = new Set<string>();
-      for (let i = 0; i < 5; i++) {
-        const { a, b } = runningDuel();
-        ids.add(a.room!.id);
-        b.say({ type: 'surrender' });
-        a.say({ type: 'leaveRoom' });
-        b.say({ type: 'leaveRoom' });
-      }
-      expect(ids.size).toBe(5);
     });
   });
 

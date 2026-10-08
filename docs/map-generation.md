@@ -1,6 +1,6 @@
 # Map generation
 
-`packages/shared/src/generate.ts` builds boards in two flavors. `createSymmetricMatch` makes fair boards for 2, 3, 4 or 6 players; `createFreeForAllMatch` makes random boards for any number of players. Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared.
+`packages/shared/src/generate.ts` builds boards in two flavors. `createSymmetricMatch` makes fair boards for 2, 3, 4 or 6 players (games use it for duels); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared.
 
 ## Symmetry
 
@@ -14,16 +14,16 @@ Starting positions are matching spots one tile in from the edge of the board: le
 
 ## Board shape
 
-Both generators take a `shape`: `hexagon` (the default, a regular hexagonal board) or `random`. `randomShape` (`packages/shared/src/shape.ts`) builds the random outline:
+Every board has a random outline, so you never see a plain hexagon. `randomShape` (`packages/shared/src/shape.ts`) builds it:
 
-- **Outline:** a circle bent by three random waves, so the board has lobes and bays instead of six straight sides, with each tile's edge position jittered for a rough coast. A circle with the radius of the hexagon it stands in for holds about the same number of tiles.
+- **Outline:** a circle bent by a few random waves, so the board has lobes and bays instead of six straight sides, with each tile's edge position jittered for a rough coast. A circle with the radius of the hexagon it stands in for holds about the same number of tiles, so "radius" below means the size of that stand-in hexagon.
 - **Tidying:** tiles that stick out as spurs (two or fewer neighbors) are removed and one-tile bays are filled, and tiny islands are dropped, so the coast is jagged but never noisy.
-- **Cutouts:** a few lakes are carved out of the inside. Each is one big blob of contiguous tiles (at least 5, up to about a thirtieth of the board), grown compactly, and kept at least 3 tiles from the coast (so there is always room to walk around), from every starting city, and from other lakes.
-- **Checks:** the board must be one connected piece, within 50% to 130% of the hexagon's area (by default), and keep the room around every starting city, otherwise another shape is tried.
+- **Cutouts:** a few lakes are carved out of the inside. Each is one big blob of contiguous tiles (at least 6, up to about 8% of the board), grown compactly, and kept at least 3 tiles from the coast (so there is always room to walk around), from every starting city, and from other lakes.
+- **Checks:** the board must be one connected piece, within 50% to 130% of the hexagon's area, keep the room around every starting city, and not be the plain hexagon itself, otherwise another outline is tried (up to 500 times; small boards fail most attempts, but a few hundred are cheap). If none passes, generation fails rather than hand back a hexagon.
 - **Symmetry:** symmetric boards keep their symmetry. A tile is land if it or any of its images would be, and lakes are carved out along with all of their images, so the whole board maps onto itself.
-- **Starting cities:** protected, with a ring of land around each one (the start room setting).
+- **Starting cities:** protected, with a ring of land around each one.
 
-"Edge" now means a tile with a missing neighbor, whether at the coast or beside a lake. Cities never go on edge tiles, so every city has a full ring of six neighbors, and villages fill the interior before the edge.
+"Edge" means a tile with a missing neighbor, whether at the coast or beside a lake. Cities never go on edge tiles, so every city has a full ring of six neighbors, and villages fill the interior before the edge.
 
 ## Tile types
 
@@ -38,7 +38,7 @@ Neutral tiles start with their type's base garrison.
 
 A battle royale board has no symmetry; the terrain is simply random, within the tile rules above.
 
-- **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. The size is not a setting; `recommendedRadius` decides it. Symmetric games have fixed recommended sizes (radius 7 for a duel up to 10 for 6 players).
+- **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. `recommendedRadius` decides it from the number of players and the tiles per player of the chosen map size. A duel's radius comes from the map size (5, 7 or 9).
 - **Starting cities:** one per player, at least 3 tiles apart and at least one tile in from the edge, spread as evenly as the board allows. The generator tries many random layouts, each time putting the next player as far as it can from the ones already placed, and keeps the layout whose closest pair of players is furthest apart. It rejects boards too small to hold everyone 3 tiles apart.
 - **Who starts where:** players are assigned to the starting cities at random.
 - **Cities and villages:** there are no cities except the starting ones, so each player's start is the only city nearby. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.
@@ -47,15 +47,4 @@ Because nothing about the layout is symmetric, battle royale boards are not perf
 
 ## Settings
 
-Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`). Both generators take a `params` option with any overrides, and boards made with the defaults are unchanged.
-
-| Group               | Settings (defaults)                                                                                                                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Outline             | outline size (0.91), waves (4), wave strength (1.5), wave detail (6), jagged coast (1.2), smallest and largest area (50% and 130% of the matching hexagon)                                         |
-| Lakes               | lake frequency (about one per 60 tiles, 0 for none), smallest lake (6), biggest lake (8% of the board), lake size cap (60), shore room (3)                                                         |
-| Cities and villages | city density (one extra city per 50 tiles), extra cities in battle royale (off), city spacing (3), village chance (40%), village spacing (2, so they never touch), villages may touch cities (off) |
-| Starts and size     | start inset (1), start room on random shapes (1), tiles per player for battle royale (20)                                                                                                          |
-
-## Previewing maps
-
-Opening the app at `/?preview` shows boards locally without a server, with a random shape or a plain hexagon. It can generate a 2, 3, 4 or 6 player symmetric board, or a battle royale with 3 to 100 players, at the recommended size or a chosen radius. For 2 players there is a symmetry toggle (mirror or rotational); the other counts have it fixed and the control is locked. Changing an option generates a new map, and the line under the buttons shows the seed and the numbers of tiles, cities, villages and lakes. A panel on the right has a slider or checkbox for every generation setting (hover for what each one does; settings that do nothing for the current board are dimmed), regenerating as you drag, and a "Reset all" button. Tick **Keep this seed while changing settings** to see exactly what a setting does to the same board. Very large boards (the 100-player one has over 5,000 tiles) take a few seconds to draw.
+Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`): outline size and waves, lake frequency and size, city density and spacing, village chance and spacing, start inset and room, and tiles per player. Matches use the defaults, except that the map size picks the duel radius and the battle royale tiles per player. The generators take a `params` option with overrides, which tests use.

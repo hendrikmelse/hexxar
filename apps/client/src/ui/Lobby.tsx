@@ -24,7 +24,7 @@ const MAP_SIZE_LABELS: Record<MapSize, string> = {
 };
 const MODE_LABELS: Record<RoomMode, string> = { duel: 'Duel', ffa: 'Battle Royale' };
 
-/** The room before the match: who is here, the settings, and the start countdown. */
+/** The room before the match: who is here, the settings, and the wait before it starts. */
 export function Lobby({ actions }: { actions: Actions }) {
   const app = useApp();
   const room = app.room as RoomView;
@@ -562,16 +562,16 @@ function Slider({
 const formatClock = (seconds: number): string =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
-/** Whole seconds left until `startsAt` (a server time), or null when there is no countdown. */
-export function useCountdown(startsAt: number | null, clockOffset: number): number | null {
+/** Whole seconds left until `endsAt` (a server time), or null when there is no countdown. */
+function useCountdown(endsAt: number | null, clockOffset: number): number | null {
   const [, tick] = useState(0);
   useEffect(() => {
-    if (startsAt === null) return;
+    if (endsAt === null) return;
     const id = setInterval(() => tick((n) => n + 1), 200);
     return () => clearInterval(id);
-  }, [startsAt]);
-  if (startsAt === null) return null;
-  return Math.max(0, Math.ceil((startsAt - (Date.now() + clockOffset)) / 1000));
+  }, [endsAt]);
+  if (endsAt === null) return null;
+  return Math.max(0, Math.ceil((endsAt - (Date.now() + clockOffset)) / 1000));
 }
 
 /**

@@ -8,7 +8,6 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 const lobby = new Lobby({
   betaCode: process.env.BETA_CODE,
-  allowedModes: ['duel', 'ffa'],
   tickMs: Number(process.env.TICK_MS ?? DEFAULT_TICK_MS),
   prepMs: Number(process.env.PREP_MS ?? 5000),
   earlyStartMs: Number(process.env.EARLY_START_MS ?? 60_000),

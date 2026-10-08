@@ -40,15 +40,24 @@ const byPosition = (a: Hex, b: Hex): number => a.q - b.q || a.r - b.r;
  * keeps the symmetries in `group`: a hex is kept if any of its images would be, and
  * cutouts are carved out along with all of their images.
  *
- * Falls back to a plain hexagon in the unlikely case that no random shape passes the
- * checks (one connected piece, the right amount of land, room around every start).
+ * Most outlines fail the checks (one connected piece, the right amount of land, room around
+ * every start) on small boards, so many are tried. A board is never a plain hexagon: if none
+ * passes, that is an error.
  */
 export function randomShape(input: RandomShapeInput): Hex[] {
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < MAX_SHAPE_ATTEMPTS; attempt++) {
     const shape = tryShape({ ...input, params: input.params ?? DEFAULT_GENERATION_PARAMS });
-    if (shape) return shape;
+    if (shape && !isHexagon(shape, input.radius)) return shape;
   }
-  return hexagonalBoard(input.radius);
+  throw new Error('could not make a board shape that fits');
+}
+
+const MAX_SHAPE_ATTEMPTS = 500;
+
+/** A small board can come out of the random outline as exactly the plain hexagon: not wanted. */
+function isHexagon(shape: readonly Hex[], radius: number): boolean {
+  const hexagon = new Set(hexagonalBoard(radius).map(hexKey));
+  return shape.length === hexagon.size && shape.every((hex) => hexagon.has(hexKey(hex)));
 }
 
 function tryShape({ radius, rng, group, protect, params }: ResolvedShapeInput): Hex[] | null {
@@ -285,21 +294,4 @@ function growBlob(center: Hex, size: number, rng: Rng, allowed: (hex: Hex) => bo
     inBlob.add(hexKey(chosen.hex));
   }
   return blob;
-}
-
-/**
- * The lakes of a board: groups of missing tiles that are walled in by land, as opposed to open
- * sea. Used to describe generated boards.
- */
-export function lakesOf(tiles: readonly Hex[]): Hex[][] {
-  if (tiles.length === 0) return [];
-  const present = new Set(tiles.map(hexKey));
-  const reach = Math.max(...tiles.map((t) => hexDistance(t, { q: 0, r: 0 }))) + 2;
-  const missing = new Map<string, Hex>();
-  for (const hex of hexagonalBoard(reach)) {
-    if (!present.has(hexKey(hex))) missing.set(hexKey(hex), hex);
-  }
-  return components(missing)
-    .map((keys) => keys.map((key) => missing.get(key)!))
-    .filter((group) => !group.some((hex) => hexDistance(hex, { q: 0, r: 0 }) >= reach));
 }

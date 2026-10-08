@@ -8,7 +8,7 @@ import {
 } from '@hexxar/shared';
 
 /** `idle` until a match snapshot arrives. */
-export type Status = 'idle' | 'playing' | 'over';
+type Status = 'idle' | 'playing' | 'over';
 
 /** Everything the client knows about the match, built up from server messages. */
 export interface GameView {

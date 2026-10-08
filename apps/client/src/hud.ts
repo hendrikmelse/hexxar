@@ -22,7 +22,6 @@ export interface HudActions {
 
 interface Row {
   readonly item: HTMLLIElement;
-  readonly swatch: HTMLElement;
   readonly label: HTMLElement;
   readonly tiles: HTMLElement;
   readonly troops: HTMLElement;
@@ -143,6 +142,8 @@ export class Hud {
 
     this.renderStandings(game, live);
     this.surrender.hidden = game.status !== 'playing' || eliminated;
+    // Once the match is over the result screen takes over; the reminder would only be in its way.
+    this.hint.hidden = game.status === 'over';
     if (this.surrender.hidden) this.resetSurrender();
 
     // The match result is shown by the results screen, not here.
@@ -285,7 +286,6 @@ export class Hud {
 
 function createRow(): Row {
   const item = el('li', 'standing');
-  const swatch = el('span', 'swatch');
   const name = el('span', 'name');
   const label = el('span', '');
   name.append(label);
@@ -295,8 +295,8 @@ function createRow(): Row {
   troops.title = 'Troops';
   const share = el('span', 'share');
   share.append(el('i', ''));
-  item.append(swatch, name, tiles, troops, share);
-  return { item, swatch, label, tiles, troops, share: share.firstElementChild as HTMLElement };
+  item.append(el('span', 'swatch'), name, tiles, troops, share);
+  return { item, label, tiles, troops, share: share.firstElementChild as HTMLElement };
 }
 
 function cameraButton(

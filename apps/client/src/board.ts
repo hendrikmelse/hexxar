@@ -12,7 +12,7 @@ import type { GameView } from './game.js';
 import { HEX_SIZE, hexCorners, hexToPixel, pixelToHex, type Point } from './layout.js';
 
 /** Distinct, flat player colors, assigned by player order. */
-export const PLAYER_COLORS = [
+const PLAYER_COLORS = [
   0x4f9dff, 0xff6b6b, 0xffd166, 0x06d6a0, 0xc77dff, 0xff9f43, 0x2ec4b6, 0xf15bb5,
 ];
 
@@ -25,8 +25,8 @@ const NEUTRAL_FILL = { farmland: 0x2a3a2c, village: 0x3a382f, city: 0x3a3e46 } a
 const NEUTRAL_ICON = 0xaab3c8;
 /** The foam line where land meets water. */
 const SHORE = 0x5f8ea3;
-/** How much of the owner color is mixed into an owned tile's fill: currently the same for every type. */
-const OWNED_FILL = { farmland: 0.4, village: 0.4, city: 0.4 } as const;
+/** How much of the owner color is mixed into an owned tile's fill. */
+const OWNED_FILL = 0.4;
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 3;
 /** Gap between neighboring tiles is twice this. */
@@ -110,7 +110,6 @@ export class Board {
   private readonly introLayer = new Container();
   private stopIntroFrame: (() => void) | null = null;
   private readonly views = new Map<string, TileView>();
-  private fitted = false;
   /** Pixel density the troop labels are currently rendered at. */
   private textResolution = window.devicePixelRatio || 1;
 
@@ -142,15 +141,16 @@ export class Board {
     return new Board(app, handlers);
   }
 
-  /** Rebuild everything from the full game view. */
-  setAll(game: GameView, refit = false): void {
+  /**
+   * Rebuild everything from the full game view. A board appearing where there was none (a new
+   * match) is fitted to the screen; a refresh of the same match keeps the player's view.
+   */
+  setAll(game: GameView): void {
+    const fresh = this.views.size === 0;
     this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.views.clear();
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
-    if ((refit || !this.fitted) && this.views.size > 0) {
-      this.fitToBoard();
-      this.fitted = true;
-    }
+    if (fresh && this.views.size > 0) this.fitToBoard();
   }
 
   updateTiles(tiles: readonly Tile[], game: GameView): void {
@@ -192,8 +192,7 @@ export class Board {
 
     const center = hexToPixel(tile);
     const owner = playerColor(game, tile.owner);
-    const fill =
-      owner === null ? NEUTRAL_FILL[tile.type] : mix(OWNED_BASE, owner, OWNED_FILL[tile.type]);
+    const fill = owner === null ? NEUTRAL_FILL[tile.type] : mix(OWNED_BASE, owner, OWNED_FILL);
     const shape = view.shape;
     shape.clear();
     // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.

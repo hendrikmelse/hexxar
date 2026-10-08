@@ -36,8 +36,6 @@ export interface GameState {
 
 export const getTile = (state: GameState, hex: Hex): Tile | undefined => state.tiles[hexKey(hex)];
 
-export const tileHex = (tile: Tile): Hex => ({ q: tile.q, r: tile.r });
-
 /**
  * Derive `eliminated` and `winner` from who still owns tiles. `forced` lists
  * players to eliminate regardless (surrender).

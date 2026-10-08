@@ -51,7 +51,7 @@ function render(change: ReturnType<typeof applyMessage>): void {
   } else if (change.kind === 'tiles') {
     board.updateTiles(change.tiles, game);
     // The "you are here" effect is for the planning period only.
-    if (game.tick > 0) board.stopIntro();
+    if (game.tick > 0 || game.status !== 'playing') board.stopIntro();
   }
   board.drawQueue(game.queue, myColor());
   if (draft.active && (change.kind === 'all' || !canPlay())) {
@@ -71,6 +71,7 @@ function startingHex(): Hex | null {
 }
 
 function introduceStart(): void {
+  board.stopIntro();
   const start = startingHex();
   if (game.status === 'playing' && game.tick === 0 && start) board.playIntro(start, myColor());
 }
@@ -135,10 +136,12 @@ const hud = new Hud(hudEl, {
 
 // -- Server connection ----------------------------------------------------------------
 
+/** The name to play under: whatever is typed in the box, or "Guest" if it is empty. */
+const playerName = (): string => appStore.get().name.trim() || 'Guest';
+
 /** Tell the server the current name, then do something that needs it. */
 function sendName(): void {
-  const name = appStore.get().name.trim();
-  if (name) connection.send({ type: 'setName', name });
+  connection.send({ type: 'setName', name: playerName() });
 }
 
 mountUi(document.getElementById('ui')!, {
@@ -166,7 +169,7 @@ mountUi(document.getElementById('ui')!, {
   },
   submitCode(code) {
     saveCode(code);
-    connection.send({ type: 'hello', name: appStore.get().name, token: loadToken(), code });
+    connection.send({ type: 'hello', name: playerName(), token: loadToken(), code });
   },
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
@@ -193,7 +196,7 @@ const url =
   (import.meta.env.DEV
     ? `ws://${location.hostname}:8080/ws`
     : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-const connection = connect(url, appStore.get().name, {
+const connection = connect(url, playerName, {
   onOpen: () => appStore.set({ connected: true }),
   onClose: () => appStore.set({ connected: false, denied: null }),
   onMessage: (message) => {
@@ -229,5 +232,4 @@ const connection = connect(url, appStore.get().name, {
         render(applyMessage(game, message));
     }
   },
-  shouldReconnect: () => true,
 });

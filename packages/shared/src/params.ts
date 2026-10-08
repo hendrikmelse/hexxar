@@ -1,6 +1,6 @@
 /**
- * Everything that shapes a generated board. The defaults are the current best guesses; the
- * map preview has a control for each one so they can be tuned by eye.
+ * Everything that shapes a generated board, in one place. Matches use the defaults (apart from
+ * the board size, which follows the chosen map size); tests override single values.
  */
 export interface GenerationParams {
   // -- Outline (random board shapes) --------------------------------------------------

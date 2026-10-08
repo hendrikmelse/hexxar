@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MIN_CITY_DISTANCE,
-  createFreeForAllMatch,
-  createSymmetricMatch,
-  type Symmetry,
-} from './generate.js';
+import { createFreeForAllMatch, createSymmetricMatch, type Symmetry } from './generate.js';
 import {
   hexDistance,
   hexFlipHorizontal,
@@ -242,7 +237,9 @@ describe('random board shapes in matches', () => {
         expect(hasFullRing(state.tiles, city)).toBe(true);
         for (const other of cities) {
           if (city !== other)
-            expect(hexDistance(city, other)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+            expect(hexDistance(city, other)).toBeGreaterThanOrEqual(
+              DEFAULT_GENERATION_PARAMS.minCityDistance,
+            );
         }
       }
       for (const village of tiles.filter((t) => t.type === 'village')) {
@@ -269,7 +266,10 @@ describe('random board shapes in matches', () => {
         for (const a of starts) {
           expect(hasFullRing(state.tiles, a)).toBe(true);
           for (const b of starts) {
-            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+            if (a !== b)
+              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+                DEFAULT_GENERATION_PARAMS.minCityDistance,
+              );
           }
         }
         // Everything is reachable.
@@ -280,8 +280,17 @@ describe('random board shapes in matches', () => {
 
   it('is deterministic, and never a full hexagon', () => {
     const options = { players: ['A', 'B'], seed: 9, radius: 8 };
-    const a = createSymmetricMatch(options).state;
-    expect(a).toEqual(createSymmetricMatch(options).state);
-    expect(Object.keys(a.tiles).length).not.toBe(hexagonalBoard(8).length);
+    expect(createSymmetricMatch(options).state).toEqual(createSymmetricMatch(options).state);
+    // Small boards are where a random outline is hardest to find; none may end up a hexagon.
+    for (const radius of [5, 7]) {
+      for (let seed = 0; seed < 150; seed++) {
+        const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius });
+        const hexagon = new Set(hexagonalBoard(radius).map(hexKey));
+        const sameAsHexagon =
+          Object.keys(state.tiles).length === hexagon.size &&
+          Object.keys(state.tiles).every((key) => hexagon.has(key));
+        expect(sameAsHexagon).toBe(false);
+      }
+    }
   });
 });

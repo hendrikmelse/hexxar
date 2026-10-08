@@ -1,6 +1,6 @@
 /** Words for random default names like "Scary Hamburger" or "Lucky Wombat". */
 
-export const ADJECTIVES = [
+const ADJECTIVES = [
   'Angry',
   'Bashful',
   'Bouncy',
@@ -54,7 +54,7 @@ export const ADJECTIVES = [
   'Zany',
 ] as const;
 
-export const NOUNS = [
+const NOUNS = [
   'Albatross',
   'Anchovy',
   'Armadillo',

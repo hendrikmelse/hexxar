@@ -15,11 +15,6 @@ import { randomShape } from './shape.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
-/** Roughly one extra city per this many tiles. The starting cities are not counted. */
-export const TILES_PER_CITY = DEFAULT_GENERATION_PARAMS.tilesPerCity;
-/** Cities are never closer than this to each other, starting cities included. */
-export const MIN_CITY_DISTANCE = DEFAULT_GENERATION_PARAMS.minCityDistance;
-
 /** Fisher-Yates shuffle driven by the seeded rng, so boards are reproducible. */
 function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   const result = [...items];
@@ -319,16 +314,10 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
  * of their own. Starting cities end up about 6 tiles apart, with farmland for a full ring
  * around each city and space for a few villages.
  */
-const FFA_TILES_PER_PLAYER = DEFAULT_GENERATION_PARAMS.tilesPerPlayer;
-
-/** The board radius for a game. Battle Royale boards are always the smallest that gives each player their share. */
 export function recommendedRadius(
   players: number,
-  kind: 'symmetric' | 'freeForAll',
-  tilesPerPlayer: number = FFA_TILES_PER_PLAYER,
+  tilesPerPlayer: number = DEFAULT_GENERATION_PARAMS.tilesPerPlayer,
 ): number {
-  if (kind === 'symmetric')
-    return ({ 2: 7, 3: 8, 4: 9, 6: 10 } as Record<number, number>)[players] ?? 8;
   // 3r(r+1) + 1 tiles on a board of radius r.
   return Math.max(MIN_FFA_RADIUS, Math.ceil(Math.sqrt((players * tilesPerPlayer) / 3)));
 }
@@ -433,8 +422,7 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
   if (players.length < 2) throw new Error('a match needs at least 2 players');
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
   const params = withDefaults(options.params);
-  const radius =
-    options.radius ?? recommendedRadius(players.length, 'freeForAll', params.tilesPerPlayer);
+  const radius = options.radius ?? recommendedRadius(players.length, params.tilesPerPlayer);
   if (radius < MIN_FFA_RADIUS) throw new Error(`radius must be at least ${MIN_FFA_RADIUS}`);
 
   const rng = createRng(seed);

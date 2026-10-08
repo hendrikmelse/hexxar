@@ -32,10 +32,8 @@ type Timer = ReturnType<typeof setTimeout>;
 export function applySettingsPatch(
   current: RoomSettings,
   patch: RoomSettingsPatch,
-  allowedModes: readonly RoomMode[],
 ): RoomSettings | string {
   const mode = patch.mode ?? current.mode;
-  if (!allowedModes.includes(mode)) return 'that kind of game is not available';
   // The number of players is decided by the kind of game.
   const size = roomCapacity(mode);
   const mapSize = patch.mapSize ?? current.mapSize;
@@ -57,7 +55,6 @@ export interface RoomOptions {
   readonly visibility: 'public' | 'private';
   readonly host: Session;
   readonly settings: RoomSettings;
-  readonly allowedModes: readonly RoomMode[];
   /** Time between the match being created and its first tick: players look at the map and queue orders. */
   readonly prepMs: number;
   /**
@@ -200,7 +197,7 @@ export class Room {
     if (session !== this.host) return 'only the host can change the settings';
     if (this.visibility !== 'private') return 'public games have fixed settings';
     if (this.state !== 'lobby') return 'the game has already started';
-    const next = applySettingsPatch(this.settings, patch, this.options.allowedModes);
+    const next = applySettingsPatch(this.settings, patch);
     if (typeof next === 'string') return next;
     if (this.activeMembers().length > Math.min(next.size, FFA_MAX_PLAYERS)) {
       return 'there are too many players for that kind of game';

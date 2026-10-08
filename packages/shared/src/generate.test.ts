@@ -9,8 +9,6 @@ import {
   type Hex,
 } from './hex.js';
 import {
-  MIN_CITY_DISTANCE,
-  TILES_PER_CITY,
   createFreeForAllMatch,
   createSymmetricMatch,
   recommendedRadius,
@@ -219,7 +217,10 @@ describe('terrain rules', () => {
     forEachBoard(({ cities }) => {
       for (const a of cities) {
         for (const b of cities) {
-          if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+          if (a !== b)
+            expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+              DEFAULT_GENERATION_PARAMS.minCityDistance,
+            );
         }
       }
     });
@@ -243,7 +244,7 @@ describe('terrain rules', () => {
         ),
       );
       const extra = cities.length - startOrbit.length;
-      const target = tiles.length / TILES_PER_CITY;
+      const target = tiles.length / DEFAULT_GENERATION_PARAMS.tilesPerCity;
       expect(extra).toBeGreaterThanOrEqual(0);
       expect(extra).toBeLessThanOrEqual(Math.ceil(target) + 6);
     });
@@ -297,7 +298,7 @@ describe('battle royale boards', () => {
   it('scales the board with the number of players', () => {
     let previous = 0;
     for (const n of counts) {
-      const radius = recommendedRadius(n, 'freeForAll');
+      const radius = recommendedRadius(n);
       expect(radius).toBeGreaterThanOrEqual(previous);
       previous = radius;
       // The outline is irregular, so the board does not fill the radius exactly.
@@ -305,7 +306,6 @@ describe('battle royale boards', () => {
         DEFAULT_GENERATION_PARAMS.tilesPerPlayer / 2,
       );
     }
-    expect(recommendedRadius(2, 'symmetric')).toBe(7);
   });
 
   it('gives every player exactly one starting city, spread out and away from the edge', () => {
@@ -322,7 +322,10 @@ describe('battle royale boards', () => {
         }
         for (const a of owned) {
           for (const b of owned)
-            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+            if (a !== b)
+              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+                DEFAULT_GENERATION_PARAMS.minCityDistance,
+              );
         }
       }
     }
@@ -347,7 +350,10 @@ describe('battle royale boards', () => {
         for (const a of cities) {
           for (const nb of hexNeighbors(a)) expect(state.tiles[hexKey(nb)]).toBeDefined();
           for (const b of cities)
-            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(MIN_CITY_DISTANCE);
+            if (a !== b)
+              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+                DEFAULT_GENERATION_PARAMS.minCityDistance,
+              );
         }
         for (const village of tiles.filter((t) => t.type === 'village')) {
           for (const nb of hexNeighbors(village)) {

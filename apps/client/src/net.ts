@@ -24,7 +24,7 @@ export const saveToken = (token: string): void => {
 };
 
 /** The beta access code, kept across visits so it is only asked for once. */
-export const loadCode = (): string | undefined => {
+const loadCode = (): string | undefined => {
   try {
     return localStorage.getItem(CODE_KEY) ?? undefined;
   } catch {
@@ -45,16 +45,16 @@ export interface Connection {
   send(message: ClientMessage): void;
 }
 
+const RECONNECT_MS = 2000;
+
 export interface ConnectionEvents {
   onOpen(): void;
   onClose(): void;
   onMessage(message: ServerMessage): void;
-  /** Return false to stop trying to reconnect. */
-  shouldReconnect(): boolean;
 }
 
-/** WebSocket with automatic reconnection. */
-export function connect(url: string, name: string, events: ConnectionEvents): Connection {
+/** WebSocket that reconnects by itself. `name` is read afresh on every (re)connect. */
+export function connect(url: string, name: () => string, events: ConnectionEvents): Connection {
   let socket: WebSocket | null = null;
 
   const open = (): void => {
@@ -62,7 +62,9 @@ export function connect(url: string, name: string, events: ConnectionEvents): Co
     socket = ws;
     ws.onopen = () => {
       events.onOpen();
-      ws.send(JSON.stringify({ type: 'hello', name, token: loadToken(), code: loadCode() }));
+      ws.send(
+        JSON.stringify({ type: 'hello', name: name(), token: loadToken(), code: loadCode() }),
+      );
     };
     ws.onmessage = (event) => {
       let raw: unknown;
@@ -78,7 +80,7 @@ export function connect(url: string, name: string, events: ConnectionEvents): Co
     ws.onclose = () => {
       if (socket === ws) socket = null;
       events.onClose();
-      if (events.shouldReconnect()) setTimeout(open, 2000);
+      setTimeout(open, RECONNECT_MS);
     };
   };
   open();

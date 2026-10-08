@@ -18,8 +18,13 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: #14161c;
   overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(79, 157, 255, 0.14), transparent 60%),
+    radial-gradient(ellipse at 50% 120%, rgba(199, 125, 255, 0.1), transparent 55%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M0 16.17 28 0 56 16.17M56 16.17V48.5M0 16.17V48.5M0 48.5 28 64.66 56 48.5M28 64.66V97' fill='none' stroke='%23ffffff' stroke-opacity='0.04' stroke-width='1.5'/%3E%3C/svg%3E")
+      0 0 / 56px 97px,
+    #12141a;
 }
 
 #ui .card {
@@ -29,8 +34,13 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: #1e222c;
   border-radius: 12px;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 6px 0 #10131a,
+    0 22px 38px rgba(0, 0, 0, 0.55);
 }
 
 #ui h1,
@@ -49,18 +59,31 @@
 }
 
 #ui button {
-  padding: 10px 14px;
   border: 0;
   border-radius: 8px;
-  background: #2a2f3d;
-  color: #e8eaf0;
   font: inherit;
-  font-size: 15px;
   cursor: pointer;
+  background: linear-gradient(180deg, #3a4156 0%, #2b3042 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 4px 0 #151922,
+    0 6px 10px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 0.06s ease,
+    box-shadow 0.06s ease,
+    filter 0.12s ease;
+  padding: 12px 18px;
+  line-height: 1.2;
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 #ui button:hover:not(:disabled) {
-  background: #343a4b;
+  background: linear-gradient(180deg, #444c64 0%, #323850 100%);
+  filter: brightness(1.06);
 }
 
 #ui button:disabled {
@@ -69,20 +92,18 @@
 }
 
 #ui button.primary {
-  background: #4f9dff;
-  color: #0e1016;
-  font-weight: 600;
+  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(8, 24, 60, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 4px 0 #151922,
+    0 6px 10px rgba(0, 0, 0, 0.35);
+  font-weight: 700;
 }
 
 #ui button.primary:hover:not(:disabled) {
-  background: #6aaeff;
-}
-
-#ui button.link {
-  padding: 4px;
-  background: none;
-  color: #8a93a8;
-  font-size: 13px;
+  background: linear-gradient(180deg, #6bb0ff 0%, #3c88f0 100%);
 }
 
 #ui input,
@@ -90,11 +111,14 @@
   padding: 9px 10px;
   border: 1px solid #343a4b;
   border-radius: 8px;
-  background: #14161c;
   color: #e8eaf0;
   font: inherit;
   font-size: 15px;
   min-width: 0;
+  background: #0f1117;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 #ui .field {
@@ -103,12 +127,6 @@
   gap: 6px;
   font-size: 13px;
   color: #8a93a8;
-}
-
-#ui .field.row {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
 }
 
 #ui .join {
@@ -192,13 +210,6 @@
   gap: 10px;
 }
 
-#ui .countdown {
-  margin: 0;
-  text-align: center;
-  font-size: 22px;
-  font-weight: 600;
-}
-
 #ui .buttons {
   display: flex;
   gap: 8px;
@@ -233,44 +244,9 @@
    Depth: slabs, raised buttons, sunken inputs, and the title.
    ------------------------------------------------------------------------------------ */
 
-#ui .screen {
-  background:
-    radial-gradient(ellipse at 50% 30%, rgba(79, 157, 255, 0.14), transparent 60%),
-    radial-gradient(ellipse at 50% 120%, rgba(199, 125, 255, 0.1), transparent 55%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M0 16.17 28 0 56 16.17M56 16.17V48.5M0 16.17V48.5M0 48.5 28 64.66 56 48.5M28 64.66V97' fill='none' stroke='%23ffffff' stroke-opacity='0.04' stroke-width='1.5'/%3E%3C/svg%3E")
-      0 0 / 56px 97px,
-    #12141a;
-}
-
-#ui .card {
-  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.09) inset,
-    0 6px 0 #10131a,
-    0 22px 38px rgba(0, 0, 0, 0.55);
-}
-
 #ui .menu {
   transform: perspective(1100px) rotateX(2deg);
   transform-origin: 50% 100%;
-}
-
-#ui button {
-  background: linear-gradient(180deg, #3a4156 0%, #2b3042 100%);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.14) inset,
-    0 4px 0 #151922,
-    0 6px 10px rgba(0, 0, 0, 0.35);
-  transition:
-    transform 0.06s ease,
-    box-shadow 0.06s ease,
-    filter 0.12s ease;
-}
-
-#ui button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #444c64 0%, #323850 100%);
-  filter: brightness(1.06);
 }
 
 #ui button:active:not(:disabled) {
@@ -280,42 +256,10 @@
     0 1px 0 #151922;
 }
 
-#ui button.primary {
-  /* White text needs a slightly deeper blue than dark text did. */
-  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
-  color: #ffffff;
-  text-shadow: 0 1px 1px rgba(8, 24, 60, 0.45);
-  font-weight: 400;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.3) inset,
-    0 4px 0 #151922,
-    0 6px 10px rgba(0, 0, 0, 0.35);
-}
-
-#ui button.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #6bb0ff 0%, #3c88f0 100%);
-}
-
 #ui button.primary:active:not(:disabled) {
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.25) inset,
     0 1px 0 #151922;
-}
-
-#ui button.link,
-#ui button.link:hover:not(:disabled),
-#ui button.link:active:not(:disabled) {
-  background: none;
-  box-shadow: none;
-  transform: none;
-}
-
-#ui input,
-#ui select {
-  background: #0f1117;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 #ui .players li,
@@ -362,7 +306,6 @@
   font-weight: 900;
   letter-spacing: 0.14em;
   padding-left: 0.14em;
-  /* A bright face with a single solid dark side, like a chunky block letter. */
   background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 50%, #8dbaff 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -407,19 +350,17 @@
   color: #6f7890;
 }
 
-#ui .wait {
-  text-align: center;
-}
-
 #ui .vote {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  height: 48px;
 }
 
 #ui .vote button {
   width: 100%;
+  height: 100%;
 }
 
 #ui .vote button.voted {
@@ -478,6 +419,7 @@
 }
 
 /* A calm bounce: sits at normal size for a couple of frames, grows a little, settles. */
+
 @keyframes count-bump {
   0%,
   8% {
@@ -495,6 +437,7 @@
 }
 
 /* The same bounce in reverse, for a player leaving: it shrinks instead of growing. */
+
 @keyframes count-shrink {
   0%,
   8% {
@@ -519,6 +462,7 @@
 }
 
 /* Lobby heading: the title's look, turned down: same bright face and solid side, but smaller, with a thinner side. */
+
 #ui .lobby h2 {
   text-align: center;
   font-size: 21px;
@@ -593,9 +537,12 @@
 }
 
 #ui .versus .slot.open {
-  border: 1px dashed #343a4b;
-  background: none;
-  box-shadow: none;
+  border: 0;
+  background: #0c0e13;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.75) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
 }
 
 #ui .versus .slot.pop {
@@ -642,6 +589,7 @@
   border-radius: 50%;
   background: #6f7890;
   animation: searching 1.2s ease-in-out infinite;
+  animation-fill-mode: backwards;
 }
 
 #ui .searching i:nth-child(2) {
@@ -745,6 +693,7 @@
 }
 
 /* A line running out to the right of the section name */
+
 #ui .menu-section h3::after {
   content: '';
   flex: 1;
@@ -807,6 +756,7 @@
 
 #ui .join-tile button {
   padding: 8px 10px;
+  font-size: 15px;
 }
 
 @media (max-width: 420px) {
@@ -816,40 +766,11 @@
 }
 
 /* All buttons get the roomier, white-text treatment the blue ones have */
-#ui button {
-  padding: 12px 18px;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  color: #ffffff;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
-}
-
-#ui button.link {
-  text-shadow: none;
-}
 
 /* Same type as the title screen tiles: bold, and a size to match */
-#ui button {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-#ui button.primary {
-  font-weight: 700;
-}
-
-#ui button.link {
-  font-size: 13px;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-#ui .join-tile button {
-  font-size: 15px;
-}
 
 /* Toast: a refusal from the server, popping up at the bottom of the screen */
+
 #ui .toast {
   position: absolute;
   bottom: 28px;
@@ -901,6 +822,7 @@
 }
 
 /* A game code inside a toast: monospace in a little pill, so it stands out from the sentence */
+
 #ui .toast-code {
   margin-left: 2px;
   padding: 2px 8px;
@@ -915,6 +837,7 @@
 }
 
 /* Private game settings seen by everyone but the host: plain information, not controls */
+
 #ui .game-info {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -941,99 +864,8 @@
 }
 
 /* Tick length: a number field with its unit next to it */
-#ui .stepper {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#ui .stepper input {
-  width: 84px;
-  text-align: right;
-}
-
-#ui .stepper em {
-  font-style: normal;
-  color: #8a93a8;
-}
 
 /* Settings controls: one width and one look, so the rows line up */
-#ui .settings .select,
-#ui .settings .number-control {
-  width: 210px;
-}
-
-#ui .settings .select-button,
-#ui .settings .number-control {
-  height: 42px;
-}
-
-#ui .select-button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-#ui .select {
-  position: relative;
-}
-
-#ui button.select-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 12px;
-  background: #0f1117;
-  border: 1px solid #343a4b;
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: #e8eaf0;
-  text-shadow: none;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#ui button.select-button:hover:not(:disabled),
-#ui button.select-button[aria-expanded='true'] {
-  background: #14171f;
-  border-color: #4f9dff;
-  filter: none;
-}
-
-#ui button.select-button:active:not(:disabled) {
-  transform: none;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#ui .chevron {
-  flex: none;
-  color: #8a93a8;
-}
-
-#ui .select-list {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.09) inset,
-    0 4px 0 #10131a,
-    0 16px 28px rgba(0, 0, 0, 0.55);
-  animation: select-open 0.12s ease-out;
-}
 
 @keyframes select-open {
   from {
@@ -1046,106 +878,12 @@
   }
 }
 
-#ui .select-list li {
-  padding: 9px 10px;
-  border-radius: 7px;
-  color: #c4cad8;
-  cursor: pointer;
-}
-
-#ui .select-list li.highlight {
-  background: rgba(79, 157, 255, 0.2);
-  color: #ffffff;
-}
-
-#ui .select-list li.selected {
-  color: #ffffff;
-  font-weight: 700;
-}
-
 /* The tick length box: same size and frame as the dropdown, with tidy step buttons */
-#ui .number-control {
-  display: flex;
-  align-items: stretch;
-  background: #0f1117;
-  border: 1px solid #343a4b;
-  border-radius: 8px;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-}
-
-#ui .number-control:focus-within {
-  border-color: #4f9dff;
-}
-
-#ui .number-control input {
-  flex: 1;
-  min-width: 0;
-  padding: 9px 4px 9px 12px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  text-align: left;
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-#ui .number-control input:focus {
-  outline: none;
-}
 
 /* The browser's own up/down arrows are replaced by the buttons on the right */
-#ui .number-control input::-webkit-outer-spin-button,
-#ui .number-control input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-#ui .number-control .unit {
-  align-self: center;
-  padding-right: 8px;
-  color: #8a93a8;
-}
-
-#ui .number-control .spin {
-  display: flex;
-  flex-direction: column;
-  width: 30px;
-  border-left: 1px solid #343a4b;
-}
-
-#ui .number-control .spin button {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: transparent;
-  color: #8a93a8;
-  box-shadow: none;
-  text-shadow: none;
-  border-radius: 0;
-}
-
-#ui .number-control .spin button + button {
-  border-top: 1px solid #343a4b;
-}
-
-#ui .number-control .spin button:hover:not(:disabled) {
-  background: rgba(79, 157, 255, 0.2);
-  color: #ffffff;
-  filter: none;
-}
-
-#ui .number-control .spin button:active:not(:disabled) {
-  transform: none;
-  background: rgba(79, 157, 255, 0.35);
-  box-shadow: none;
-}
 
 /* A bar of options (game mode, map size): click one to select it */
+
 #ui .field.stack {
   flex-direction: column;
   align-items: stretch;
@@ -1162,6 +900,7 @@
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.55) inset,
     0 1px 0 rgba(255, 255, 255, 0.05);
+  position: relative;
 }
 
 #ui button.segment {
@@ -1175,6 +914,9 @@
   text-shadow: none;
   box-shadow: none;
   white-space: nowrap;
+  position: relative;
+  z-index: 1;
+  transition: color 0.2s ease-out;
 }
 
 #ui button.segment:hover:not(:disabled) {
@@ -1205,33 +947,35 @@
 }
 
 /* Both controls measure their width the same way, so their edges line up exactly */
-#ui .settings .select,
-#ui .settings .number-control,
-#ui .select-button {
-  box-sizing: border-box;
-}
 
 /* Private battle royale: twelve boxes in a 3 x 4 grid that fill in as players join */
+
 #ui .roster {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 #ui .roster-slot {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
   min-width: 0;
-  min-height: 56px;
-  padding: 8px 6px;
-  background: #0f1117;
   border-radius: 8px;
+  flex-direction: row;
+  gap: 5px;
+  min-height: 0;
+  padding: 5px 8px;
+  line-height: 1.25;
+  background: linear-gradient(180deg, #313950 0%, #272d40 100%);
   box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.45) inset,
-    0 1px 0 rgba(255, 255, 255, 0.04);
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 2px 0 #141821;
+  position: relative;
+  z-index: 1;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 #ui .roster-slot .name {
@@ -1242,15 +986,18 @@
   font-size: 14px;
   font-weight: 700;
   color: #eef5ff;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 #ui .roster-slot em {
-  padding: 1px 7px;
   border-radius: 10px;
   background: #2a2f3d;
-  font-size: 11px;
   font-style: normal;
   color: #8a93a8;
+  flex: none;
+  padding: 0 6px;
+  font-size: 10px;
 }
 
 #ui .roster-slot.away {
@@ -1258,9 +1005,12 @@
 }
 
 #ui .roster-slot.open {
-  border: 1px dashed #343a4b;
-  background: none;
-  box-shadow: none;
+  border: 0;
+  background: #0c0e13;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.75) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  z-index: 0;
 }
 
 #ui .roster-slot.pop {
@@ -1274,41 +1024,6 @@
 }
 
 /* Roster boxes: one line tall. Empty ones are pressed in; filled ones stand proud. */
-#ui .roster {
-  gap: 6px;
-}
-
-#ui .roster-slot {
-  flex-direction: row;
-  gap: 5px;
-  min-height: 0;
-  padding: 5px 8px;
-  line-height: 1.25;
-  background: linear-gradient(180deg, #313950 0%, #272d40 100%);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.1) inset,
-    0 2px 0 #141821;
-}
-
-#ui .roster-slot .name {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-#ui .roster-slot em {
-  flex: none;
-  padding: 0 6px;
-  font-size: 10px;
-}
-
-#ui .roster-slot.open {
-  /* Same one-line height as a filled box, holding a blank space where a name would be. */
-  border: 0;
-  background: #0c0e13;
-  box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.75) inset,
-    0 1px 0 rgba(255, 255, 255, 0.06);
-}
 
 #ui .roster-slot.open::before {
   content: '\00a0';
@@ -1316,16 +1031,6 @@
 }
 
 /* Tick length slider: a sunken track filled with blue up to a raised round thumb */
-#ui .slider-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-#ui .slider-head output {
-  font-weight: 700;
-  color: #eef5ff;
-}
 
 #ui input.slider {
   -webkit-appearance: none;
@@ -1399,6 +1104,7 @@
 }
 
 /* A player leaving: their box swells a little, then shrinks away to nothing */
+
 #ui .roster-slot.leaving,
 #ui .versus .slot.leaving {
   animation: pop-out 0.4s ease-in forwards;
@@ -1429,6 +1135,7 @@
 }
 
 /* A box that becomes empty after a player leaves fades in rather than blinking into place */
+
 #ui .roster-slot.open.appear,
 #ui .versus .slot.open.appear {
   animation: slot-appear 0.3s ease-out;
@@ -1453,25 +1160,11 @@
 }
 
 /* Layering in the roster: names slide over the empty boxes, never under them */
-#ui .roster-slot {
-  position: relative;
-  z-index: 1;
-}
-
-#ui .roster-slot.open {
-  z-index: 0;
-}
 
 /* The duel's empty slot uses the same pressed-in box as the battle royale roster (dots stay) */
-#ui .versus .slot.open {
-  border: 0;
-  background: #0c0e13;
-  box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.75) inset,
-    0 1px 0 rgba(255, 255, 255, 0.06);
-}
 
 /* The duel's filled slots use the roster's raised box too, replacing the sunken look and blue ring */
+
 #ui .versus .slot:not(.open),
 #ui .versus .slot.you {
   border-radius: 8px;
@@ -1481,29 +1174,22 @@
     0 2px 0 #141821;
 }
 
-#ui .versus .slot.open {
-  border-radius: 8px;
-}
-
 /*
  * In a private game, the duel's two panels and the battle royale roster take up exactly the same
  * height (four 28px boxes and three 6px gaps), so switching mode moves nothing below them. The
  * quick play duel lobby keeps its natural height.
  */
-#ui .roster-slot {
-  height: 28px;
-  padding-top: 0;
-  padding-bottom: 0;
-}
 
 #ui .versus.roster-height {
   height: calc(4 * 28px + 3 * 6px);
 }
 
 /* A wrapper that carries a tooltip for a button that may be disabled */
+
 #ui .tip {
   display: flex;
   flex: 1;
+  position: relative;
 }
 
 #ui .tip button {
@@ -1511,14 +1197,12 @@
 }
 
 /* Let the pointer reach the wrapper, so its tooltip shows over a disabled button */
+
 #ui .tip button:disabled {
   pointer-events: none;
 }
 
 /* The tooltip: the app's own raised dark panel, shown the instant the pointer arrives (or after a tap) */
-#ui .tip {
-  position: relative;
-}
 
 #ui .tip[data-tip]::after,
 #ui .tip[data-tip]::before {
@@ -1551,6 +1235,7 @@
 }
 
 /* A little arrow pointing down at the button */
+
 #ui .tip[data-tip]::before {
   content: '';
   bottom: calc(100% + 5px);
@@ -1577,6 +1262,7 @@
  * Hovering only counts on devices that really hover. On a touch screen a tap leaves the
  * element "hovered" until you tap elsewhere, which would keep the tooltip up for good.
  */
+
 @media (hover: hover) and (pointer: fine) {
   #ui .tip[data-tip]:hover::after {
     opacity: 1;
@@ -1597,6 +1283,7 @@
 }
 
 /* Slider rows: the slider, with its value large on the right instead of small above it */
+
 #ui .slider-row {
   display: flex;
   align-items: center;
@@ -1619,12 +1306,12 @@
 }
 
 /* The value beside a slider, as a text box you can type into */
+
 #ui .slider-row .value-box {
   display: flex;
   flex: none;
   align-items: baseline;
   gap: 4px;
-  /* nudged up a little to sit level with the slider */
   position: relative;
   top: -3px;
 }
@@ -1659,16 +1346,12 @@
 }
 
 /* The selected option's blue box is its own element, so it can slide from one option to the next */
-#ui .segmented {
-  position: relative;
-}
 
 #ui .segment-indicator {
   position: absolute;
   top: 3px;
   bottom: 3px;
   left: 3px;
-  /* One option's share of the bar: the room inside the padding, minus the gaps, split evenly */
   width: calc((100% - 6px - 3px * (var(--count) - 1)) / var(--count));
   border-radius: 7px;
   background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
@@ -1679,13 +1362,8 @@
   transition: transform 0.2s cubic-bezier(0.3, 1, 0.5, 1);
 }
 
-#ui button.segment {
-  position: relative;
-  z-index: 1;
-  transition: color 0.2s ease-out;
-}
-
 /* The highlight now lives in the indicator; the selected option itself only turns its text white */
+
 #ui button.segment.selected,
 #ui button.segment.selected:hover:not(:disabled),
 #ui button.segment.selected:active:not(:disabled) {
@@ -1701,6 +1379,7 @@
 }
 
 /* The copy button: both labels sit in one cell, so it never changes size when the text does */
+
 #ui button.copy-button {
   display: inline-grid;
   justify-items: center;
@@ -1715,6 +1394,7 @@
 }
 
 /* A roster box that still has to be filled shows the pulsing dots instead of a blank */
+
 #ui .roster-slot.open.waiting::before {
   content: none;
 }
@@ -1724,11 +1404,9 @@
  * delay ends and then suddenly drop to dim, which shows up as a flash. Holding the first
  * keyframe during the delay keeps them dim until their turn.
  */
-#ui .searching i {
-  animation-fill-mode: backwards;
-}
 
 /* "N playing" on the quick play buttons */
+
 #ui button.mode small.activity {
   display: inline-flex;
   align-items: center;
@@ -1763,32 +1441,12 @@
 }
 
 /* Battle royale lobby: the timer shows (paused) and the vote has a placeholder before 3 players */
+
 #ui .wait-timer.paused {
   opacity: 0.7;
 }
 
-#ui .wait-timer .pause-icon {
-  display: inline-flex;
-  gap: 3px;
-  margin-right: 7px;
-  vertical-align: -1px;
-}
-
-#ui .wait-timer .pause-icon i {
-  width: 3px;
-  height: 10px;
-  border-radius: 1px;
-  background: currentColor;
-}
-
 /* The button and its placeholder are the same height, so swapping them moves nothing */
-#ui .vote {
-  height: 48px;
-}
-
-#ui .vote button {
-  height: 100%;
-}
 
 #ui .vote .vote-note {
   display: flex;
@@ -1806,6 +1464,7 @@
 }
 
 /* The beta access screen */
+
 #ui .gate .error.center {
   text-align: center;
 }
