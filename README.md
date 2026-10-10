@@ -2,7 +2,7 @@
 
 Online multiplayer conquest game on a shared hex map, played in the browser at **hexxar.io** (currently a closed beta: visitors need an access code).
 
-Players command armies by placing orders into a **queue**. Orders don't execute immediately: every tick (1.5 seconds by default) the server pops one order from each player's queue and resolves them all simultaneously. Planning ahead, queue management, and reading your opponents' moves are the core of the game.
+Players command armies by placing orders into a **queue**. Orders don't execute immediately: every tick (1.2 seconds by default) the server pops one order from each player's queue and resolves them all simultaneously. Planning ahead, queue management, and reading your opponents' moves are the core of the game.
 
 ## Design pillars
 
@@ -21,7 +21,7 @@ Players command armies by placing orders into a **queue**. Orders don't execute 
 - **Winning:** last player standing. A player is beaten once they own no cities or villages and every farm they have left holds a single troop. You can surrender at any time (an immediate message, not a queued order).
 - **Match settings:** every match carries its own `MatchConfig` (`packages/shared/src/config.ts`): tick interval, troop generation speed, starting troops, fog mode. Private games let the host change them.
 - **Lobbies:** quick play, private games by code or link, a vote to start a Battle Royale early, and reconnects with auto-surrender after two minutes away. See [`docs/lobby.md`](docs/lobby.md).
-- **Tutorial:** the title screen's **How to play** button opens a short interactive tutorial (seven lessons covering ticks, production, movement, battles and defensive bonuses, armies that meet, fog, and the scoreboard). It runs in the browser against a local match. See [`docs/tutorial.md`](docs/tutorial.md).
+- **Tutorial:** the title screen's **Play tutorial** button opens a short interactive tutorial (five short lessons: ticks and orders, production, battles and defensive bonuses, fog, and the interface). It runs in the browser against a local match. See [`docs/tutorial.md`](docs/tutorial.md).
 - **Fog of war:** you see your own tiles and the ring around them in full, the next ring as owner and type only, and clouds beyond that. The server only ever sends clients the output of `visibleState`, so hidden information never reaches them. The scoreboard (production pie and list) is not fogged. See [`docs/fog.md`](docs/fog.md).
 - **Replays:** the sim is deterministic, so a match is fully described by its seed, players and per-tick orders. The server already keeps that log; storing it is not built yet.
 
@@ -77,6 +77,7 @@ Environment variables, or a `.env` file in the repository root (see `.env.exampl
 | `PREP_MS`            | 5000    | Planning period between a match being created and its first tick                    |
 | `EARLY_START_MS`     | 60000   | How long a public Battle Royale waits for more players once it has 3                |
 | `JOIN_WAIT_MS`       | 10000   | A join tops that wait up to at least this                                           |
+| `FULL_WAIT_MS`       | 5000    | How long a public room waits after filling up, before the match starts              |
 | `VOTE_START_MS`      | 5000    | The wait after a successful vote to start early                                     |
 | `AFK_MS`             | 120000  | How long a disconnected player has before surrendering                              |
 | `FINISHED_LINGER_MS` | 600000  | How long a finished game's room stays open                                          |

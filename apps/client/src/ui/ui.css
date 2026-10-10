@@ -6,8 +6,7 @@
   pointer-events: none;
 }
 
-#ui .screen,
-#ui .results {
+#ui .screen {
   pointer-events: auto;
 }
 
@@ -217,21 +216,6 @@
 
 #ui .buttons .primary {
   flex: 1;
-}
-
-#ui .results {
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-#ui .results .card {
-  align-items: center;
-  max-width: none;
-  width: auto;
-  min-width: 260px;
-  background: rgba(30, 34, 44, 0.95);
 }
 
 #ui .muted {
@@ -1486,7 +1470,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 74px;
+  bottom: 18px;
   width: min(540px, calc(100% - 28px));
   margin: 0 auto;
   box-sizing: border-box;
@@ -1574,6 +1558,8 @@
   font-size: 15px;
   line-height: 1.5;
   color: #c9d0de;
+  /* Line breaks in a lesson's text show up as line breaks */
+  white-space: pre-line;
   animation: tutorial-text-in 0.28s ease-out;
 }
 
@@ -1603,10 +1589,20 @@
 }
 
 #ui .tutorial-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
+}
+
+/* Back and Reset sit together at the left; Next is at the right; the status stays in the middle */
+#ui .tutorial-left {
+  display: flex;
+  gap: 8px;
+}
+
+#ui .tutorial-buttons .next-wrap {
+  justify-self: end;
 }
 
 #ui .tutorial-status {
@@ -1621,7 +1617,7 @@
   color: #7fe3ad;
 }
 
-#ui .tutorial-buttons button.primary.ready {
+#ui .tutorial-buttons button.ready {
   animation: tutorial-ready 1s ease-in-out infinite;
 }
 
@@ -1634,7 +1630,8 @@
 #ui .tutorial-top {
   position: absolute;
   top: 14px;
-  right: 14px;
+  /* Leaves room for the sound button in the corner */
+  right: 64px;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -1738,8 +1735,458 @@
 
 @media (prefers-reduced-motion: reduce) {
   #ui .tutorial-text,
-  #ui .tutorial-buttons button.primary.ready,
+  #ui .tutorial-buttons button.ready,
   #ui .spotlight {
     animation: none;
   }
+}
+
+/* The arrow that points at a part of the screen, bobbing toward it */
+#ui .spotlight-arrow {
+  position: fixed;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5));
+  animation: arrow-bob 0.9s ease-in-out infinite;
+}
+
+#ui .spotlight-arrow.from-left {
+  transform: scaleX(-1);
+  animation-name: arrow-bob-flipped;
+}
+
+@keyframes arrow-bob {
+  50% {
+    transform: translateX(10px);
+  }
+}
+
+@keyframes arrow-bob-flipped {
+  0%,
+  100% {
+    transform: scaleX(-1) translateX(0);
+  }
+  50% {
+    transform: scaleX(-1) translateX(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .spotlight-arrow {
+    animation: none;
+  }
+}
+
+/* Rings spreading out from the Next button while it is available, like the ones around your city
+   when a game begins */
+#ui .next-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+#ui .next-rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui .next-rings i {
+  position: absolute;
+  inset: 0;
+  border: 2.5px solid #ffd966;
+  border-radius: 10px;
+  opacity: 0;
+  animation: next-ring 1.8s ease-out;
+}
+
+#ui .next-rings i:nth-child(2) {
+  animation-delay: 1.2s;
+}
+
+#ui .next-rings i:nth-child(3) {
+  animation-delay: 2.4s;
+}
+
+@keyframes next-ring {
+  0% {
+    opacity: 0.9;
+    inset: 0;
+  }
+  100% {
+    opacity: 0;
+    inset: -22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .next-rings {
+    display: none;
+  }
+}
+
+/* The congratulations box in the middle of the screen at the very end */
+#ui .tutorial-finish {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+#ui .tutorial-finish .tutorial-card.finish {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  margin: 0;
+  width: min(460px, calc(100% - 32px));
+  animation: finish-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+#ui .tutorial-finish-buttons {
+  display: flex;
+  justify-content: center;
+}
+
+@keyframes finish-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .tutorial-finish .tutorial-card.finish {
+    animation: none;
+  }
+}
+
+/* The card in the middle of the board when you are out, or when the match is over */
+#ui .end-card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  pointer-events: none;
+}
+
+#ui .end-box {
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px 16px;
+  text-align: center;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 4px 0 #10131a,
+    0 16px 28px rgba(0, 0, 0, 0.55);
+  animation: finish-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+#ui .end-box p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #c9d0de;
+}
+
+#ui .end-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* While watching after being knocked out */
+#ui .spectating {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px 8px 16px;
+  pointer-events: auto;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .end-box {
+    animation: none;
+  }
+}
+
+/* A toast that is news rather than a refusal */
+#ui .toast.info {
+  background: linear-gradient(180deg, #2c3550 0%, #222a40 100%);
+  border-color: rgba(140, 170, 255, 0.35);
+  color: #dbe5ff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 0 #0e1220,
+    0 14px 24px rgba(0, 0, 0, 0.5);
+}
+
+#ui .toast .out-name {
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* In the timer box, in place of the number, while a duel waits for its opponent */
+#ui .wait-timer strong.waiting-text {
+  display: flex;
+  align-items: center;
+  /* As tall as the label and the number it stands in for, so it sits in the middle of the box */
+  min-height: 64px;
+  font-size: 20px;
+  letter-spacing: 0.02em;
+}
+
+/* The bar on the loading screen between the lobby and the match */
+#ui .loading-bar {
+  width: 220px;
+  height: 10px;
+  padding: 2px;
+  box-sizing: content-box;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #0f1626 0%, #152038 100%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.5) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+#ui .loading-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8fb8ff 0%, #4f9dff 100%);
+  box-shadow: 0 0 10px rgba(79, 157, 255, 0.55);
+  transform-origin: left center;
+  animation: loading-fill linear forwards;
+}
+
+@keyframes loading-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* A word written across the top of the logo: "Victory!" or "Defeat" on the end-of-match cards */
+#ui .logo-banner {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 10px;
+  font-size: 46px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding-left: 0.1em;
+  text-transform: uppercase;
+  color: #eef5ff;
+  /* A thin edge, and the weight in the shadow */
+  -webkit-text-stroke: 1.5px #10131a;
+  paint-order: stroke fill;
+  text-shadow:
+    0 3px 0 #10131a,
+    0 6px 4px rgba(0, 0, 0, 0.55),
+    0 12px 22px rgba(0, 0, 0, 0.7);
+}
+
+#ui .logo-banner.win {
+  color: #ffd966;
+}
+
+#ui .logo-banner.lose {
+  color: #ff7b7b;
+}
+
+/* Who won, on the results card: their color and their name */
+#ui .winner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+/* Styled like the "Players" label on the list: small capitals with a line trailing off */
+#ui .winner-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+/* The line fades out on both sides of the centred label */
+#ui .winner-label::before,
+#ui .winner-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14));
+}
+
+#ui .winner-label::after {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent);
+}
+
+#ui .winner-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--well, #151a26);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45) inset;
+}
+
+#ui .winner-swatch {
+  width: 18px;
+  height: 20px;
+  background: #8a93a8;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.28);
+}
+
+#ui .winner-name {
+  font-size: 18px;
+  color: #eef5ff;
+}
+
+/* The dev sound list (/?sounds) */
+#ui .sound-page {
+  align-items: flex-start;
+}
+
+#ui .sound-wrap {
+  width: min(860px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-bottom: 40px;
+}
+
+#ui .sound-wrap header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#ui .sound-wrap header h2 {
+  margin: 0;
+}
+
+#ui .sound-wrap a {
+  color: #8fb8ff;
+}
+
+#ui .sound-group h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+#ui .sound-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#ui .sound-group li {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--well, #151a26);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35) inset;
+  opacity: 0.85;
+}
+
+#ui .sound-group li.ready {
+  opacity: 1;
+}
+
+#ui .sound-text {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  align-items: baseline;
+}
+
+#ui .sound-text strong {
+  color: #eef5ff;
+}
+
+#ui .sound-text code {
+  color: #8fb8ff;
+  font-size: 12px;
+}
+
+#ui .sound-text span,
+#ui .sound-text em {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: #c4cad8;
+}
+
+#ui .sound-text em {
+  font-style: normal;
+  color: #8a93a8;
+}
+
+#ui .sound-text small {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #6f9ad6;
+}
+
+/* The sound on/off button: top right of every screen */
+#ui .sound-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  color: #e8eaf0;
+}
+
+#ui .sound-toggle.off {
+  color: #8a93a8;
 }

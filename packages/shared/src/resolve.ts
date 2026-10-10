@@ -71,7 +71,7 @@ export function resolveTick(
   return settle({ ...state, tick, tiles });
 }
 
-/** Phase 1: generation and decay, per tile. Troops generated this tick can fight and move this tick. */
+/** Phase 1: generation, per tile. Troops generated this tick can fight and move this tick. */
 function generate(state: GameState, config: MatchConfig): Record<string, MutableTile> {
   const tiles: Record<string, MutableTile> = {};
   for (const [key, tile] of Object.entries(state.tiles)) tiles[key] = { ...tile };

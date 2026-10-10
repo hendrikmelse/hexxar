@@ -36,14 +36,6 @@ export function generationInterval(
   return generation ? scaledInterval(config, generation, farms) : null;
 }
 
-/** Ticks per decay step for an oversized neutral army. The same for every tile type. */
-export function decayInterval(config: MatchConfig): number {
-  return Math.max(
-    1,
-    Math.round((config.neutralDecayEveryTicks * 100) / config.generationSpeedPercent),
-  );
-}
-
 /** An owned producer at or above its cap stops generating, keeping its progress until it drops below. */
 export function isGenerationPaused(config: MatchConfig, tile: Tile): boolean {
   const { generation } = tileRules(config, tile.type);
@@ -51,8 +43,9 @@ export function isGenerationPaused(config: MatchConfig, tile: Tile): boolean {
 }
 
 /**
- * One tick of generation (owned cities and villages) or decay (oversized neutral
- * armies) for one tile. Each tile keeps its own progress counter, which starts at
+ * One tick of generation for one tile (only owned cities and villages produce; neutral armies,
+ * such as a surrendered player's, stay exactly as they are). Each tile keeps its own progress
+ * counter, which starts at
  * zero when the tile is captured, so tiles taken on different ticks generate on
  * different ticks. The tile produces once its progress reaches the number of ticks
  * for its *current* farm count, so capturing a farm can complete a cycle early and
@@ -65,15 +58,8 @@ export function stepTile(
   tile: Tile,
   farms: number,
 ): { troops: number; progress: number } {
-  const rules = tileRules(config, tile.type);
-  if (tile.owner === null) {
-    if (tile.troops <= rules.baseGarrison) return { troops: tile.troops, progress: 0 };
-    const progress = tile.progress + 1;
-    return progress >= decayInterval(config)
-      ? { troops: tile.troops - 1, progress: 0 }
-      : { troops: tile.troops, progress };
-  }
-  const generation = rules.generation;
+  if (tile.owner === null) return { troops: tile.troops, progress: 0 };
+  const generation = tileRules(config, tile.type).generation;
   if (!generation) return { troops: tile.troops, progress: tile.progress };
   if (isGenerationPaused(config, tile)) return { troops: tile.troops, progress: tile.progress };
   const progress = tile.progress + 1;

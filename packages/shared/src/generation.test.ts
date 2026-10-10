@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseMatchConfig } from './config.js';
 import { createSymmetricMatch } from './generate.js';
-import {
-  applyTickDiff,
-  decayInterval,
-  generationInterval,
-  ownedFarmNeighbors,
-  stepTile,
-} from './generation.js';
+import { applyTickDiff, generationInterval, ownedFarmNeighbors, stepTile } from './generation.js';
 import { HEX_DIRECTIONS, hexKey, hexNeighbors } from './hex.js';
 import type { Order, OrdersByPlayer } from './orders.js';
 import { resolveTick } from './resolve.js';
@@ -91,17 +85,13 @@ describe('farm bonus', () => {
     expect(stepTile(config, tile({ progress: 6 }), 1)).toEqual({ troops: 6, progress: 0 });
   });
 
-  it('decays neutral armies at the same flat rate for every type', () => {
-    expect(decayInterval(config)).toBe(12);
+  it('leaves neutral armies exactly as they are, whatever their size', () => {
     for (const type of ['farmland', 'village', 'city'] as const) {
-      const neutral = tile({ type, owner: null, troops: 20, progress: 10 });
-      expect(stepTile(config, neutral, 0).troops).toBe(20);
-      expect(stepTile(config, { ...neutral, progress: 11 }, 0)).toEqual({
-        troops: 19,
-        progress: 0,
-      });
+      const neutral = tile({ type, owner: null, troops: 20, progress: 0 });
+      for (let i = 0; i < 40; i++) {
+        expect(stepTile(config, neutral, 0)).toEqual({ troops: 20, progress: 0 });
+      }
     }
-    expect(decayInterval(parseMatchConfig({ neutralDecayEveryTicks: 3 }))).toBe(3);
   });
 });
 

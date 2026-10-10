@@ -54,6 +54,37 @@ describe('Lobby', () => {
       expect(a.room?.players).toHaveLength(1);
     });
 
+    it('lets a full public room sit in the lobby for a moment before it starts', () => {
+      lobby.stop();
+      lobby = new Lobby({ ...options, fullWaitMs: 3000 });
+      const a = new FakeClient(lobby).hello('Ann');
+      const b = new FakeClient(lobby).hello('Bob');
+      a.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'quickPlay', mode: 'duel' });
+      expect(a.room).toMatchObject({ state: 'lobby' });
+      expect(b.room).toMatchObject({ state: 'lobby' });
+      expect(a.room?.players).toHaveLength(2);
+      expect(a.room?.earlyStartAt).toBeGreaterThan(Date.now());
+      vi.advanceTimersByTime(2900);
+      expect(a.room).toMatchObject({ state: 'lobby' });
+      vi.advanceTimersByTime(200);
+      expect(a.room).toMatchObject({ state: 'running' });
+      expect(b.room).toMatchObject({ state: 'running' });
+    });
+
+    it('goes back to waiting if someone leaves during that moment', () => {
+      lobby.stop();
+      lobby = new Lobby({ ...options, fullWaitMs: 3000 });
+      const a = new FakeClient(lobby).hello('Ann');
+      const b = new FakeClient(lobby).hello('Bob');
+      a.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'leaveRoom' });
+      vi.advanceTimersByTime(10_000);
+      expect(a.room).toMatchObject({ state: 'lobby' });
+      expect(a.room?.players).toHaveLength(1);
+    });
+
     it('pairs two players and starts the match at once, with the first tick after the prep time', () => {
       const a = new FakeClient(lobby).hello('Ann');
       const b = new FakeClient(lobby).hello('Bob');
@@ -686,7 +717,8 @@ describe('Lobby battle royale', () => {
       // The scoreboard is not fogged: all twelve players, each with their production.
       expect(snapshot.scores).toHaveLength(12);
       for (const score of snapshot.scores) {
-        expect(score).toMatchObject({ tiles: 1, troops: 10 });
+        // 10 troops on the starting city, one of which stays behind.
+        expect(score).toMatchObject({ tiles: 1, mobile: 9 });
         expect(score.capacity).toBeGreaterThan(0);
       }
     });

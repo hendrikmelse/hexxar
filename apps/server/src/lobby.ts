@@ -21,6 +21,8 @@ export interface LobbyOptions {
   earlyStartMs: number;
   /** A player joining tops that wait up to at least this long. */
   joinWaitMs: number;
+  /** How long a public room that has just filled up waits before it starts, so everyone sees the lobby. */
+  fullWaitMs: number;
   /** Once enough players have voted to start early, how long until the match starts. */
   voteStartMs: number;
   /** How often to tell people in the menu how many are playing each mode (0 turns it off). */
@@ -247,6 +249,7 @@ export class Lobby {
       prepMs: this.options.prepMs,
       earlyStartMs: this.options.earlyStartMs,
       joinWaitMs: this.options.joinWaitMs,
+      fullWaitMs: this.options.fullWaitMs,
       voteStartMs: this.options.voteStartMs,
       afkMs: this.options.afkMs,
       finishedLingerMs: this.options.finishedLingerMs,

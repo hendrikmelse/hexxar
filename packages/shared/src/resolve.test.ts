@@ -340,32 +340,26 @@ describe('generation', () => {
 });
 
 describe('neutral armies', () => {
-  const neutral = (troops: number, progress: number, type: TileTypeId = 'city') =>
-    row([{ troops, type, progress }]);
-
-  it('shrinks toward the base garrison, one troop per 12 ticks, for every tile type', () => {
-    for (const type of ['farmland', 'village', 'city'] as const) {
-      expect(at(step(neutral(14, 10, type), {}), 0)).toMatchObject({ troops: 14, progress: 11 });
-      expect(at(step(neutral(14, 11, type), {}), 0)).toMatchObject({ troops: 13, progress: 0 });
+  it('stay as they are, however big or small', () => {
+    for (const troops of [0, 1, 3, 14]) {
+      let s = row([{ troops, type: 'city' }]);
+      for (let i = 0; i < 30; i++) s = step(s, {});
+      expect(at(s, 0)).toMatchObject({ owner: null, troops });
     }
   });
 
-  it('stops shrinking at the base garrison and does not regrow below it', () => {
-    expect(at(step(neutral(10, 5), {}), 0)).toMatchObject({ troops: 10, progress: 0 });
-    expect(at(step(neutral(3, 5), {}), 0)).toMatchObject({ troops: 3, progress: 0 });
-  });
-
-  it('decay rate is configurable', () => {
-    const fast = parseMatchConfig({ neutralDecayEveryTicks: 3 });
-    expect(at(resolveTick(neutral(14, 2), {}, fast), 0).troops).toBe(13);
-  });
-
-  it('a surrendered army defends but decays back to the default', () => {
-    const start = row([{ owner: 'B', troops: 14, type: 'city', progress: 2 }], ['A', 'B']);
+  it('include a surrendered army, which keeps its troops and defends with them', () => {
+    const start = row(
+      [
+        { owner: 'B', troops: 14, type: 'city', progress: 2 },
+        { owner: 'A', troops: 20 },
+      ],
+      ['A', 'B'],
+    );
     let s = surrender(start, 'B');
     expect(at(s, 0)).toMatchObject({ owner: null, troops: 14, progress: 0 });
-    for (let i = 0; i < 12; i++) s = step(s, {});
-    expect(at(s, 0).troops).toBe(13);
+    for (let i = 0; i < 30; i++) s = step(s, {});
+    expect(at(s, 0)).toMatchObject({ owner: null, troops: 14 });
   });
 });
 

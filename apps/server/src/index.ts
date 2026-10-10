@@ -10,6 +10,7 @@ const lobby = new Lobby({
   prepMs: Number(process.env.PREP_MS ?? 5000),
   earlyStartMs: Number(process.env.EARLY_START_MS ?? 60_000),
   joinWaitMs: Number(process.env.JOIN_WAIT_MS ?? 10_000),
+  fullWaitMs: Number(process.env.FULL_WAIT_MS ?? 5000),
   voteStartMs: Number(process.env.VOTE_START_MS ?? 5000),
   statsMs: Number(process.env.STATS_MS ?? 2000),
   afkMs: Number(process.env.AFK_MS ?? 120_000),

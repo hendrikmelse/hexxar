@@ -2,7 +2,35 @@ import { Container, Sprite, Texture } from 'pixi.js';
 import type { Point } from './layout.js';
 
 /** What a tile is covered with. `away` points from the tile's middle toward the side to cover. */
-export type Cover = { kind: 'hidden' } | { kind: 'far'; away: Point };
+export type Cover =
+  | {
+      kind: 'hidden';
+      /** For each neighbor this tile's cloud merges with: the way from this tile to that one. */
+      joins: readonly Point[];
+      /** Set when this tile is the heart of a big cloud: the way toward the middle of its hidden neighbors. */
+      swell: Point | null;
+    }
+  | { kind: 'far'; away: Point };
+
+/**
+ * Do the clouds over two adjacent hidden tiles merge into one bigger cloud? Settled by the pair of
+ * tiles alone, so the two agree and the answer never changes.
+ */
+export function cloudsMerge(a: { q: number; r: number }, b: { q: number; r: number }): boolean {
+  const first = a.q < b.q || (a.q === b.q && a.r < b.r) ? a : b;
+  const second = first === a ? b : a;
+  return noise(first.q * 7 + second.q, first.r * 5 + second.r, 61) < MERGE_CHANCE;
+}
+
+/** Is this tile the heart of an even bigger cloud? Only a tile with hidden ground all round it. */
+export function isBigCloud(tile: { q: number; r: number }, hiddenNeighbors: number): boolean {
+  return hiddenNeighbors === 6 && noise(tile.q, tile.r, 99) < BIG_CHANCE;
+}
+
+/** Whether this tile is the one that draws the cloud joining it to this neighbor (one of the two does). */
+export function drawsMerge(a: { q: number; r: number }, b: { q: number; r: number }): boolean {
+  return a.q < b.q || (a.q === b.q && a.r < b.r);
+}
 
 /** One soft blob of cloud, drifting a little around where it belongs. */
 interface Puff {
@@ -29,6 +57,10 @@ interface Bank {
 const TEXTURE = 128;
 /** How fast clouds fade in and out, per second. */
 const FADE_PER_SECOND = 2.6;
+/** How often two neighboring hidden tiles share one bigger cloud. */
+const MERGE_CHANCE = 0.5;
+/** How often a tile with mostly hidden neighbors is the heart of an even bigger cloud. */
+const BIG_CHANCE = 0.25;
 const CLOUD_COLOR = 0xe7eef8;
 const SHADE_COLOR = 0x8a9bb6;
 
@@ -44,14 +76,16 @@ function noise(a: number, b: number, c: number): number {
  * their owner and type still show. Clouds fade in and out as vision changes.
  */
 export class Clouds {
-  private readonly layer: Container;
+  /** The small clouds on half-covered tiles, always under the big ones on hidden tiles. */
+  private readonly farLayer = new Container();
+  private readonly hiddenLayer = new Container();
   private readonly texture: Texture;
   private readonly banks = new Map<string, Bank>();
   private readonly leaving = new Set<Bank>();
   private time = 0;
 
   constructor(layer: Container) {
-    this.layer = layer;
+    layer.addChild(this.farLayer, this.hiddenLayer);
     // A soft puff: a radial gradient, solid in the middle and fading smoothly to nothing.
     const canvas = document.createElement('canvas');
     canvas.width = TEXTURE;
@@ -117,7 +151,7 @@ export class Clouds {
 
   private signatureOf(cover: Cover): string {
     return cover.kind === 'hidden'
-      ? 'hidden'
+      ? `hidden:${cover.joins.map((j) => `${j.x.toFixed(1)},${j.y.toFixed(1)}`).join(';')}:${cover.swell ? `${cover.swell.x.toFixed(1)},${cover.swell.y.toFixed(1)}` : ''}`
       : `far:${cover.away.x.toFixed(2)},${cover.away.y.toFixed(2)}`;
   }
 
@@ -133,7 +167,7 @@ export class Clouds {
       body.tint = CLOUD_COLOR;
       shade.tint = SHADE_COLOR;
       // The shade goes under every body, so the clouds look rounded rather than flat.
-      this.layer.addChild(shade, body);
+      (cover.kind === 'hidden' ? this.hiddenLayer : this.farLayer).addChild(shade, body);
       puffs.push({
         body,
         shade,
@@ -147,17 +181,48 @@ export class Clouds {
     };
 
     if (cover.kind === 'hidden') {
-      // A thick bank over the whole tile, spilling a little past its edges so neighbors join up.
-      add(center.x, center.y, 0.62 + noise(q, r, 1) * 0.12, 0);
-      for (let i = 0; i < 5; i++) {
-        const angle = (Math.PI * 2 * i) / 5 + noise(q, r, 2) * 1.5;
-        const reach = 13 + noise(q, r, i + 3) * 5;
+      // A cloud over the whole tile: a large puff with a couple of big ones beside it, spilling
+      // a little past the edges so neighbors join up. Fewer, bigger puffs than before.
+      add(center.x, center.y, 0.8 + noise(q, r, 1) * 0.14, 0);
+      for (let i = 0; i < 2; i++) {
+        const angle = Math.PI * i + noise(q, r, 2) * Math.PI * 2;
+        const reach = 13 + noise(q, r, i + 3) * 6;
         add(
           center.x + Math.cos(angle) * reach,
           center.y + Math.sin(angle) * reach,
-          0.5 + noise(q, r, i + 30) * 0.16,
+          0.58 + noise(q, r, i + 30) * 0.16,
           i + 1,
         );
+      }
+      // Where this tile's cloud runs into a neighbor's, one big cloud spans the two: a large puff
+      // across the join with a couple more along it, so it reads as one cloud, not two.
+      cover.joins.forEach((way, j) => {
+        const along = (t: number): Point => ({
+          x: center.x + way.x * t,
+          y: center.y + way.y * t,
+        });
+        const middle = along(0.5);
+        add(middle.x, middle.y, 1.02 + noise(q, r, j + 70) * 0.14, 10 + j * 3);
+        const a = along(0.25);
+        const b = along(0.75);
+        add(a.x, a.y - 4, 0.86 + noise(q, r, j + 80) * 0.1, 11 + j * 3);
+        add(b.x, b.y - 4, 0.86 + noise(q, r, j + 90) * 0.1, 12 + j * 3);
+      });
+      // The heart of an even bigger cloud: a very large puff over the tile, leaning toward the
+      // hidden ground around it, with big ones round it.
+      if (cover.swell) {
+        const lean = { x: center.x + cover.swell.x * 0.35, y: center.y + cover.swell.y * 0.35 };
+        add(lean.x, lean.y - 4, 1.2 + noise(q, r, 101) * 0.15, 20);
+        for (let i = 0; i < 4; i++) {
+          const angle = (Math.PI * 2 * i) / 4 + noise(q, r, 102) * 1.5;
+          const reach = 22 + noise(q, r, i + 103) * 8;
+          add(
+            lean.x + Math.cos(angle) * reach,
+            lean.y + Math.sin(angle) * reach - 4,
+            0.85 + noise(q, r, i + 110) * 0.15,
+            21 + i,
+          );
+        }
       }
     } else {
       // Pushed to the far side of the tile, leaving the edge nearest the player in view.
@@ -180,12 +245,10 @@ export class Clouds {
 
   private animate(bank: Bank, step: number): void {
     bank.alpha += Math.max(-step, Math.min(step, bank.target - bank.alpha));
-    // A fading bank also swells a little, as if it were blowing away.
-    const swell = 1 + (1 - bank.alpha) * 0.35;
     for (const puff of bank.puffs) {
       const x = puff.x + Math.sin(this.time * puff.speed + puff.phase) * puff.drift;
       const y = puff.y + Math.cos(this.time * puff.speed * 0.8 + puff.phase) * puff.drift * 0.6;
-      const scale = puff.scale * swell;
+      const scale = puff.scale;
       puff.body.position.set(x, y);
       puff.shade.position.set(x, y + 3);
       puff.body.scale.set(scale);

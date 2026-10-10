@@ -24,7 +24,7 @@ export interface TileTypeDef {
   readonly defensePercent: number;
   /**
    * The size of this tile's defensive army when it is neutral. Neutral tiles
-   * start at this size, and neutral armies above it shrink back toward it.
+   * start at this size. Neutral armies never change after that.
    */
   readonly baseGarrison: number;
   /** `null` for tiles that never produce troops. */

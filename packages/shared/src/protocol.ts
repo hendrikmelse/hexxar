@@ -16,7 +16,7 @@ export const tileSchema = z.object({
 export const playerScoreSchema = z.object({
   player: z.string(),
   tiles: z.number().int().nonnegative(),
-  troops: z.number().int().nonnegative(),
+  mobile: z.number().int().nonnegative(),
   capacity: z.number().nonnegative(),
 });
 

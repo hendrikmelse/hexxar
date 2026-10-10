@@ -17,7 +17,7 @@ Tile types are data (`packages/shared/src/tiles.ts`). Each defines:
 | Property         | Meaning                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | `defensePercent` | Defender strength multiplier in percent (100 = no bonus)                                   |
-| `baseGarrison`   | Size of the defensive army when neutral; neutral tiles start here and shrink back to it    |
+| `baseGarrison`   | Size of the defensive army when neutral; neutral tiles start here                          |
 | `generation`     | `null` for farmland. Otherwise ticks per troop by owned farm neighbors, `amount` and `cap` |
 
 | Type     | Base garrison | Defense | Effective defense | Produces troops | Cap |
@@ -37,15 +37,15 @@ Only cities and villages produce troops. Farmland produces nothing; owning the f
 
 Gains get bigger as the ring fills: a full ring makes a city four times faster than a bare one. A farm next to two of your producers counts for both. Map generation keeps cities and villages away from each other, so every interior producer has six farmland neighbors and the same maximum; edge villages have fewer neighbors and are weaker producers.
 
-Adding a type means adding an entry to the table; the sim reads everything from it. A match can override any value through `tileOverrides` in its config, and scale all production and decay with `generationSpeedPercent`. Production stops at the cap but armies can exceed it through reinforcement.
+Adding a type means adding an entry to the table; the sim reads everything from it. A match can override any value through `tileOverrides` in its config, and scale all production with `generationSpeedPercent`. Production stops at the cap but armies can exceed it through reinforcement.
 
 ## Phases
 
-1. **Generate and decay.** Every tile keeps its own **progress** counter.
+1. **Generate.** Every tile keeps its own **progress** counter.
    - An owned city or village gains one progress per tick. It produces `amount` troops once its progress reaches the number of ticks for its **current** owned-farm count (see above, scaled by the match's generation speed), and its progress then resets. So capturing a farm can complete a cycle early, and losing one makes the tile wait longer. The farm count is taken from the state before the tick. Progress starts at zero when a tile is captured, so tiles taken on different ticks produce on different ticks.
    - A producer at or above its `cap` is **paused**: it keeps its progress but does not advance until its army drops below the cap. A big army passing through a chain of full producers just delays each one by a tick, rather than resetting its timer.
    - Farmland never produces, and neutral tiles never produce.
-   - Neutral armies above their tile's base garrison use the same counter to lose one troop every `neutralDecayEveryTicks` ticks (default 12, the same for every tile type, scaled by generation speed). A depleted neutral army does not regrow.
+   - Neutral armies never change: they do not produce and they do not shrink.
    - This happens first, so a troop produced this tick can defend, and can be sent by a move order this tick. Orders are checked against the state after generation.
 2. **Depart.** Every commanded army leaves its tile, leaving **one troop behind**. Tile ownership is unchanged.
 3. **Reinforce.** An arriving army whose destination is owned by its own player adds its troops to the tile.
@@ -71,7 +71,7 @@ Because each player has one order per tick, a player's own armies can never arri
 
 ## Surrender
 
-A player may surrender at any time. It is an immediate action, not a queued order (`surrender(state, player)`). Their tiles become neutral and defensive-only. Their armies stay in place but shrink one troop at a time back to each tile type's base garrison, then stop. The player is eliminated.
+A player may surrender at any time. It is an immediate action, not a queued order (`surrender(state, player)`). Their tiles become neutral and defensive-only, and their armies stay in place exactly as they are. The player is eliminated.
 
 ## Open details
 

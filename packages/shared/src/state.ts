@@ -16,8 +16,8 @@ export interface Tile {
   readonly owner: PlayerId | null;
   readonly troops: number;
   /**
-   * Ticks of progress toward the next generation (owned tiles) or decay step
-   * (oversized neutral armies). Resets when the tile is captured.
+   * Ticks of progress toward the next generation (owned producers). Resets when the tile is
+   * captured.
    */
   readonly progress: number;
 }

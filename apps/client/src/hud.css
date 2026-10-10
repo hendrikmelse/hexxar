@@ -279,6 +279,30 @@
   border-radius: 50%;
 }
 
+/* A number that just changed gives a small thump */
+#hud .stat.bump {
+  animation: stat-bump 0.32s ease-out;
+}
+
+@keyframes stat-bump {
+  40% {
+    transform: scale(1.3);
+    color: #fff;
+  }
+}
+
+/* A player who just appeared in the list fades in */
+#hud .standing.enter {
+  animation: standing-in 0.35s ease-out;
+}
+
+@keyframes standing-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
 #hud .standing.out {
   opacity: 0.38;
 }
@@ -435,6 +459,44 @@
     0 4px 8px rgba(0, 0, 0, 0.4);
 }
 
+/* A tooltip that slides out to the left of the button on hover or keyboard focus */
+#hud .camera button::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, #1d2231 0%, #141824 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.5);
+  color: #eef5ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(6px, -50%);
+  transition:
+    opacity 0.14s,
+    transform 0.14s;
+}
+
+#hud .camera button:hover::after,
+#hud .camera button:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+  transition-delay: 0.25s;
+}
+
+#hud .camera button:active::after {
+  opacity: 0;
+}
+
 /* The "show the whole board" icon is drawn with CSS: a hexagon outline */
 #hud .camera button.icon::before {
   content: '';
@@ -463,52 +525,6 @@
   );
 }
 
-/* ---- Bottom middle: the controls, as key caps ------------------------------------------------ */
-
-#hud .hint {
-  position: fixed;
-  bottom: 18px;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 18px;
-  width: max-content;
-  max-width: calc(100% - 340px);
-  margin: 0 auto;
-  padding: 8px 16px;
-  background: rgba(20, 23, 31, 0.8);
-  border-radius: 999px;
-  color: #aab3c8;
-  font-size: 12px;
-  transition: opacity 1.2s ease;
-  pointer-events: none;
-}
-
-#hud .hint.faded {
-  opacity: 0.28;
-}
-
-#hud .hint-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-}
-
-#hud kbd {
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: linear-gradient(180deg, #343a4b 0%, #262b39 100%);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.12) inset,
-    0 2px 0 #10131a;
-  color: #e8eaf0;
-  font: inherit;
-  font-weight: 700;
-}
-
 /* ---- Small screens ---------------------------------------------------------------------------- */
 
 @media (max-width: 900px) {
@@ -516,20 +532,18 @@
     width: 220px;
   }
 
-  #hud .stat.troops {
-    display: none;
+  /* The troop count stays; the name gives way to it instead */
+  #hud .standing {
+    column-gap: 7px;
+    padding: 6px 8px;
   }
 
-  #hud .standing {
-    grid-template-columns: 16px minmax(0, 1fr);
+  #hud .stat {
+    min-width: 0;
   }
 
   #hud .top {
     max-width: calc(100% - 520px);
-  }
-
-  #hud .hint {
-    display: none;
   }
 }
 
@@ -565,7 +579,6 @@
     animation: none;
   }
 
-  #hud .hint,
   #hud .standing {
     transition: none;
   }

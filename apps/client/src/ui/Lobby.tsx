@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { type MapSize, type RoomMode, type RoomPlayer, type RoomView } from '@hexxar/shared';
+import { playSound } from '../audio/audio.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 import { FitText } from './FitText.js';
@@ -25,6 +26,25 @@ const MAP_SIZE_LABELS: Record<MapSize, string> = {
 const MODE_LABELS: Record<RoomMode, string> = { duel: 'Duel', ffa: 'Battle Royale' };
 
 /** The room before the match: who is here, the settings, and the wait before it starts. */
+/** Someone joining or leaving, the opponent turning up, and the last seconds of the countdown. */
+function useLobbySounds(
+  players: number,
+  size: number,
+  publicDuel: boolean,
+  waitSeconds: number | null,
+): void {
+  const before = useRef(players);
+  useEffect(() => {
+    if (players > before.current)
+      playSound(publicDuel && players >= size ? 'lobby.found' : 'lobby.join');
+    else if (players < before.current) playSound('lobby.leave');
+    before.current = players;
+  }, [players, size, publicDuel]);
+  useEffect(() => {
+    if (waitSeconds !== null && waitSeconds > 0 && waitSeconds <= 3) playSound('lobby.count');
+  }, [waitSeconds]);
+}
+
 export function Lobby({ actions }: { actions: Actions }) {
   const app = useApp();
   const room = app.room as RoomView;
@@ -38,6 +58,9 @@ export function Lobby({ actions }: { actions: Actions }) {
   const bump = useCountBump(players);
   const shown = useExitingList(room.players);
   const canVote = mode === 'ffa' && !isPrivate;
+  const publicDuel = mode === 'duel' && !isPrivate;
+  const waitingForOpponent = publicDuel && players < size;
+  useLobbySounds(players, size, publicDuel, waitSeconds);
   const lockedIn = canVote && room.votesNeeded > 0 && room.startVotes >= room.votesNeeded;
 
   return (
@@ -67,11 +90,6 @@ export function Lobby({ actions }: { actions: Actions }) {
         ) : (
           <>
             <Versus room={room} shown={shown} />
-            {!isPrivate && (
-              <p className="muted center">
-                {players < size ? 'Waiting for an opponent...' : 'Opponent found'}
-              </p>
-            )}
           </>
         )}
 
@@ -81,14 +99,21 @@ export function Lobby({ actions }: { actions: Actions }) {
         {isPrivate && <Settings room={room} editable={editable} onChange={actions.updateRoom} />}
 
         {/* The timer and the vote are always on screen, so nothing jumps when the third player joins. */}
-        {canVote && (
+        {(canVote || publicDuel) && (
           <div
             className={`wait-timer ${lockedIn ? 'locked' : ''} ${waitSeconds === null ? 'paused' : ''}`}
           >
-            <span className="wait-label">
-              {lockedIn ? 'Enough votes: starting in' : 'Match starts in'}
-            </span>
-            <strong>{formatClock(waitSeconds ?? Math.round(room.waitMs / 1000))}</strong>
+            {/* A duel with nobody across the table yet says so here, in place of the label and number. */}
+            {!waitingForOpponent && (
+              <span className="wait-label">
+                {lockedIn ? 'Enough votes: starting in' : 'Match starts in'}
+              </span>
+            )}
+            {waitingForOpponent ? (
+              <strong className="waiting-text">Waiting for an opponent...</strong>
+            ) : (
+              <strong>{formatClock(waitSeconds ?? Math.round(room.waitMs / 1000))}</strong>
+            )}
           </div>
         )}
 
@@ -124,7 +149,9 @@ export function Lobby({ actions }: { actions: Actions }) {
               </button>
             </Tip>
           )}
-          <button onClick={actions.leaveRoom}>Leave</button>
+          <button data-sound="ui.back" onClick={actions.leaveRoom}>
+            Leave
+          </button>
         </div>
       </div>
     </div>

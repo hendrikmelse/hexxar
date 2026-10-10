@@ -21,7 +21,7 @@ The server never sends what a player may not see. `visibleState(state, player, c
 
 ## The scoreboard is not fogged
 
-Every snapshot and tick carries `scores` (tiles, troops and generation capacity per player, from `scoresOf`). The list on the left and the production pie are drawn from those, so you can always see how strong everyone is, including a player you have only just found.
+Every snapshot and tick carries `scores` (tiles, mobile troops and generation capacity per player, from `scoresOf`; mobile troops are each tile's troops minus the one that stays, never below zero). The list on the left and the production pie are drawn from those, so you can always see how strong everyone is, including a player you have only just found.
 
 ## Drawing it
 

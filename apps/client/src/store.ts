@@ -21,9 +21,22 @@ export interface AppState {
   error: string | null;
   /** Goes up with every refusal, so the same message can pop up again. */
   errorSeq: number;
+  /** A match is just starting and the loading bar is up, covering the board while it settles. */
+  launching: boolean;
+  /** Something worth telling the player that is not a refusal (someone left the match). */
+  info: { players: { name: string; color: number | null }[] } | null;
+  infoSeq: number;
   /** The match's winner (a match player id) and your own id in it, for the results screen. */
   winner: PlayerId | null;
   matchPlayerId: PlayerId | null;
+  /** The winner's color (0xRRGGBB), for the results card. */
+  winnerColor: number | null;
+  /** You are out of a match that is still going (beaten, or you gave up). */
+  eliminated: boolean;
+  /** The end-of-match card (defeat, game over or victory) may be shown now. */
+  cardReady: boolean;
+  /** Out, and watching the rest of the match. */
+  spectating: boolean;
   /** How many people are playing each mode, once the server has said. */
   activity: { duel: number; ffa: number } | null;
   /** Set while the tutorial is open: where in it the player is. */
@@ -58,10 +71,17 @@ class Store {
     clockOffset: 0,
     error: null,
     errorSeq: 0,
+    info: null,
+    infoSeq: 0,
+    launching: false,
     activity: null,
     tutorial: null,
     winner: null,
     matchPlayerId: null,
+    winnerColor: null,
+    eliminated: false,
+    cardReady: false,
+    spectating: false,
   };
   private readonly listeners = new Set<() => void>();
 

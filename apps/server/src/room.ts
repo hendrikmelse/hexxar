@@ -74,6 +74,8 @@ export interface RoomOptions {
   readonly earlyStartMs: number;
   /** A player joining tops the wait up to at least this long, so newcomers have time to settle in. */
   readonly joinWaitMs: number;
+  /** A public room that has just filled up waits this long before starting (0: starts at once). */
+  readonly fullWaitMs: number;
   /** Once enough players have voted to start early, how long until the match starts. */
   readonly voteStartMs: number;
   /** How long a disconnected player is given before their army surrenders. */
@@ -144,7 +146,14 @@ export class Room {
     session.room = this;
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
     if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
-      this.begin();
+      if (this.options.fullWaitMs > 0) {
+        // A short pause first, so everyone sees the full lobby before the match begins.
+        this.lockedIn = true;
+        this.armEarlyStart(this.options.fullWaitMs);
+        this.broadcastRoom();
+      } else {
+        this.begin();
+      }
     } else {
       this.scheduleEarlyStart();
       this.topUpWaitForJoin();
@@ -257,7 +266,8 @@ export class Room {
         playerId: m.playerId,
       })),
       minPlayers: this.minPlayers,
-      waitMs: this.options.earlyStartMs,
+      // How long the wait on screen starts from: a battle royale's, or a duel's short pause.
+      waitMs: this.votesApply ? this.options.earlyStartMs : this.options.fullWaitMs,
       earlyStartAt: this.earlyStartAt,
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,

@@ -137,7 +137,7 @@ describe('visionFor', () => {
 describe('scores', () => {
   it('are kept from snapshots and ticks, for the scoreboard', () => {
     const game = emptyGame();
-    const scores = [{ player: 'P1', tiles: 2, troops: 10, capacity: 0.125 }];
+    const scores = [{ player: 'P1', tiles: 2, mobile: 9, capacity: 0.125 }];
     const message = snapshot();
     if (message.type === 'snapshot') message.scores = scores;
     applyMessage(game, message);

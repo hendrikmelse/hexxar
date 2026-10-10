@@ -113,18 +113,34 @@ describe('visibleMoves', () => {
 });
 
 describe('scoresOf', () => {
-  it('counts tiles, troops and the troops per tick the producers make', () => {
+  it('counts tiles, mobile troops and the troops per tick the producers make', () => {
     const state = board([
       { q: 0, r: 0, owner: 'A', type: 'city' },
       { q: 1, r: 0, owner: 'A' },
       { q: 4, r: 0, owner: 'B', type: 'village' },
     ]);
     const [a, b] = scoresOf(state, clear);
-    expect(a).toMatchObject({ player: 'A', tiles: 2, troops: 10 });
+    // Each of A's two tiles holds 5 troops and keeps one back: 4 + 4 can march.
+    expect(a).toMatchObject({ player: 'A', tiles: 2, mobile: 8 });
     // A city with one owned farm next to it makes a troop every 7 ticks.
     expect(a!.capacity).toBeCloseTo(1 / 7);
     // A village with no farms of its own around it makes one every 12.
-    expect(b).toMatchObject({ player: 'B', tiles: 1, troops: 5 });
+    expect(b).toMatchObject({ player: 'B', tiles: 1, mobile: 4 });
     expect(b!.capacity).toBeCloseTo(1 / 12);
+  });
+
+  it('counts nothing for a tile with one troop or none: a tile left empty by an attack is not -1', () => {
+    const state = board([
+      { q: 0, r: 0, owner: 'A', type: 'city' },
+      { q: 1, r: 0, owner: 'A' },
+      { q: 2, r: 0, owner: 'A' },
+    ]);
+    const tiles = {
+      ...state.tiles,
+      '1,0': { ...state.tiles['1,0']!, troops: 1 },
+      '2,0': { ...state.tiles['2,0']!, troops: 0 },
+    };
+    const [a] = scoresOf({ ...state, tiles }, clear);
+    expect(a).toMatchObject({ tiles: 3, mobile: 4 });
   });
 });

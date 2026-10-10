@@ -16,12 +16,23 @@ function hexPoints(cx: number, cy: number, r: number): string {
   }).join(' ');
 }
 
-export function Logo() {
+/**
+ * The logo. With a `banner`, a word is written across the top of it (the end-of-match cards use
+ * "Victory!" and "Defeat"), in gold for a win and red for a loss.
+ */
+export function Logo({
+  banner,
+  tone = 'neutral',
+}: {
+  banner?: string;
+  tone?: 'win' | 'lose' | 'neutral';
+} = {}) {
   const r = 17;
   const spacing = r * Math.sqrt(3);
   const depth = 6;
   return (
-    <div className="logo">
+    <div className={`logo ${banner ? 'with-banner' : ''}`}>
+      {banner && <div className={`logo-banner ${tone}`}>{banner}</div>}
       <svg className="logo-mark" viewBox="-62 -52 124 112" aria-hidden="true">
         {/* Back rows first: each tile's side hangs down over the row behind it. */}
         {[...FLOWER]
@@ -46,7 +57,8 @@ export function Logo() {
             );
           })}
       </svg>
-      <h1>HEXXAR</h1>
+      {/* The cards with a banner say who won or lost instead of the name of the game. */}
+      {!banner && <h1>HEXXAR</h1>}
     </div>
   );
 }

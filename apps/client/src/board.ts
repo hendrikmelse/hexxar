@@ -10,13 +10,25 @@ import {
   type Order,
   type Tile,
 } from '@hexxar/shared';
-import { Clouds, type Cover } from './clouds.js';
+import { playSound } from './audio/audio.js';
+import { Clouds, cloudsMerge, drawsMerge, isBigCloud, type Cover } from './clouds.js';
 import { visionFor, type GameView } from './game.js';
 import { HEX_SIZE, hexCorners, hexToPixel, pixelToHex, type Point } from './layout.js';
 
 /** Distinct, flat player colors, assigned by player order. */
 const PLAYER_COLORS = [
-  0x4f9dff, 0xff6b6b, 0xffd166, 0x06d6a0, 0xc77dff, 0xff9f43, 0x2ec4b6, 0xf15bb5,
+  0x4f9dff, // blue
+  0xff6b6b, // red
+  0xffd166, // yellow
+  0x3fd35b, // green
+  0xa77bff, // purple
+  0xff8a2b, // orange
+  0x2ed9e6, // cyan
+  0xf05bd0, // magenta
+  0xc9e63a, // lime
+  0xb8803f, // brown
+  0xffb3c7, // pale pink
+  0x5a5cf0, // indigo
 ];
 
 /** The sea: land floats on it, and lakes are the holes in the board. */
@@ -41,6 +53,10 @@ const LAND_AT = 0.8;
 /** Armies that meet: how far through the walk they touch, and when the fight is over. */
 const CLASH_AT = 0.36;
 const CLASH_END = 0.5;
+/** An army attacking a held tile: how far through its walk it hits, and when the fight is over. */
+const BATTLE_AT = 0.4;
+const BATTLE_END = 0.75;
+const BATTLE_LAND_AT = 0.7;
 /** 0 is constant speed, 1 a full ease in and out. */
 const EASE = 1.3;
 const TOKEN_RADIUS = 12;
@@ -53,7 +69,15 @@ const POP_MS = 300;
 const POP_PEAK = 0.35;
 /** The generation ring: a new segment pops for this long, and a completed ring pops then fades. */
 const RING_POP_MS = 300;
+/** How long the numbers floating up from a battle last, and the grey of neutral troops. */
+const FLOAT_MS = 1000;
+const NEUTRAL_TROOPS = 0xa3abb8;
 const RING_FINISH_MS = 750;
+/** A segment leaving the ring: it pops out, then the rest slide round to fill its place. */
+const RING_SHRINK_MS = 700;
+const RING_SHRINK_POP_END = 0.4;
+/** A segment joining the ring: the others slide apart until this far through, then it pops in. */
+const RING_GROW_SLIDE_END = 0.5;
 /** How far through the finish the last segment is at its biggest, and where the fade begins. */
 const RING_FINISH_POP_END = 0.4;
 /** Thickness of the outline around a group of tiles of one owner. */
@@ -126,6 +150,8 @@ interface Flight {
   readonly color: number;
   readonly started: number;
   readonly duration: number;
+  /** Whose army it is. */
+  readonly player: string;
   /** The key of the tile it is heading for. */
   readonly target: string;
   readonly game: GameView;
@@ -133,6 +159,14 @@ interface Flight {
   readonly landAt: number;
   /** Set when it meets an army coming the other way: what is left of this one afterwards. */
   readonly clash?: { readonly survivors: number };
+  /** Set when it attacks a tile someone holds: whether the attack takes the tile. */
+  readonly battle?: {
+    readonly won: boolean;
+    /** The attacking army's size once the fight is over, and how many it lost. */
+    readonly remaining: number;
+    readonly lost: number;
+    readonly defenderLost: number;
+  };
   /** Only one of the two armies in a clash draws the burst. */
   readonly drawsBurst: boolean;
   /** The target tile has been redrawn. */
@@ -163,7 +197,11 @@ interface RingSpec {
 type RingAnim =
   | { kind: 'pop'; start: number; from: number; to: number; spec: RingSpec }
   /** A full ring: the last segment pops, then every segment fades away together. */
-  | { kind: 'finish'; start: number; spec: RingSpec; final: RingSpec | null };
+  | { kind: 'finish'; start: number; spec: RingSpec; final: RingSpec | null }
+  /** One segment fewer: the last pops out of existence and the others slide over. */
+  | { kind: 'shrink'; start: number; spec: RingSpec; final: RingSpec }
+  /** One segment more: the others slide apart and a new one pops in. */
+  | { kind: 'grow'; start: number; spec: RingSpec; final: RingSpec };
 
 /** What the board reports about the player's left-button drags. */
 export interface OrderDragHandlers {
@@ -191,12 +229,17 @@ export class Board {
   /** What the player can see (`null`: everything), as of the last time it was worked out. */
   private vision: Map<string, Vision> | null = null;
   private readonly ringAnims = new Map<TileView, RingAnim>();
+  private readonly floaters = new Set<{ text: Text; at: Point; started: number }>();
   /** Troop labels that are popping, and when each started. */
   private readonly pops = new Map<Text, number>();
   private readonly queueLayer = new Graphics();
   private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
   private bottomInset = 0;
+  private readonly pointerLayer = new Graphics();
+  /** The tiles a lesson's demonstration pointer drags across, and when it started. */
+  private pointerPath: readonly Hex[] = [];
+  private pointerStarted = 0;
   private readonly highlightLayer = new Graphics();
   /** Tiles a lesson is pointing at. */
   private highlights: readonly Hex[] = [];
@@ -226,6 +269,7 @@ export class Board {
       this.selectionLayer,
       this.moveLayer,
       this.introLayer,
+      this.pointerLayer,
     );
     this.moveLayer.addChild(this.trails, this.bursts);
     app.stage.addChild(this.world);
@@ -235,7 +279,9 @@ export class Board {
       this.animatePops();
       this.animateRings();
       this.animateFlights();
+      this.animateFloaters();
       this.drawHighlights();
+      this.drawPointer();
     });
     this.attachInput();
   }
@@ -257,6 +303,16 @@ export class Board {
    * Rebuild everything from the full game view. A board appearing where there was none (a new
    * match) is fitted to the screen; a refresh of the same match keeps the player's view.
    */
+  /** When (performance.now) an army last reached its tile and the tile changed to match. */
+  lastLandAt = 0;
+
+  /** How many armies are still on their way to a tile that will change when they get there. */
+  get pendingLandings(): number {
+    let waiting = 0;
+    for (const flight of this.flights) if (!flight.landed) waiting++;
+    return waiting;
+  }
+
   setAll(game: GameView): void {
     const fresh = this.views.size === 0;
     this.pops.clear();
@@ -264,11 +320,13 @@ export class Board {
     this.clearFlights();
     this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.views.clear();
-    this.clouds.clear();
+    // A whole new board starts with its fog in place. A fresh look at the same board (the match
+    // ended, or someone surrendered, and everything is revealed) keeps the clouds, so they can fade.
+    if (fresh) this.clouds.clear();
     this.drawCoast(game);
     this.vision = visionFor(game);
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
-    this.coverTiles(game, Object.keys(game.tiles), true);
+    this.coverTiles(game, Object.keys(game.tiles), fresh);
     if (fresh && this.views.size > 0) this.fitToBoard();
   }
 
@@ -276,6 +334,88 @@ export class Board {
   setHighlights(hexes: readonly Hex[]): void {
     this.highlights = hexes;
     if (hexes.length === 0) this.highlightLayer.clear();
+  }
+
+  /**
+   * Show how to give an order: a pointer presses on the first tile, drags across the rest, and
+   * lets go, over and over. Used by the tutorial. An empty path stops it.
+   */
+  setPointer(path: readonly Hex[]): void {
+    this.pointerPath = path.length >= 2 ? path : [];
+    this.pointerStarted = performance.now();
+    if (this.pointerPath.length === 0) this.pointerLayer.clear();
+  }
+
+  private drawPointer(): void {
+    const path = this.pointerPath;
+    if (path.length < 2) return;
+    const hops = path.length - 1;
+    // One demonstration: fade in, press, drag the whole line in one smooth sweep, let go, fade.
+    const APPEAR = 450;
+    const PRESS = 180;
+    const DRAG = 600 + 380 * hops;
+    const RELEASE = 200;
+    const REST = 600;
+    const total = APPEAR + PRESS + DRAG + RELEASE + REST;
+    const t = (performance.now() - this.pointerStarted) % total;
+    const centers = path.map((hex) => hexToPixel(hex));
+    const k = Math.max(1, 0.5 / this.world.scale.x);
+    const g = this.pointerLayer;
+    g.clear();
+
+    // How far along the line it is (0 to 1), how much it fades, and how pressed it looks.
+    let along = 0;
+    let alpha = 1;
+    let press = 0;
+    if (t < APPEAR) {
+      alpha = t / APPEAR;
+    } else if (t < APPEAR + PRESS) {
+      press = (t - APPEAR) / PRESS;
+    } else if (t < APPEAR + PRESS + DRAG) {
+      press = 1;
+      const u = (t - APPEAR - PRESS) / DRAG;
+      along = u * u * (3 - 2 * u);
+    } else if (t < APPEAR + PRESS + DRAG + RELEASE) {
+      along = 1;
+      press = 1 - (t - APPEAR - PRESS - DRAG) / RELEASE;
+    } else {
+      along = 1;
+      alpha = 1 - (t - APPEAR - PRESS - DRAG - RELEASE) / REST;
+    }
+
+    // The point that far along the whole line (by distance, so the speed is even).
+    const lengths = centers
+      .slice(1)
+      .map((c, i) => Math.hypot(c.x - centers[i]!.x, c.y - centers[i]!.y));
+    const wanted = along * lengths.reduce((sum, l) => sum + l, 0);
+    let travelled = 0;
+    let hop = 0;
+    while (hop < hops - 1 && travelled + lengths[hop]! < wanted) travelled += lengths[hop++]!;
+    const from = centers[hop]!;
+    const to = centers[hop + 1]!;
+    const local = lengths[hop]! > 0 ? Math.min(1, (wanted - travelled) / lengths[hop]!) : 1;
+    const x = from.x + (to.x - from.x) * local;
+    const y = from.y + (to.y - from.y) * local;
+
+    // The line it has dragged so far.
+    if (along > 0) {
+      g.moveTo(centers[0]!.x, centers[0]!.y);
+      for (let i = 1; i <= hop; i++) g.lineTo(centers[i]!.x, centers[i]!.y);
+      g.lineTo(x, y);
+      g.stroke({ width: 6 * k, color: 0xffffff, alpha: 0.45 * alpha, cap: 'round', join: 'round' });
+    }
+    // The pointer itself: an arrow cursor whose tip is on the spot. It shrinks a lot when pressed.
+    const s = (1.08 - 0.38 * press) * k;
+    const cursor = [0, 0, 0, 20, 5, 15.5, 8.6, 23, 12, 21.5, 8.6, 14.5, 15, 14].map((v, i) =>
+      i % 2 === 0 ? x + v * s : y + v * s,
+    );
+    g.poly(cursor.map((v, i) => (i % 2 === 0 ? v + 2 * k : v + 3 * k))).fill({
+      color: 0x000000,
+      alpha: 0.3 * alpha,
+    });
+    g.poly(cursor)
+      .fill({ color: 0xffffff, alpha })
+      .stroke({ width: 1.8 * k, color: 0x10151c, alpha, join: 'round' });
   }
 
   private drawHighlights(): void {
@@ -310,12 +450,9 @@ export class Board {
    * so the fog does not lift before the army arrives.
    */
   refreshVision(game: GameView): void {
-    const staleOwners = new Map<string, string | null>();
-    for (const key of this.held) {
-      const view = this.views.get(key);
-      if (view) staleOwners.set(key, view.owner);
-    }
-    const next = visionFor(game, staleOwners);
+    // Who owns what is known the moment the tick arrives, so the fog reacts at once, without
+    // waiting for an army to finish walking onto its tile.
+    const next = visionFor(game);
     const previous = this.vision;
     this.vision = next;
     const changed: string[] = [];
@@ -348,8 +485,26 @@ export class Board {
       const level = this.levelOf(key);
       const center = hexToPixel(tile);
       let cover: Cover | null = null;
-      if (level === 'hidden') cover = { kind: 'hidden' };
-      else if (level === 'far') {
+      if (level === 'hidden') {
+        // Neighbors that are hidden too sometimes share one bigger cloud with this tile.
+        const joins: Point[] = [];
+        let hiddenNeighbors = 0;
+        let lean = { x: 0, y: 0 };
+        for (const [dq, dr] of EDGE_NEIGHBORS) {
+          const next = { q: tile.q + dq, r: tile.r + dr };
+          if (this.levelOf(hexKey(next)) !== 'hidden' || !game.tiles[hexKey(next)]) continue;
+          const there = hexToPixel(next);
+          hiddenNeighbors++;
+          lean = { x: lean.x + there.x - center.x, y: lean.y + there.y - center.y };
+          if (!drawsMerge(tile, next) || !cloudsMerge(tile, next)) continue;
+          joins.push({ x: there.x - center.x, y: there.y - center.y });
+        }
+        // A tile surrounded by hidden ground sometimes anchors a still bigger cloud.
+        const swell = isBigCloud(tile, hiddenNeighbors)
+          ? { x: lean.x / hiddenNeighbors, y: lean.y / hiddenNeighbors }
+          : null;
+        cover = { kind: 'hidden', joins, swell };
+      } else if (level === 'far') {
         // Keep clear the edges that face tiles the player sees in full: that is where the
         // owner's color and the kind of tile show through.
         let nx = 0;
@@ -430,6 +585,7 @@ export class Board {
     for (const move of moves) {
       if (move.troops <= 0) continue;
       const color = playerColor(game, move.player) ?? 0xffffff;
+      if (move.player === game.playerId) playSound('army.depart');
       const token = new Container();
       // A solid disc in the player's color on a soft dark shadow.
       const disc = new Graphics()
@@ -461,6 +617,25 @@ export class Board {
       const target = hexKey(move.to);
       this.held.add(target);
       const winner = move.clash !== undefined && move.clash.survivors > 0;
+      // An army walking onto a tile with troops on it (that is not its own) has a battle to fight.
+      const held = this.views.get(target);
+      const defenders = held && held.label.text !== '' ? Number(held.label.text) : 0;
+      const battle =
+        !move.clash && defenders > 0 && held?.owner !== move.player
+          ? battleOutcome(move.troops, defenders, game.tiles[target], move.player)
+          : undefined;
+      const from = hexToPixel(move.from);
+      const to = hexToPixel(move.to);
+      if (battle) {
+        // What each side lost floats up in its own color when the armies hit: from the army (where
+        // it stops at the tile's edge) and from the number on the tile.
+        const delay = BATTLE_AT * clashDuration;
+        const owner = held?.owner ?? null;
+        const defenderColor = (owner === null ? null : playerColor(game, owner)) ?? NEUTRAL_TROOPS;
+        const stop = { x: from.x + (to.x - from.x) * 0.68, y: from.y + (to.y - from.y) * 0.68 };
+        this.floatLoss(battle.lost, color, stop, delay);
+        this.floatLoss(battle.defenderLost, defenderColor, to, delay);
+      }
       this.flights.add({
         token,
         label,
@@ -468,17 +643,72 @@ export class Board {
         to: hexToPixel(move.to),
         color,
         started: performance.now(),
-        duration: move.clash ? clashDuration : duration,
+        duration: move.clash || battle ? clashDuration : duration,
+        player: move.player,
         target,
         game,
         // The loser's tile (the winner's start) is settled once the fight is over.
-        landAt: move.clash ? (winner ? 0.85 : CLASH_END) : LAND_AT,
+        landAt: move.clash ? (winner ? 0.85 : CLASH_END) : battle ? BATTLE_LAND_AT : LAND_AT,
         ...(move.clash ? { clash: move.clash } : {}),
-        drawsBurst: move.clash !== undefined && hexKey(move.from) < target,
+        ...(battle ? { battle } : {}),
+        drawsBurst:
+          battle !== undefined || (move.clash !== undefined && hexKey(move.from) < target),
         landed: false,
       });
     }
     this.animateFlights();
+  }
+
+  /** A number that rises slowly from a spot on the board and fades: troops lost in a battle. */
+  private floatLoss(amount: number, color: number, at: Point, delayMs: number): void {
+    if (amount <= 0) return;
+    const text = new Text({
+      text: `-${amount}`,
+      style: {
+        fontSize: 17,
+        fontWeight: '800',
+        fill: color,
+        stroke: { color: 0x0e1016, width: 4, join: 'round' },
+        fontFamily: 'system-ui, sans-serif',
+      },
+      resolution: this.textResolution * 2,
+    });
+    text.anchor.set(0.5);
+    text.alpha = 0;
+    this.moveLayer.addChild(text);
+    this.floaters.add({ text, at, started: performance.now() + delayMs });
+  }
+
+  private animateFloaters(): void {
+    if (this.floaters.size === 0) return;
+    const now = performance.now();
+    const k = Math.max(1, 0.55 / this.world.scale.x);
+    for (const floater of this.floaters) {
+      const t = (now - floater.started) / FLOAT_MS;
+      if (t >= 1) {
+        this.floaters.delete(floater);
+        floater.text.destroy();
+        continue;
+      }
+      if (t < 0) continue;
+      const { text, at } = floater;
+      // It rises steadily rather than easing out, and fades over its last stretch.
+      text.position.set(at.x, at.y - (10 + 13.6 * t) * k);
+      text.scale.set(k * (1 + 0.3 * popCurve(Math.min(1, t * 2.7), 0.5)));
+      text.alpha = Math.min(t / 0.1, 1 - smoothstep(Math.max(0, (t - 0.5) / 0.5)));
+    }
+  }
+
+  /** The sound of an army arriving: a tile taken, an attack failing, a tile lost or held. */
+  private landingSound(flight: Flight, oldOwner: string | null, newOwner: string | null): void {
+    const me = flight.game.playerId;
+    if (me === null || flight.clash) return;
+    if (flight.player === me) {
+      if (flight.battle && !flight.battle.won) playSound('tile.captureFailed');
+      else if (newOwner === me && oldOwner !== me) playSound('tile.capture');
+    } else if (oldOwner === me) {
+      playSound(newOwner === me ? 'tile.defended' : 'tile.lost');
+    }
   }
 
   private animateFlights(): void {
@@ -494,9 +724,12 @@ export class Board {
       // The tile changes a moment before the army gets there, so there is no wait at the end.
       if (!flight.landed && t >= flight.landAt) {
         flight.landed = true;
+        this.lastLandAt = performance.now();
+        const oldOwner = this.views.get(flight.target)?.owner ?? null;
         this.held.delete(flight.target);
         const tile = flight.game.tiles[flight.target];
         if (tile && !this.held.has(flight.target)) this.updateTiles([tile], flight.game);
+        this.landingSound(flight, oldOwner, flight.game.tiles[flight.target]?.owner ?? null);
         // Arriving can open up new ground to see.
         this.refreshVision(flight.game);
       }
@@ -510,7 +743,27 @@ export class Board {
       const dy = flight.to.y - flight.from.y;
       let e: number;
       let scale = k;
-      if (!clash) {
+      if (flight.battle) {
+        // Up to the tile's edge, then the fight: a beaten army swells and fades where it stands,
+        // a winning one pushes in and gives way to the tile it has taken.
+        const fight = Math.min(1, Math.max(0, (t - BATTLE_AT) / (BATTLE_END - BATTLE_AT)));
+        if (t >= BATTLE_AT) {
+          // The army shrinks to what survived.
+          flight.label.text = String(flight.battle.remaining);
+        }
+        if (t < BATTLE_AT) {
+          e = 0.8 * smoothstep(t / BATTLE_AT);
+        } else if (flight.battle.won) {
+          e = 0.8 + 0.2 * fight;
+          scale = k * (1 + 0.25 * popCurve(fight, 0.4));
+          flight.token.alpha =
+            t < BATTLE_LAND_AT ? 1 : 1 - smoothstep((t - BATTLE_LAND_AT) / (1 - BATTLE_LAND_AT));
+        } else {
+          e = 0.8;
+          scale = k * (1 + 0.6 * fight);
+          flight.token.alpha = 1 - fight;
+        }
+      } else if (!clash) {
         // A gentle ease: a little slower at both ends, never a stop.
         const smooth = t * t * (3 - 2 * t);
         e = t + (smooth - t) * EASE;
@@ -548,10 +801,12 @@ export class Board {
 
   /** The flash where two armies meet: a ring spreading out, and sparks flying off. */
   private drawBurst(flight: Flight, t: number, k: number): void {
-    const p = (t - (CLASH_AT - 0.04)) / 0.4;
+    const battle = flight.battle !== undefined;
+    const p = (t - ((battle ? BATTLE_AT : CLASH_AT) - 0.04)) / 0.4;
     if (p <= 0 || p >= 1) return;
-    const x = (flight.from.x + flight.to.x) / 2;
-    const y = (flight.from.y + flight.to.y) / 2;
+    // Armies meeting halfway fight in the middle; an attack fights on the tile attacked.
+    const x = battle ? flight.to.x : (flight.from.x + flight.to.x) / 2;
+    const y = battle ? flight.to.y : (flight.from.y + flight.to.y) / 2;
     const fade = 1 - p;
     this.bursts
       .circle(x, y, (6 + 26 * p) * k)
@@ -570,6 +825,8 @@ export class Board {
   private clearFlights(): void {
     for (const flight of this.flights) flight.token.destroy({ children: true });
     this.flights.clear();
+    for (const floater of this.floaters) floater.text.destroy();
+    this.floaters.clear();
     this.held.clear();
     this.trails.clear();
     this.bursts.clear();
@@ -749,9 +1006,28 @@ export class Board {
       running.final = spec;
       return;
     }
+    if (
+      (running?.kind === 'shrink' || running?.kind === 'grow') &&
+      spec.segments === running.final.segments
+    ) {
+      // Redrawn again (a neighbor changed hands) while it plays: keep playing, ending on the newest.
+      running.final = spec;
+      return;
+    }
     const animate = existed && previousSegments > 0 && !prefersReducedMotion();
     const now = performance.now();
-    if (animate && spec.filled < previousFilled && tile.troops > previousTroops) {
+    // The ring starting over means the city has just made a troop, whether or not that troop is
+    // still there (it may have marched out on the same tick, leaving the count no higher).
+    const startedOver =
+      spec.filled < previousFilled &&
+      (spec.segments === previousSegments || tile.troops > previousTroops);
+    if (animate && !startedOver && spec.segments === previousSegments - 1) {
+      const old: RingSpec = { ...spec, segments: previousSegments, filled: previousFilled };
+      this.ringAnims.set(view, { kind: 'shrink', start: now, spec: old, final: spec });
+    } else if (animate && !startedOver && spec.segments === previousSegments + 1) {
+      const old: RingSpec = { ...spec, segments: previousSegments, filled: previousFilled };
+      this.ringAnims.set(view, { kind: 'grow', start: now, spec: old, final: spec });
+    } else if (animate && startedOver) {
       const full: RingSpec = { ...spec, segments: previousSegments, filled: previousSegments };
       this.ringAnims.set(view, { kind: 'finish', start: now, spec: full, final: spec });
     } else if (animate && spec.segments === previousSegments && spec.filled > previousFilled) {
@@ -774,10 +1050,16 @@ export class Board {
     if (this.ringAnims.size === 0) return;
     const now = performance.now();
     for (const [view, anim] of this.ringAnims) {
-      const t = (now - anim.start) / (anim.kind === 'pop' ? RING_POP_MS : RING_FINISH_MS);
+      const duration =
+        anim.kind === 'pop'
+          ? RING_POP_MS
+          : anim.kind === 'shrink' || anim.kind === 'grow'
+            ? RING_SHRINK_MS
+            : RING_FINISH_MS;
+      const t = (now - anim.start) / duration;
       if (t >= 1) {
         this.ringAnims.delete(view);
-        drawRing(view.ring, anim.kind === 'finish' ? (anim.final ?? anim.spec) : anim.spec);
+        drawRing(view.ring, anim.kind === 'pop' ? anim.spec : (anim.final ?? anim.spec));
         continue;
       }
       if (anim.kind === 'pop') {
@@ -785,6 +1067,41 @@ export class Board {
         drawRing(view.ring, anim.spec, (i) =>
           i >= anim.from && i < anim.to ? { thick: 1 + 0.5 * bump, longer: bump } : undefined,
         );
+      } else if (anim.kind === 'grow') {
+        const n = anim.spec.segments;
+        // A segment that filled on the same tick pops while all this goes on.
+        const filledNow = Math.min(anim.final.filled, n);
+        const popFilled = newlyFilled(anim, now, n);
+        if (t < RING_GROW_SLIDE_END) {
+          // Make room: the segments there are slide apart.
+          const u = smoothstep(t / RING_GROW_SLIDE_END);
+          drawRing(view.ring, { ...anim.spec, filled: filledNow }, popFilled, false, n + u);
+        } else {
+          // The new segment swells in, a little past full size, and settles.
+          const u = (t - RING_GROW_SLIDE_END) / (1 - RING_GROW_SLIDE_END);
+          const size =
+            u < 0.6 ? 1.35 * smoothstep(u / 0.6) : 1.35 - 0.35 * smoothstep((u - 0.6) / 0.4);
+          drawRing(view.ring, { ...anim.final, filled: filledNow }, (i) =>
+            i === n ? { shrink: size } : popFilled(i),
+          );
+        }
+      } else if (anim.kind === 'shrink') {
+        const n = anim.spec.segments;
+        // A segment that filled on the same tick pops while all this goes on.
+        const filled = Math.min(anim.final.filled, n - 1);
+        const popFilled = newlyFilled(anim, now, n - 1);
+        if (t < RING_SHRINK_POP_END) {
+          // The last segment swells and vanishes.
+          const u = t / RING_SHRINK_POP_END;
+          const grow = u < 0.35 ? 1 + 0.4 * (u / 0.35) : 1.4 * (1 - smoothstep((u - 0.35) / 0.65));
+          drawRing(view.ring, { ...anim.spec, filled }, (i) =>
+            i === n - 1 ? { shrink: grow } : popFilled(i),
+          );
+        } else {
+          // The rest slide round to share the ring out again.
+          const u = smoothstep((t - RING_SHRINK_POP_END) / (1 - RING_SHRINK_POP_END));
+          drawRing(view.ring, { ...anim.spec, segments: n - 1, filled }, popFilled, false, n - u);
+        }
       } else if (t < RING_FINISH_POP_END) {
         // Every segment is in, and the last one pops like any other.
         const bump = popCurve(t / RING_FINISH_POP_END, POP_PEAK);
@@ -794,10 +1111,23 @@ export class Board {
         );
       } else {
         // Straight on from the pop, with no easing in so there is no pause: they all go
-        // together, each shrinking into itself while it fades.
+        // together, each getting thinner (and only a little shorter) while it fades.
         const u = (t - RING_FINISH_POP_END) / (1 - RING_FINISH_POP_END);
         const e = 1 - (1 - u) ** 2;
-        drawRing(view.ring, anim.spec, () => ({ shrink: 1 - 0.6 * e, alpha: 1 - e }), true);
+        const n = anim.spec.segments;
+        // If the ring also lost a segment on this tick, the others slide round to fill its place
+        // as they fade, and the segment that is going fades out ahead of the rest.
+        const losing = anim.final !== null && anim.final.segments === n - 1;
+        drawRing(
+          view.ring,
+          anim.spec,
+          (i) =>
+            losing && i === n - 1
+              ? { thin: 1 - 0.85 * e, short: 1 - 0.1 * e, alpha: Math.max(0, 1 - 3 * e) }
+              : { thin: 1 - 0.85 * e, short: 1 - 0.1 * e, alpha: 1 - e },
+          losing ? n - 1 : true,
+          losing ? n - e : n,
+        );
       }
     }
   }
@@ -1078,6 +1408,39 @@ function ringSpec(
   };
 }
 
+/**
+ * How a fight turned out for the army that attacked: what is left of it, and how many it lost.
+ * Read from the tile afterwards, which holds the winner's survivors.
+ */
+function battleOutcome(
+  troops: number,
+  defenders: number,
+  after: Tile | undefined,
+  player: string,
+): { won: boolean; remaining: number; lost: number; defenderLost: number } {
+  const won = after?.owner === player;
+  const remaining = won ? Math.min(troops, after?.troops ?? 0) : 0;
+  // A defender that held keeps what is left on the tile; one that was beaten lost everything.
+  const defenderLost = won ? defenders : Math.max(0, defenders - (after?.troops ?? 0));
+  return { won, remaining, lost: troops - remaining, defenderLost };
+}
+
+/**
+ * The pop for segments that filled during a ring's slide (a farm changed hands on the tick the
+ * ring also advanced): the look for each of them, for `limit` segments of the ring.
+ */
+function newlyFilled(
+  anim: { start: number; spec: RingSpec; final: RingSpec },
+  now: number,
+  limit: number,
+): (index: number) => SegmentLook | undefined {
+  const bump = popCurve(Math.min(1, (now - anim.start) / RING_POP_MS), POP_PEAK);
+  return (i) =>
+    i >= anim.spec.filled && i < anim.final.filled && i < limit
+      ? { thick: 1 + 0.5 * bump, longer: bump }
+      : undefined;
+}
+
 /** How a segment differs from the usual while it animates. */
 interface SegmentLook {
   /** Thickness multiplier. */
@@ -1086,6 +1449,10 @@ interface SegmentLook {
   longer?: number;
   /** Multiplies the whole segment, length and thickness, about its own middle. */
   shrink?: number;
+  /** Multiplies the thickness alone. */
+  thin?: number;
+  /** Multiplies the length alone. */
+  short?: number;
   alpha?: number;
 }
 
@@ -1097,10 +1464,13 @@ function drawRing(
   g: Graphics,
   spec: RingSpec,
   look?: (index: number) => SegmentLook | undefined,
-  track = false,
+  /** Draw the faint empty ring underneath: `true` for every segment, or how many of them. */
+  track: boolean | number = false,
+  /** How many segments' worth of the ring each one is spaced for (the default is all of them). */
+  slots = spec.segments,
 ): void {
   g.clear();
-  const step = (Math.PI * 2) / spec.segments;
+  const step = (Math.PI * 2) / slots;
   const gap = Math.min(0.12, step * 0.3);
   // Both ends are round, so the line is shortened by its own radius at each end: the rounded tips
   // then land where flat ends would have been. A segment grows about its own middle, by a fixed
@@ -1108,9 +1478,10 @@ function drawRing(
   const growth = SEGMENT_GROWTH * gap;
   const arc = (i: number, look: SegmentLook, color: number, alpha: number): void => {
     const shrink = look.shrink ?? 1;
-    const width = SEGMENT_WIDTH * (look.thick ?? 1) * shrink;
+    const width = SEGMENT_WIDTH * (look.thick ?? 1) * shrink * (look.thin ?? 1);
     const middle = -Math.PI / 2 + (i + 0.5) * step;
-    const length = ((step - gap) / 2) * shrink + (growth / 2) * (look.longer ?? 0);
+    const length =
+      ((step - gap) / 2) * shrink * (look.short ?? 1) + (growth / 2) * (look.longer ?? 0);
     const half = Math.max(0.001, length - width / 2 / RING_RADIUS);
     // Walked as a polyline: a lone arc segment can leave its start cap flat.
     const points = Math.max(2, Math.ceil((half * 2) / 0.08));
@@ -1123,7 +1494,8 @@ function drawRing(
     }
     g.stroke({ width, color, alpha, cap: 'round', join: 'round' });
   };
-  if (track) for (let i = 0; i < spec.segments; i++) arc(i, {}, spec.color, 0.22);
+  const trackCount = track === true ? spec.segments : track === false ? 0 : track;
+  for (let i = 0; i < trackCount; i++) arc(i, {}, spec.color, 0.22);
   for (let i = 0; i < spec.segments; i++) {
     const on = i < spec.filled;
     const color = on && spec.paused ? 0xffffff : spec.color;

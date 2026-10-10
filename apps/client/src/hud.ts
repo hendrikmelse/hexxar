@@ -5,8 +5,6 @@ import './hud.css';
 
 const css = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;
 
-/** How long the controls reminder stays bright before it fades into the background. */
-const HINT_BRIGHT_MS = 14_000;
 /** A "Really surrender?" prompt goes back to a plain button after this long. */
 const CONFIRM_MS = 4000;
 
@@ -44,12 +42,10 @@ export class Hud {
   private readonly rows = new Map<string, Row>();
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
-  private readonly hint = el('div', 'hint');
   private game: GameView | null = null;
   private lastTick = -1;
   /** How long the planning period was when we first saw it, for drawing the countdown ring. */
   private prepTotal = 0;
-  private hintTimer: ReturnType<typeof setTimeout> | null = null;
   private confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -101,14 +97,7 @@ export class Hud {
       cameraButton('', 'Show the whole board', () => actions.fit(), 'fit'),
     );
 
-    this.hint.append(
-      hintItem('Drag', 'from your land to queue moves'),
-      hintItem('Right-drag', 'pan'),
-      hintItem('Scroll', 'zoom'),
-      hintItem('Esc', 'cancel a drag'),
-    );
-
-    root.append(left, top, this.surrender, camera, this.hint);
+    root.append(left, top, this.surrender, camera);
     const frame = (): void => {
       this.updateTimer();
       requestAnimationFrame(frame);
@@ -117,7 +106,6 @@ export class Hud {
   }
 
   render(game: GameView): void {
-    const wasPlaying = this.game?.status === 'playing';
     this.game = game;
     const live = game.status === 'playing' || game.status === 'over';
     const me = game.playerId;
@@ -132,8 +120,6 @@ export class Hud {
 
     this.renderStandings(game, live);
     this.surrender.hidden = game.status !== 'playing' || eliminated;
-    // Once the match is over the result screen takes over; the reminder would only be in its way.
-    this.hint.hidden = game.status === 'over';
     if (this.surrender.hidden) this.resetSurrender();
 
     // The match result is shown by the results screen, not here.
@@ -146,9 +132,6 @@ export class Hud {
       kind = 'prep';
     }
     this.setBanner(text, kind);
-
-    // Remind new players of the controls, then let the reminder fade away.
-    if (game.status === 'playing' && !wasPlaying) this.brightenHint();
   }
 
   /** Before the first tick: the map is open for looking at and ordering, but nothing has moved. */
@@ -173,7 +156,7 @@ export class Hud {
       return {
         id,
         tiles: score?.tiles ?? 0,
-        troops: score?.troops ?? 0,
+        mobile: score?.mobile ?? 0,
         capacity: score?.capacity ?? 0,
         out: game.eliminated.includes(id),
       };
@@ -183,30 +166,51 @@ export class Hud {
       (a, b) =>
         Number(a.out) - Number(b.out) ||
         b.capacity - a.capacity ||
-        b.tiles - a.tiles ||
-        b.troops - a.troops,
+        b.mobile - a.mobile ||
+        b.tiles - a.tiles,
     );
 
     this.renderPie(game, standings);
 
+    // Where each row is now, so rows that move can slide from there to their new place.
+    const before = new Map<string, number>();
+    for (const [id, row] of this.rows) before.set(id, row.item.offsetTop);
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
     standings.forEach((standing, index) => {
       let row = this.rows.get(standing.id);
+      let fresh = false;
       if (!row) {
         row = createRow();
+        fresh = true;
         const color = playerColor(game, standing.id);
         if (color !== null) row.item.style.setProperty('--c', css(color));
         this.rows.set(standing.id, row);
       }
+      const shown = String(standing.mobile);
+      if (!fresh && !calm && row.troops.textContent !== shown) restartAnimation(row.troops, 'bump');
       const you = standing.id === game.playerId;
       row.label.textContent = game.names[standing.id] ?? names.get(standing.id) ?? standing.id;
-      row.troops.textContent = String(standing.troops);
+      row.troops.textContent = String(standing.mobile);
       row.item.classList.toggle('me', you);
       row.item.classList.toggle('out', standing.out);
       row.item.dataset.rank = standing.out ? '' : String(index + 1);
       // Re-appending in order keeps the list sorted without rebuilding the rows.
       if (this.standings.children[index] !== row.item)
         this.standings.insertBefore(row.item, this.standings.children[index] ?? null);
+      if (fresh && !calm && before.size > 0) restartAnimation(row.item, 'enter');
     });
+
+    if (calm) return;
+    for (const [id, row] of this.rows) {
+      const from = before.get(id);
+      const shift = from === undefined ? 0 : from - row.item.offsetTop;
+      if (shift !== 0)
+        row.item.animate(
+          [{ transform: `translateY(${shift}px)` }, { transform: 'translateY(0)' }],
+          { duration: 320, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+        );
+    }
   }
 
   /**
@@ -266,12 +270,6 @@ export class Hud {
     this.surrender.classList.remove('confirm');
   }
 
-  private brightenHint(): void {
-    this.hint.classList.remove('faded');
-    if (this.hintTimer) clearTimeout(this.hintTimer);
-    this.hintTimer = setTimeout(() => this.hint.classList.add('faded'), HINT_BRIGHT_MS);
-  }
-
   /** The timer, every frame: a ring filling over each tick, or draining over the planning period. */
   private updateTimer(): void {
     const game = this.game;
@@ -314,7 +312,7 @@ function createRow(): Row {
   const label = el('span', '');
   name.append(label);
   const troops = el('span', 'stat troops');
-  troops.title = 'Troops';
+  troops.title = 'Mobile troops';
   item.append(el('span', 'swatch'), name, troops);
   return { item, label, troops };
 }
@@ -327,18 +325,10 @@ function cameraButton(
 ): HTMLButtonElement {
   const button = el('button', icon ? `icon ${icon}` : '');
   button.textContent = text;
-  button.title = label;
+  button.dataset.tip = label;
   button.setAttribute('aria-label', label);
   button.addEventListener('click', onClick);
   return button;
-}
-
-function hintItem(key: string, text: string): HTMLElement {
-  const item = el('span', 'hint-item');
-  const cap = el('kbd', '');
-  cap.textContent = key;
-  item.append(cap, document.createTextNode(text));
-  return item;
 }
 
 /** Play a CSS animation again from the start, even if it is already running. */

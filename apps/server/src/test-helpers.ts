@@ -62,6 +62,7 @@ export const options = {
   prepMs: 3000,
   earlyStartMs: 20_000,
   joinWaitMs: 5000,
+  fullWaitMs: 0,
   voteStartMs: 5000,
   statsMs: 0,
   afkMs: 120_000,

@@ -37,11 +37,18 @@ export class LocalMatch {
   /** The player's queued orders, oldest first. */
   queue: Order[] = [];
   nextTickAt: number | null = null;
+  /** How many of the player's orders have run so far. */
+  ordersRun = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
 
   constructor(private readonly options: LocalMatchOptions) {
     this.state = options.state;
+  }
+
+  /** Is the clock running? */
+  get isRunning(): boolean {
+    return this.running;
   }
 
   get config(): MatchConfig {
@@ -99,7 +106,10 @@ export class LocalMatch {
     const previous = this.state;
     const orders: Record<PlayerId, Order | undefined> = { ...(bot?.(previous) ?? {}) };
     const mine = this.queue.shift();
-    if (mine) orders[you] = mine;
+    if (mine) {
+      orders[you] = mine;
+      this.ordersRun += 1;
+    }
     const moves = executedMoves(previous, orders, config);
     this.state = resolveTick(previous, orders, config);
     const next = this.state;
