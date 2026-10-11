@@ -9,7 +9,7 @@ import {
 } from '@hexxar/shared';
 import { playSound, preloadSounds } from './audio/audio.js';
 import { Board, playerColor } from './board.js';
-import { applyMessage, emptyGame } from './game.js';
+import { applyMessage, emptyGame, isWatching } from './game.js';
 import { Hud } from './hud.js';
 import { connect, loadToken, saveCode, saveToken } from './net.js';
 import { PathDraft } from './path.js';
@@ -58,6 +58,21 @@ function updateVisibility(): void {
   hudEl.classList.toggle('tutorial', appStore.get().tutorial !== null);
 }
 
+/** Whether the last thing drawn was for a watcher (out of the match, or it is over). */
+let wasWatching = false;
+
+/** Your own queue, or (once you are out or it is over) every player's, each in their color. */
+function drawQueues(): void {
+  const others = Object.entries(game.queues);
+  if (!isWatching(game) || others.length === 0) {
+    board.drawQueue(game.queue, myColor());
+    return;
+  }
+  board.drawQueues(
+    others.map(([player, queue]) => ({ queue, color: playerColor(game, player) ?? 0xffffff })),
+  );
+}
+
 function render(change: ReturnType<typeof applyMessage>): void {
   if (!change) return;
   if (change.kind === 'all') {
@@ -74,7 +89,11 @@ function render(change: ReturnType<typeof applyMessage>): void {
     // The "you are here" effect is for the planning period only.
     if (game.tick > 0 || game.status !== 'playing') board.stopIntro();
   }
-  board.drawQueue(game.queue, myColor());
+  drawQueues();
+  // Becoming a watcher shows every generation ring, not only your own.
+  const watching = isWatching(game);
+  if (watching && !wasWatching) board.updateTiles(Object.values(game.tiles), game);
+  wasWatching = watching;
   if (draft.active && (change.kind === 'all' || !canPlay())) {
     draft.clear();
     showDraft();
@@ -108,6 +127,8 @@ function render(change: ReturnType<typeof applyMessage>): void {
 
 /** Where your land is: the tile you start on, shown to you before the first tick. */
 function startingHex(): Hex | null {
+  // A spectator has no starting tile.
+  if (game.playerId === null) return null;
   const mine = Object.values(game.tiles).filter((tile) => tile.owner === game.playerId);
   return mine[0] ?? null;
 }
@@ -160,6 +181,8 @@ function showSearching(): void {
     startVotes: 0,
     votesNeeded: 0,
     youVoted: false,
+    spectators: [],
+    spectating: false,
     serverTime: Date.now(),
     you: userId,
   };
@@ -177,8 +200,25 @@ function applyRoom(room: RoomView | null, previous: RoomView | null): void {
     clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,
     launching,
   });
-  if (!room || previous?.id !== room.id) clearMatch();
+  // Back to a private room after its match: the match is put away for the next one.
+  const backToRoom =
+    previous?.id === room?.id && previous?.state === 'finished' && room?.state === 'lobby';
+  if (!room || previous?.id !== room.id || backToRoom) clearMatch();
+  if (room && previous) tellNewHost(room, previous);
   if (!room) joinFromUrl();
+}
+
+/** Someone else was host of this private room, and now you are: say how that came about. */
+function tellNewHost(room: RoomView, previous: RoomView): void {
+  if (room.visibility !== 'private' || previous.id !== room.id) return;
+  if (room.host !== room.you || previous.host === room.you) return;
+  const old = previous.players.find((player) => player.userId === previous.host);
+  const gone = old !== undefined && !room.players.some((player) => player.userId === old.userId);
+  const message =
+    gone && previous.state === 'lobby' && room.state === 'lobby'
+      ? `${old.name} left the game. You are now the host.`
+      : 'You are now the host.';
+  appStore.set({ info: { message }, infoSeq: appStore.get().infoSeq + 1 });
 }
 
 /** How long after the tile changes color the defeat, game over or victory card comes up. */
@@ -191,7 +231,7 @@ function stopWatchingForCard(): void {
   cardWatch = null;
 }
 
-/** Result sounds already played this match, so each plays once (surrendering counts as defeat). */
+/** Result sounds already played this match, so each plays once. */
 const playedResults = new Set<string>();
 
 function playResult(kind: 'defeat' | 'victory' | 'gameOver'): void {
@@ -233,6 +273,7 @@ function clearMatch(): void {
   stopWatchingForCard();
   playedResults.clear();
   Object.assign(game, emptyGame());
+  wasWatching = false;
   board.stopIntro();
   draft.clear();
   showDraft();
@@ -265,20 +306,19 @@ const board = await Board.create(appEl, {
     // Once the player is doing it themselves, the demonstration goes away.
     board.setPointer([]);
     draft.begin(hex);
-    playSound('order.select');
     showDraft();
   },
   move(hex) {
     const steps = draft.path.length;
     draft.extendTo(hex, tileExists);
     if (draft.path.length > steps) playSound('order.step');
+    else if (draft.path.length < steps) playSound('order.back');
     showDraft();
   },
   end() {
     if (canPlay()) {
       const moves = draft.moves();
       for (const order of moves) send({ type: 'order', order });
-      if (moves.length > 0) playSound('order.queue');
     }
     draft.clear();
     showDraft();
@@ -316,10 +356,23 @@ document.addEventListener(
   true,
 );
 
+/** What the surrender button says when someone tries it in the tutorial. */
+const CHEEKY_SURRENDERS = [
+  'Surrendering already? We have not even started.',
+  'Nice try. Quitters do not graduate.',
+  'There is nobody here to surrender to.',
+  'Bold move, giving up on the tutorial.',
+  'Your troops would like a word.',
+  'Surrender denied. Please try winning instead.',
+];
+
 const hud = new Hud(hudEl, {
+  // The sound comes with the Defeat or Game over card, like any other way of being out.
   surrender: () => {
-    playResult('defeat');
-    send({ type: 'surrender' });
+    // In the tutorial there is nothing to give up, and no one to say so but the button.
+    if (tutorial.active)
+      hud.say(CHEEKY_SURRENDERS[Math.floor(Math.random() * CHEEKY_SURRENDERS.length)]!);
+    else send({ type: 'surrender' });
   },
   fit: () => board.fitToBoard(),
   zoom: (factor) => board.zoomBy(factor),
@@ -339,7 +392,7 @@ const tutorial = new TutorialRunner({
     board.setBottomInset(view ? TUTORIAL_CARD_SPACE : 0);
     appStore.set({ tutorial: view });
   },
-  highlight: (hexes) => board.setHighlights(hexes),
+  highlight: (hexes, rings) => board.setHighlights(hexes, rings),
   pointer: (path) => board.setPointer(path),
   settled: () => board.pendingLandings === 0,
   leave: () => undefined,
@@ -408,6 +461,9 @@ mountUi(document.getElementById('ui')!, {
     }
     connection.send({ type: 'leaveRoom' });
   },
+  returnToRoom: () => connection.send({ type: 'returnToRoom' }),
+  becomeSpectator: () => connection.send({ type: 'becomeSpectator' }),
+  becomePlayer: () => connection.send({ type: 'becomePlayer' }),
   spectate: () => appStore.set({ spectating: true }),
   launched: () => {
     playSound('match.begin');
@@ -416,6 +472,7 @@ mountUi(document.getElementById('ui')!, {
   startTutorial: () => tutorial.start(0),
   tutorialNext: () => tutorial.next(),
   tutorialBack: () => tutorial.back(),
+  tutorialStartClock: () => tutorial.startClock(),
   tutorialReset: () => tutorial.retry(),
   tutorialRetry: () => tutorial.retry(),
   tutorialJump: (lesson) => tutorial.jump(lesson),
@@ -423,6 +480,10 @@ mountUi(document.getElementById('ui')!, {
 });
 
 appStore.subscribe(updateVisibility);
+appStore.subscribe(() => {
+  const { room, tutorial } = appStore.get();
+  hud.setSpectators(tutorial ? 0 : (room?.spectators.length ?? 0));
+});
 updateVisibility();
 hud.render(game);
 
@@ -444,7 +505,8 @@ const url =
     : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
 const connection = connect(url, playerName, {
   onOpen: () => appStore.set({ connected: true }),
-  onClose: () => appStore.set({ connected: false, denied: null }),
+  // The numbers are only known while connected: show "..." rather than stale ones.
+  onClose: () => appStore.set({ connected: false, denied: null, activity: null }),
   onMessage: (message) => {
     switch (message.type) {
       case 'welcome':

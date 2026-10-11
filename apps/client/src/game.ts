@@ -31,6 +31,8 @@ export interface GameView {
   clockOffset: number;
   /** Your queued orders, oldest first. */
   queue: Order[];
+  /** Every player's queued orders, oldest first. Only known once you are watching (out, or it is over). */
+  queues: Record<PlayerId, Order[]>;
   /** Every player's strength, for the scoreboard. Not hidden by fog. */
   scores: PlayerScore[];
   /** Names for players, when the room does not have them (the tutorial's rivals). */
@@ -53,6 +55,16 @@ export function visionFor(
   return visionOf(game.tiles, playerId, ownerOf);
 }
 
+const copyQueues = (queues: Record<PlayerId, Order[]> | undefined): Record<PlayerId, Order[]> =>
+  Object.fromEntries(Object.entries(queues ?? {}).map(([player, list]) => [player, [...list]]));
+
+/** Out of the match, or it is over: a viewer who may see the whole board, every queue and every ring. */
+export function isWatching(game: GameView): boolean {
+  // No player id in a match you are in the room of is a spectator's view.
+  if (game.playerId === null) return game.status !== 'idle';
+  return game.status === 'over' || game.eliminated.includes(game.playerId);
+}
+
 export function emptyGame(): GameView {
   return {
     status: 'idle',
@@ -67,6 +79,7 @@ export function emptyGame(): GameView {
     nextTickAt: null,
     clockOffset: 0,
     queue: [],
+    queues: {},
     scores: [],
     names: {},
   };
@@ -91,6 +104,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       game.winner = message.state.winner;
       game.tick = message.state.tick;
       game.queue = message.queue;
+      game.queues = copyQueues(message.queues);
       game.nextTickAt = message.nextTickAt;
       game.clockOffset = message.serverTime - Date.now();
       game.scores = message.scores;
@@ -112,10 +126,20 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       if (message.winner !== null) game.status = 'over';
       // Queues are append-only, so what remains is always the newest orders.
       game.queue = message.queueLength === 0 ? [] : game.queue.slice(-message.queueLength);
+      if (message.queues) game.queues = copyQueues(message.queues);
+      else if (message.queueLengths) {
+        for (const [player, length] of Object.entries(message.queueLengths)) {
+          const queue = game.queues[player] ?? [];
+          game.queues[player] = length === 0 ? [] : queue.slice(-length);
+        }
+      }
       return { kind: 'tiles', tiles: touched, moves: message.moves ?? [] };
     }
     case 'queued':
-      game.queue.push(message.order);
+      // Someone else's order is only told to watchers.
+      if (message.player !== undefined && message.player !== game.playerId) {
+        (game.queues[message.player] ??= []).push(message.order);
+      } else game.queue.push(message.order);
       return { kind: 'queue' };
     case 'rejected':
       game.notice = message.reason;

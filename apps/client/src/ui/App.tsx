@@ -4,11 +4,13 @@ import type { RoomMode, RoomSettingsPatch } from '@hexxar/shared';
 import { useApp } from '../store.js';
 import { Connecting } from './Connecting.js';
 import { Gate } from './Gate.js';
+import { MapsPage } from './MapsPage.js';
 import { Loading } from './Loading.js';
 import { Lobby } from './Lobby.js';
 import { Menu } from './Menu.js';
 import { Out } from './Out.js';
 import { Results } from './Results.js';
+import { FullscreenToggle } from './FullscreenToggle.js';
 import { SoundToggle } from './SoundToggle.js';
 import { SoundPage } from './SoundPage.js';
 import { Tutorial } from './Tutorial.js';
@@ -24,11 +26,15 @@ export interface Actions {
   startGame(): void;
   voteStart(vote: boolean): void;
   leaveRoom(): void;
+  returnToRoom(): void;
+  becomeSpectator(): void;
+  becomePlayer(): void;
   spectate(): void;
   launched(): void;
   startTutorial(): void;
   tutorialNext(): void;
   tutorialBack(): void;
+  tutorialStartClock(): void;
   tutorialReset(): void;
   tutorialRetry(): void;
   tutorialJump(lesson: number): void;
@@ -44,7 +50,8 @@ function Toast() {
         {app.error && <ToastText message={app.error} />}
       </Popup>
       <Popup active={app.info} seq={app.infoSeq} className="toast info" role="status">
-        {app.info && <OutText players={app.info.players} />}
+        {app.info?.players && <OutText players={app.info.players} />}
+        {app.info?.message}
       </Popup>
     </>
   );
@@ -131,6 +138,7 @@ export function App({ actions }: { actions: Actions }) {
     <>
       <Screen actions={actions} />
       <Toast />
+      <FullscreenToggle />
       <SoundToggle />
     </>
   );
@@ -140,6 +148,8 @@ function Screen({ actions }: { actions: Actions }) {
   const app = useApp();
   // The dev sound list, at /?sounds.
   if (new URLSearchParams(location.search).has('sounds')) return <SoundPage />;
+  // The dev map previewer, at /?maps.
+  if (new URLSearchParams(location.search).has('maps')) return <MapsPage />;
   if (app.tutorial) return <Tutorial actions={actions} view={app.tutorial} />;
   if (!app.connected) {
     // Once we have been connected, a dropped connection is a reconnect.
@@ -154,5 +164,6 @@ function Screen({ actions }: { actions: Actions }) {
   if (room.state === 'running' && app.launching) return <Loading actions={actions} />;
   // The end-of-match cards wait for their moment (see `cardReady`).
   if (room.state === 'finished') return app.cardReady ? <Results actions={actions} /> : null;
+  if (room.spectating) return <Out actions={actions} />;
   return app.eliminated && app.cardReady ? <Out actions={actions} /> : null;
 }

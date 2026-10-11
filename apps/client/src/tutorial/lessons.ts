@@ -13,7 +13,7 @@ import { visionFor, type GameView } from '../game.js';
 import { RIVAL, RIVAL_TWO, YOU, at, withTiles } from './maps.js';
 
 /** The parts of the screen a lesson can draw attention to. */
-export type HudTarget = 'timer' | 'pie' | 'list' | 'camera';
+export type HudTarget = 'timer' | 'pie' | 'list' | 'camera' | 'reference' | 'surrender';
 
 /** What a step can look at to decide whether the player has done what it asked. */
 export interface Ctx {
@@ -39,10 +39,14 @@ interface Step {
    * `after-order`, which waits until the player has queued an order and then starts.
    */
   readonly clock?: 'running' | 'paused' | 'after-order';
+  /** A button that starts the clock when the player has read the page and is ready to watch. */
+  readonly startButton?: string;
   /** Going forward onto this page keeps the board as the player left it, instead of resetting it. */
   readonly carry?: boolean;
   /** Tiles to point out with an outline. */
   readonly tiles?: readonly Hex[];
+  /** Tiles whose generation ring to point out with a yellow outline. */
+  readonly rings?: readonly Hex[];
   /** Show the player what to do: a pointer dragging across these tiles, over and over. */
   readonly drag?: readonly Hex[];
   /** Something on the screen to point out, with an arrow and (unless turned off) an outline. */
@@ -76,8 +80,8 @@ export interface Lesson {
   readonly steps: readonly Step[];
 }
 
-/** Slow enough to watch what is going on. */
-export const TUTORIAL_TICK_MS = 2200;
+/** The same length as a real match's default tick. */
+export const TUTORIAL_TICK_MS = 800;
 
 export const tutorialConfig = (lesson: Lesson): MatchConfig =>
   parseMatchConfig({ tickMs: TUTORIAL_TICK_MS, fog: 'off', ...lesson.config });
@@ -85,10 +89,6 @@ export const tutorialConfig = (lesson: Lesson): MatchConfig =>
 const NAMES = { [YOU]: 'You', [RIVAL]: 'Rival', [RIVAL_TWO]: 'Rival 2' };
 const TWO: PlayerId[] = [YOU, RIVAL];
 const THREE: PlayerId[] = [YOU, RIVAL, RIVAL_TWO];
-
-/** How much of the owned production the player has, from the scoreboard's numbers. */
-const capacityOf = (ctx: Ctx): number =>
-  ctx.game.scores.find((score) => score.player === YOU)?.capacity ?? 0;
 
 // ---------------------------------------------------------------------------------------------
 // 1. Ticks and orders
@@ -119,7 +119,7 @@ const ticks: Lesson = {
       done: (ctx) => ctx.owns(at(2, 1)),
     },
     {
-      text: 'Orders run one per tick, in order, and cannot be cancelled once queued. **Drag from your new tile across several tiles** to queue several consecutive orders. Capture the indicated tile.',
+      text: 'Orders run one per tick, in order, and cannot be cancelled once queued. **Drag from your new tile across several tiles** to queue several consecutive orders. Capture the indicated tile.\n\nNothing enters the queue until you **let go**. While dragging, backtrack to undo, or press **Escape** to cancel.',
       clock: 'after-order',
       // Where the page before leaves you: the tile beside your city taken, with the army on it.
       setup: (state) =>
@@ -138,12 +138,17 @@ const ticks: Lesson = {
 // 2. Making troops
 // ---------------------------------------------------------------------------------------------
 
-// Just you, on three rows: the city and a village with one tile between them.
-const FIELD = ['.......', '..Y.v..', '.......'];
-const fieldCity = at(2, 1);
+// The same board as the first lesson, with the city in the same place. A village goes in with one
+// tile between it and the city, but not until the page that is about it.
+const FIELD = STRIP;
+const fieldCity = stripCity;
 // The farms around the city, in order round it: each touches the next.
 const fieldRing = hexNeighbors(fieldCity);
-const fieldVillage = at(4, 1);
+const fieldVillage = at(3, 1);
+// The tile between them.
+const fieldBridge = at(2, 1);
+// Two tiles beyond the village: one nobody owns, to show what a village looks like before it is taken.
+const fieldNeutralVillage = at(5, 1);
 
 const generation: Lesson = {
   id: 'generation',
@@ -151,12 +156,13 @@ const generation: Lesson = {
   players: [YOU],
   names: NAMES,
   map: FIELD,
-  // Three of the eight segments are already full, so there is time to read before the first troop.
-  setup: (state) => withTiles(state, [{ at: fieldCity, set: { troops: 8, progress: 0 } }]),
+  // The ring is two segments short of full, so the second tick makes a troop.
+  setup: (state) => withTiles(state, [{ at: fieldCity, set: { troops: 8, progress: 6 } }]),
   steps: [
     {
-      text: 'Every tile holds an army, shown by its number. Some tiles make new troops. The ring shown on your city tile fills by one segment each tick. When it fills up, the city generates one troop. **Watch as a new troop is generated.**',
-      clock: 'running',
+      text: 'Every tile holds an army, shown by its number. Some tiles make new troops. The ring shown on your city tile fills by one segment each tick. When it fills up, the city generates one troop.\n\nThe ring has two segments empty. Press the button below to start the clock, and **watch as a new troop is generated.**',
+      startButton: 'Start the clock',
+      rings: [fieldCity],
       done: (ctx) => ctx.tile(fieldCity).troops > 8,
     },
     {
@@ -169,9 +175,28 @@ const generation: Lesson = {
     },
     {
       text: '**Villages** make troops too, but more slowly than cities: every **12 ticks** with no adjacent farms, and every **6 ticks** when fully surrounded. Farmland does not produce any troops on its own.',
+      clock: 'running',
+      // The village appears only now, so it won't be shown before it is explained, and it is yours,
+      // so that its ring shows.
+      setup: (state) =>
+        withTiles(state, [
+          { at: fieldCity, set: { troops: 9, progress: 0 } },
+          { at: fieldBridge, set: { owner: YOU, troops: 1 } },
+          { at: fieldVillage, set: { type: 'village', owner: YOU, troops: 4 } },
+          { at: fieldNeutralVillage, set: { type: 'village', troops: 4 } },
+        ]),
       tiles: [fieldVillage],
     },
     {
+      // Both producers sit at their caps with empty rings: nothing fills while they are full.
+      setup: (state) =>
+        withTiles(state, [
+          { at: fieldCity, set: { troops: 50, progress: 0 } },
+          { at: fieldBridge, set: { owner: YOU, troops: 1 } },
+          { at: fieldVillage, set: { type: 'village', owner: YOU, troops: 20, progress: 0 } },
+          { at: fieldNeutralVillage, set: { type: 'village', troops: 4 } },
+        ]),
+      clock: 'running',
       text: 'Production **stops at a cap**. Cities stop production at **50 troops**, and villages stop production at **20 troops**.',
     },
   ],
@@ -183,11 +208,13 @@ const generation: Lesson = {
 
 // A game partway through: you on the left, the rival on the right, neutral ground in between. Each
 // side's land is in one piece.
-const FRONT = ['..........', '.yyFee....', 'YyyeeeE...', '.yyee.....', '..........'];
-const frontFarm = at(2, 2);
-const rivalFarm = at(3, 2);
-const outpost = at(2, 1);
-const village = at(3, 1);
+// Two columns narrower than it began, with the corners cut off, so the board is a rounded strip.
+// (The left end stays square: your city's ring of neighbors must all be on the board.)
+const FRONT = [' ....... ', '..yyFee. ', '.YyyeeeE.', '..yyee.. ', ' ....... '];
+const frontFarm = at(3, 2);
+const rivalFarm = at(4, 2);
+const outpost = at(3, 1);
+const village = at(4, 1);
 // What the first page leaves behind: the rival's farm taken by the 5 troops sent at its 2.
 const takenFarm = [
   { at: frontFarm, set: { troops: 1 } },
@@ -208,7 +235,7 @@ const battles: Lesson = {
     ]),
   steps: [
     {
-      text: "Move onto a tile an opponent holds to perform a **battle**. The bigger army wins, and loses a number of troops equal to the strength of the loser's army. **Attack the rival's farm** next to your land.",
+      text: "Move onto an opponent's tile to perform a **battle**. The bigger army wins, and loses a number of troops equal to the strength of the loser's army. **Attack the rival's farm** next to your land.",
       clock: 'after-order',
       drag: [frontFarm, rivalFarm],
       done: (ctx) => ctx.owns(rivalFarm),
@@ -231,28 +258,12 @@ const battles: Lesson = {
           : null,
     },
     {
-      text: 'Your outpost now has 7 troops, so 6 can attack. **Attack the village again.**',
-      clock: 'after-order',
-      drag: [outpost, village],
-      setup: (state) =>
-        withTiles(state, [
-          ...takenFarm,
-          { at: outpost, set: { owner: YOU, troops: 7 } },
-          { at: village, set: { owner: RIVAL, troops: 4 } },
-        ]),
-      done: (ctx) => ctx.owns(village),
-      fail: (ctx) =>
-        ctx.ordersRun >= 1 && !ctx.owns(village)
-          ? "Not quite: send the outpost's whole army at the village."
-          : null,
-    },
-    {
-      // Where the page before leaves you: the village taken, with what was left of the army in it.
+      // Where the page before leaves you: the attack tied, so the rival still owns the village, with no troops.
       setup: (state) =>
         withTiles(state, [
           ...takenFarm,
           { at: outpost, set: { owner: YOU, troops: 1 } },
-          { at: village, set: { owner: YOU, troops: 1 } },
+          { at: village, set: { owner: RIVAL, troops: 0 } },
         ]),
       text: "If two armies attempt to swap tiles in the same tick, they meet halfway and fight with no bonuses. The winner's remaining troops continue to their destination.",
     },
@@ -290,10 +301,7 @@ const fog: Lesson = {
     ]),
   steps: [
     {
-      text: 'In a real game, you cannot see the whole map. **Tiles adjacent** to your own are **fully visible**. Tiles **two steps away** show their **owner and type, but not the troop count**. Everything else is hidden in the fog.',
-    },
-    {
-      text: "The rival's city is out there somewhere. **Explore until you find it.**",
+      text: "In a real game, you cannot see the whole map. **Tiles adjacent** to your own are **fully visible**. Tiles **two steps away** show their **owner and type, but not the troop count**. Everything else is hidden in the fog.\n\nThe rival's city is out there somewhere. **Explore until you find it.**",
       clock: 'running',
       done: (ctx) => {
         const level = visionFor(ctx.game)?.get(hexKey(hiddenCity));
@@ -310,17 +318,10 @@ const fog: Lesson = {
 // No city is on the edge, and no city touches another city or a village. Each color's land is in
 // one piece: the rival's city, village and the two farms joining them, and the other rival's city
 // with a farm either side.
-const SCORE = [
-  '...........',
-  '........E..',
-  '........ee.',
-  '..Y.v...F..',
-  '...........',
-  '........G..',
-  '...........',
-];
-const scoreCity = at(2, 3);
-const otherRivalLand = [at(7, 5), at(9, 5)];
+const SCORE = ['.......', '.Y.v.E.', '.....ee', '.G...F.', '.......'];
+const scoreCity = at(1, 1);
+const scoreVillage = at(3, 1);
+const otherRivalLand = [at(0, 3), at(2, 3)];
 
 const scoreboard: Lesson = {
   id: 'interface',
@@ -339,7 +340,15 @@ const scoreboard: Lesson = {
       hud: 'camera',
     },
     {
-      text: 'The **pie chart** shows the **relative troop producion capacity** for all players. The white line marks **your** slice.',
+      text: 'The **?** button opens the **reference sheet**. It shows you how fast cities and villages make troops, and their **defensive bonuses**. It is there whenever you need it during a match.',
+      hud: 'reference',
+    },
+    {
+      text: 'The **Surrender** button in the bottom left gives up the match. Press it **twice** to make sure you meant it. Your troops become neutral and the match goes on without you. It does nothing here in the tutorial.',
+      hud: 'surrender',
+    },
+    {
+      text: 'The **pie chart** shows the **relative troop producion rate** for all players. The white line marks **your** slice.',
       hud: 'pie',
     },
     {
@@ -349,7 +358,7 @@ const scoreboard: Lesson = {
     {
       text: 'Make your slice grow! **Capture the neutral village** and watch the pie and the list.',
       clock: 'running',
-      done: (ctx) => capacityOf(ctx) > 0.2,
+      done: (ctx) => ctx.owns(scoreVillage),
     },
     {
       text: '**You win by being the last player standing.** A player is eliminated when they have no cities or villages and no mobile troops. If a player surrenders or is eliminated, their troops become neutral.',

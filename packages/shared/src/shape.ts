@@ -195,10 +195,15 @@ function depthFromCoast(land: ReadonlyMap<string, Hex>): Map<string, number> {
   return depth;
 }
 
+/** How many times a lake is tried in a new place before it is given up on. */
+const LAKE_ATTEMPTS = 5;
+
 /**
  * Cut a few lakes out of the board. Each is one blob of contiguous tiles (never a lone
  * tile), kept away from the coast, the starting cities and each other, and carved out of
- * every symmetric image at once.
+ * every symmetric image at once. The number of lakes stays near an expected value (counting a
+ * set of symmetric copies as one lake), and all the water together is capped to a share of the
+ * board.
  */
 function carveCutouts(
   land: Map<string, Hex>,
@@ -207,8 +212,11 @@ function carveCutouts(
   const depth = depthFromCoast(land);
   const area = land.size;
   const clearance = params.lakeClearance;
-  const count =
-    params.tilesPerLake > 0 ? rng.int(Math.max(1, Math.round(area / params.tilesPerLake)) + 1) : 0;
+  // Every lake is carved once per symmetric copy, so the count is shared out between them.
+  const expected = params.tilesPerLake > 0 ? area / params.tilesPerLake / group.length : 0;
+  const spread = params.lakeCountVariation / 100;
+  const count = Math.max(0, Math.round(expected * (1 - spread + rng.next() * 2 * spread)));
+  const budget = Math.floor((area * params.maxTotalLakePercent) / 100);
   const minSize = Math.max(3, params.minLakeSize);
   const maxSize = Math.min(
     params.maxLakeSize,
@@ -220,45 +228,56 @@ function carveCutouts(
     others.some((other) => hexDistance(hex, other) < distance);
 
   for (let i = 0; i < count; i++) {
-    const centers = [...land.values()].filter(
-      (hex) =>
-        (depth.get(hexKey(hex)) ?? 0) >= clearance + 2 &&
-        !tooClose(hex, protect, params.startRoom + 4) &&
-        !tooClose(hex, cutHexes, 4),
-    );
-    if (centers.length === 0) break;
-    const center = centers[rng.int(centers.length)]!;
-    const size = minSize + rng.int(maxSize - minSize + 1);
-    const blob = growBlob(center, size, rng, (hex) => {
-      const key = hexKey(hex);
-      return (
-        land.has(key) &&
-        !cut.has(key) &&
-        (depth.get(key) ?? 0) >= clearance &&
-        !tooClose(hex, protect, params.startRoom + 2) &&
-        !tooClose(hex, cutHexes, 3)
+    // What is left of the water budget, shared between the copies of this lake.
+    const room = Math.floor((budget - cut.size) / group.length);
+    if (room < 4) break;
+    for (let attempt = 0; attempt < LAKE_ATTEMPTS; attempt++) {
+      const centers = [...land.values()].filter(
+        (hex) =>
+          (depth.get(hexKey(hex)) ?? 0) >= clearance + 2 &&
+          !tooClose(hex, protect, params.startRoom + 4) &&
+          !tooClose(hex, cutHexes, 4),
       );
-    });
-    if (blob.length < 4) continue;
+      if (centers.length === 0) return finishCutouts(land, cut);
+      const center = centers[rng.int(centers.length)]!;
+      const biggest = Math.min(maxSize, room);
+      const size = Math.min(biggest, minSize + rng.int(biggest - minSize + 1));
+      const blob = growBlob(center, size, rng, (hex) => {
+        const key = hexKey(hex);
+        return (
+          land.has(key) &&
+          !cut.has(key) &&
+          (depth.get(key) ?? 0) >= clearance &&
+          !tooClose(hex, protect, params.startRoom + 2) &&
+          !tooClose(hex, cutHexes, 3)
+        );
+      });
+      if (blob.length < 4) continue;
 
-    // Carve every image of the blob, as long as the images stay clear of each other.
-    const images = group.map((image) => blob.map(image));
-    const blobKeys = new Set(blob.map(hexKey));
-    const valid = images.every((image) => {
-      const keys = image.map(hexKey);
-      if (keys.every((key) => blobKeys.has(key))) return true; // the blob is symmetric itself
-      return !image.some((hex) => tooClose(hex, blob, 3)) && keys.every((key) => land.has(key));
-    });
-    if (!valid) continue;
-    for (const image of images) {
-      for (const hex of image) {
-        if (!cut.has(hexKey(hex))) {
-          cut.add(hexKey(hex));
-          cutHexes.push(hex);
+      // Carve every image of the blob, as long as the images stay clear of each other.
+      const images = group.map((image) => blob.map(image));
+      const blobKeys = new Set(blob.map(hexKey));
+      const valid = images.every((image) => {
+        const keys = image.map(hexKey);
+        if (keys.every((key) => blobKeys.has(key))) return true; // the blob is symmetric itself
+        return !image.some((hex) => tooClose(hex, blob, 3)) && keys.every((key) => land.has(key));
+      });
+      if (!valid) continue;
+      for (const image of images) {
+        for (const hex of image) {
+          if (!cut.has(hexKey(hex))) {
+            cut.add(hexKey(hex));
+            cutHexes.push(hex);
+          }
         }
       }
+      break;
     }
   }
+  finishCutouts(land, cut);
+}
+
+function finishCutouts(land: Map<string, Hex>, cut: ReadonlySet<string>): void {
   for (const key of cut) land.delete(key);
 }
 

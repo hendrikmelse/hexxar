@@ -224,13 +224,12 @@
   transition: opacity 0.4s;
 }
 
-/* A hexagonal chip in the player's color, with a solid lower edge like the menu's logo tiles */
+/* A hexagonal chip in the player's color */
 #hud .swatch {
   width: 15px;
   height: 17px;
   background: var(--c);
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.28);
 }
 
 #hud .name {
@@ -291,6 +290,47 @@
   }
 }
 
+/* The change in troops since the last tick floats up off the count, like a battle's numbers */
+#hud .delta {
+  position: absolute;
+  /* Right on the troop count, which sits at the row's right edge inside its padding */
+  right: 2px;
+  top: 40%;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  text-shadow:
+    0 0 3px rgba(14, 16, 22, 0.9),
+    0 1px 2px rgba(14, 16, 22, 0.9);
+  animation: delta-float 1s linear forwards;
+}
+
+#hud .delta.gain {
+  color: #7fe3ad;
+}
+
+#hud .delta.loss {
+  color: #ff8f7a;
+}
+
+@keyframes delta-float {
+  from {
+    opacity: 0;
+    transform: translateY(-50%);
+  }
+  10% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-130%);
+  }
+}
+
 /* A player who just appeared in the list fades in */
 #hud .standing.enter {
   animation: standing-in 0.35s ease-out;
@@ -307,8 +347,24 @@
   opacity: 0.38;
 }
 
-#hud .standing.out .name {
-  text-decoration: line-through;
+/* The players who are out get a heading of their own, like the one above the list */
+#hud .defeated-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 2px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#hud .defeated-heading::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent);
 }
 
 /* ---- Top middle: messages from the game ------------------------------------------------------ */
@@ -370,10 +426,25 @@
 
 /* ---- Buttons: surrender and the camera ------------------------------------------------------- */
 
-#hud .surrender {
+/* The surrender button, with the number of spectators in small print beside it */
+#hud .bottom-left {
   position: fixed;
   left: 14px;
   bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#hud .spectator-tally {
+  color: #8a93a8;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+#hud .surrender {
   padding: 9px 16px;
   border: 1px solid rgba(255, 130, 130, 0.3);
   border-radius: 10px;
@@ -584,7 +655,264 @@
   }
 }
 
-/* In the tutorial there is nothing to surrender: leaving is the guide's job */
-#hud.tutorial .surrender {
-  display: none;
+/* ---- The reference sheet ----------------------------------------------------------------------- */
+
+/*
+ * A button just left of "show the whole board" (the last of the camera column) that grows up and to
+ * the left into the sheet. The toggle stays in the corner it started in.
+ */
+#hud .reference {
+  position: fixed;
+  right: 64px;
+  bottom: 18px;
+  width: 42px;
+  height: 42px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #3c4257 0%, #2b3042 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 4px 0 #14171f,
+    0 10px 16px rgba(0, 0, 0, 0.4);
+  color: #c9d0de;
+  transition:
+    width 0.24s ease,
+    height 0.24s ease,
+    border-radius 0.24s ease;
+}
+
+#hud .reference.open {
+  /* Over the tutorial's guide card, which comes later in the page and would cover it otherwise */
+  z-index: 20;
+  width: min(600px, calc(100vw - 100px));
+  border-radius: 14px;
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+}
+
+#hud .reference-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #e8eaf0;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#hud .reference:not(.open) .reference-toggle:hover {
+  filter: brightness(1.3);
+}
+
+#hud .reference.open .reference-toggle {
+  font-size: 20px;
+  color: #8a93a8;
+}
+
+#hud .reference.open .reference-toggle:hover {
+  color: #ffffff;
+}
+
+#hud .reference-body {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: min(598px, calc(100vw - 102px));
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 12px 14px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+#hud .reference.open .reference-body {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.2s 0.1s;
+}
+
+/* Headings look like the player list's: small caps with a line trailing off */
+#hud .reference-body h4 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#hud .reference-body h4::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent);
+}
+
+#hud .reference-column:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The defense column leaves the corner clear for the button the sheet grew from */
+#hud .reference-column:last-child {
+  width: 176px;
+  flex: none;
+  padding-bottom: 34px;
+}
+
+/* The speeds: a sunken well, a header band, and cells tinted by how fast they are */
+#hud .reference-body table.speeds {
+  width: 100%;
+  /* Every number column the same width; the row titles take only what they need */
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  /* A plain grey card: a faint fill and a hairline border */
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-variant-numeric: tabular-nums;
+}
+
+#hud .reference-body .speeds th,
+#hud .reference-body .speeds td {
+  padding: 7px 4px;
+  text-align: center;
+  font-weight: 700;
+  color: #eef5ff;
+}
+
+#hud .reference-body .speeds thead th {
+  padding: 5px 4px;
+  font-size: 11px;
+  color: #8a93a8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#hud .reference-body .speeds thead th.across {
+  width: 74px;
+  padding-left: 10px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+#hud .reference-body .speeds tbody tr + tr > * {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+#hud .reference-body .speeds .kind {
+  padding-left: 10px;
+  text-align: left;
+  color: #e8eaf0;
+}
+
+#hud .reference-body .speeds .cap {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  color: #8a93a8;
+  font-weight: 600;
+}
+
+/* The defensive bonuses: one chip each */
+#hud .reference-body .bonuses {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#hud .reference-body .bonus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--well);
+  box-shadow: var(--well-shadow);
+}
+
+#hud .reference-body .bonus span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+#hud .reference-body .bonus strong {
+  font-size: 16px;
+  color: #eef5ff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+#hud .reference-body .bonus strong.none {
+  color: #6b7488;
+}
+
+/* ---- A remark above the surrender button -------------------------------------------------------- */
+
+#hud .surrender-remark {
+  position: fixed;
+  left: 14px;
+  /* The button's height and a gap above its bottom edge */
+  bottom: 70px;
+  max-width: 230px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, #1d2231 0%, #141824 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.5);
+  color: #eef5ff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+/* A little tail pointing down at the button */
+#hud .surrender-remark::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: #141824;
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  transform: rotate(45deg);
+}
+
+#hud .surrender-remark.pop {
+  animation: remark-pop 0.22s ease-out;
+}
+
+@keyframes remark-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

@@ -118,6 +118,10 @@ export const roomViewSchema = z.object({
   votesNeeded: z.number().int(),
   /** Whether the receiving player has voted. */
   youVoted: z.boolean(),
+  /** Names of the people watching a private game without playing in it. */
+  spectators: z.array(z.string()),
+  /** The receiving person is one of them. */
+  spectating: z.boolean(),
   serverTime: z.number(),
   /** The receiving player's own user id. */
   you: z.string(),
@@ -155,6 +159,12 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('startGame') }),
   /** Leave the room. In a running match this is a surrender. */
   z.object({ type: z.literal('leaveRoom') }),
+  /** Private room lobby: step out of a place to watch instead. */
+  z.object({ type: z.literal('becomeSpectator') }),
+  /** Private room lobby: a spectator takes a free place. */
+  z.object({ type: z.literal('becomePlayer') }),
+  /** Private rooms: after a match, go back to the room to set up the next one. */
+  z.object({ type: z.literal('returnToRoom') }),
   /** Append an order to your queue. Queues are append-only. */
   z.object({ type: z.literal('order'), order: orderSchema }),
   z.object({ type: z.literal('surrender') }),
@@ -179,6 +189,11 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     you: z.string().nullable(),
     /** The receiving player's queue, oldest first. */
     queue: z.array(orderSchema),
+    /**
+     * Every player's queue, oldest first. Only sent to someone watching (out of the match, or it
+     * is over), who may see everything.
+     */
+    queues: z.record(z.string(), z.array(orderSchema)).optional(),
     /** Server timestamp (ms since epoch) of the next tick, or null if the match is over. */
     nextTickAt: z.number().nullable(),
     /** The server's clock when this was sent, so clients can correct for clock skew. */
@@ -197,6 +212,10 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     winner: z.string().nullable(),
     /** How many orders the receiving player still has queued (the oldest were consumed). */
     queueLength: z.number().int().nonnegative(),
+    /** Watchers only: every player's queue, the first time they watch a tick. */
+    queues: z.record(z.string(), z.array(orderSchema)).optional(),
+    /** Watchers only, after that: how many orders each player has left (the oldest were consumed). */
+    queueLengths: z.record(z.string(), z.number().int().nonnegative()).optional(),
     scores: z.array(playerScoreSchema),
     /** The armies that set off this tick (for animation); the new tile states are in `changed`. */
     moves: z
@@ -213,8 +232,11 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   }),
   /** How many people are playing each mode right now (sent to players in the main menu). */
   z.object({ type: z.literal('stats'), duel: z.number().int(), ffa: z.number().int() }),
-  /** The order was added to your queue. */
-  z.object({ type: z.literal('queued'), order: orderSchema }),
+  /**
+   * The order was added to your queue. Watchers are also told about every other player's orders,
+   * with `player` saying whose.
+   */
+  z.object({ type: z.literal('queued'), order: orderSchema, player: z.string().optional() }),
   z.object({ type: z.literal('rejected'), reason: z.string() }),
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;

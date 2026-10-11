@@ -145,8 +145,11 @@ describe('Lobby', () => {
       const stranger = new FakeClient(lobby).hello('Sam');
       stranger.say({ type: 'joinRoom', code: 'ZZZZZ' });
       expect(stranger.last('rejected').reason).toBe('No game with code ZZZZZ');
+      // A full private room takes a newcomer as a spectator instead.
       stranger.say({ type: 'joinRoom', code: host.room!.code });
-      expect(stranger.last('rejected').reason).toMatch(/full/);
+      expect(stranger.room).toMatchObject({ spectating: true, state: 'lobby' });
+      expect(host.room?.players.map((p) => p.name)).toEqual(['Hana', 'Gus']);
+      expect(host.room?.spectators).toEqual(['Sam']);
     });
 
     it('does not start by itself: only the host starts it, once it is full', () => {
@@ -190,6 +193,15 @@ describe('Lobby', () => {
       expect(host.last('rejected').reason).toMatch(/invalid/);
       host.say({ type: 'updateRoom', settings: { config: { tickMs: 1 } } });
       expect(host.last('rejected').reason).toMatch(/invalid/);
+      // The limits the settings screen offers: tick length 0.2 to 5 seconds, starting troops 1 to 100.
+      for (const config of [{ tickMs: 100 }, { tickMs: 5001 }, { startingTroops: 101 }]) {
+        host.say({ type: 'updateRoom', settings: { config } });
+        expect(host.last('rejected').reason).toMatch(/invalid/);
+      }
+      host.say({ type: 'updateRoom', settings: { config: { tickMs: 200, startingTroops: 100 } } });
+      expect(host.room?.settings.config).toMatchObject({ tickMs: 200, startingTroops: 100 });
+      host.say({ type: 'updateRoom', settings: { config: { tickMs: 5000, startingTroops: 1 } } });
+      expect(host.room?.settings.config).toMatchObject({ tickMs: 5000, startingTroops: 1 });
       expect(host.room?.settings.mapSize).toBe('large');
     });
 
@@ -278,6 +290,109 @@ describe('Lobby', () => {
       expect(a.room?.state).toBe('finished');
       expect(a.last('snapshot').state.winner).toBe(a.last('snapshot').you);
       expect(a.room?.players.find((p) => p.name === 'Bob')?.connected).toBe(false);
+    });
+
+    describe('a private game', () => {
+      const finishedPrivate = () => {
+        const host = new FakeClient(lobby).hello('Hana');
+        host.say({ type: 'createRoom' });
+        const guest = new FakeClient(lobby).hello('Gus');
+        guest.say({ type: 'joinRoom', code: host.room!.code });
+        host.say({ type: 'startGame' });
+        guest.say({ type: 'surrender' });
+        return { host, guest };
+      };
+
+      it('takes players back to the room for the next game, each when they choose', () => {
+        const { host, guest } = finishedPrivate();
+        expect(host.room?.state).toBe('finished');
+        host.say({ type: 'returnToRoom' });
+        expect(host.room).toMatchObject({ state: 'lobby', host: host.room!.you });
+        expect(host.room?.players.map((p) => p.name)).toEqual(['Hana']);
+        // Gus is still looking at the result, and is not pulled out of it.
+        expect(guest.room?.state).toBe('finished');
+        guest.say({ type: 'returnToRoom' });
+        expect(guest.room?.state).toBe('lobby');
+        expect(host.room?.players.map((p) => p.name).sort()).toEqual(['Gus', 'Hana']);
+        // And the next game can be played from there.
+        host.say({ type: 'startGame' });
+        expect(host.room?.state).toBe('running');
+        expect(guest.room?.state).toBe('running');
+      });
+
+      it('lets the next game start without someone who is still reading the result', () => {
+        const { host, guest } = finishedPrivate();
+        const third = new FakeClient(lobby).hello('Tia');
+        host.say({ type: 'returnToRoom' });
+        third.say({ type: 'joinRoom', code: host.room!.code });
+        host.say({ type: 'startGame' });
+        expect(host.room?.state).toBe('running');
+        expect(guest.room?.state).toBe('finished');
+        guest.say({ type: 'returnToRoom' });
+        expect(guest.last('rejected').reason).toMatch(/already started/);
+        expect(guest.room).toBeNull();
+      });
+
+      it('includes someone who was knocked out but stayed to watch', () => {
+        const host = new FakeClient(lobby).hello('Hana');
+        host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+        const [out, left] = ['Ola', 'Lex'].map((name) => {
+          const client = new FakeClient(lobby).hello(name);
+          client.say({ type: 'joinRoom', code: host.room!.code });
+          return client;
+        }) as [FakeClient, FakeClient];
+        host.say({ type: 'startGame' });
+        out.say({ type: 'surrender' });
+        expect(host.room?.state).toBe('running');
+        left.say({ type: 'surrender' });
+        expect(out.room?.state).toBe('finished');
+        out.say({ type: 'returnToRoom' });
+        expect(out.room?.state).toBe('lobby');
+        expect(out.room?.players.map((p) => p.name)).toEqual(['Ola']);
+      });
+
+      it('shows every queue to someone who is out, and to nobody still playing', () => {
+        const host = new FakeClient(lobby).hello('Hana');
+        host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+        const [out, rival] = ['Ola', 'Rex'].map((name) => {
+          const client = new FakeClient(lobby).hello(name);
+          client.say({ type: 'joinRoom', code: host.room!.code });
+          return client;
+        }) as [FakeClient, FakeClient];
+        host.say({ type: 'startGame' });
+        const move = { type: 'move', from: { q: 0, r: 0 }, to: { q: 1, r: 0 } } as const;
+        // While everyone is playing, nobody is told about anyone else's orders.
+        rival.say({ type: 'order', order: move });
+        expect(host.all('queued')).toHaveLength(0);
+        expect(host.last('snapshot').queues).toBeUndefined();
+
+        out.say({ type: 'surrender' });
+        // The snapshot sent when someone is out carries every queue, for them alone.
+        expect(out.last('snapshot').queues).toMatchObject({
+          [rival.last('snapshot').you!]: [move],
+        });
+        expect(host.last('snapshot').queues).toBeUndefined();
+        // From then on they hear of each order as it is given, and of none of their own kind.
+        const before = out.all('queued').length;
+        rival.say({ type: 'order', order: move });
+        host.say({ type: 'order', order: move });
+        expect(out.all('queued')).toHaveLength(before + 2);
+        expect(out.last('queued').player).toBe(host.last('snapshot').you);
+        expect(host.all('queued').every((message) => message.player === undefined)).toBe(true);
+        expect(rival.all('queued').every((message) => message.player === undefined)).toBe(true);
+        // Ticks keep them up to date.
+        vi.advanceTimersByTime(options.prepMs + TICK_MS);
+        expect(out.last('tick').queueLengths).toBeDefined();
+        expect(host.last('tick').queueLengths).toBeUndefined();
+      });
+
+      it('does not apply to public games', () => {
+        const { a, b } = runningDuel();
+        b.say({ type: 'surrender' });
+        a.say({ type: 'returnToRoom' });
+        expect(a.last('rejected').reason).toMatch(/nothing to go back to|no game/);
+        expect(a.room?.state).toBe('finished');
+      });
     });
 
     it('closes a finished room after a while', () => {
@@ -525,7 +640,8 @@ describe('Lobby battle royale', () => {
       expect(host.room?.players).toHaveLength(12);
       const extra = new FakeClient(lobby).hello('Extra');
       extra.say({ type: 'joinRoom', code: host.room!.code });
-      expect(extra.last('rejected').reason).toMatch(/full/);
+      expect(extra.room?.spectating).toBe(true);
+      expect(host.room?.players).toHaveLength(12);
       host.say({ type: 'startGame' });
       expect(host.last('snapshot').state.players).toHaveLength(12);
     });
@@ -547,11 +663,71 @@ describe('Lobby battle royale', () => {
       expect(host.room?.settings).toMatchObject({ mode: 'duel', size: 2 });
     });
 
-    it('will not switch to a duel with more than two players in the room', () => {
-      const { host } = privateRoom(3);
+    it('turns the latest players into spectators when switching to a duel', () => {
+      const { host, guests } = privateRoom(2);
+      const [second, third] = [guests[0]!, guests[1]!];
       host.say({ type: 'updateRoom', settings: { mode: 'duel' } });
-      expect(host.last('rejected').reason).toMatch(/too many players/);
-      expect(host.room?.settings.mode).toBe('ffa');
+      expect(host.room?.settings.mode).toBe('duel');
+      // The host and the first to arrive stay; the others watch.
+      expect(host.room?.players).toHaveLength(2);
+      expect(second.room?.spectating).toBe(false);
+      expect(third.room?.spectating).toBe(true);
+      expect(host.room?.spectators).toEqual(['Gus 2']);
+      host.say({ type: 'updateRoom', settings: { mode: 'ffa' } });
+      // The place is open again, but not filled for them.
+      expect(third.room?.spectating).toBe(true);
+      third.say({ type: 'becomePlayer' });
+      expect(third.room?.spectating).toBe(false);
+      expect(host.room?.players).toHaveLength(3);
+      expect(host.room?.spectators).toEqual([]);
+    });
+
+    it('leaves the new places empty when switching from a duel to a battle royale', () => {
+      const host = new FakeClient(lobby).hello('Hana');
+      host.say({ type: 'createRoom', settings: { mode: 'duel' } });
+      const [guest, watcher] = ['Gus', 'Wes'].map((name) => {
+        const client = new FakeClient(lobby).hello(name);
+        client.say({ type: 'joinRoom', code: host.room!.code });
+        return client;
+      }) as [FakeClient, FakeClient];
+      expect(watcher.room?.spectating).toBe(true);
+      host.say({ type: 'updateRoom', settings: { mode: 'ffa' } });
+      // Nobody is moved up: the spectator asks for the place.
+      expect(watcher.room?.spectating).toBe(true);
+      expect(host.room?.players).toHaveLength(2);
+      watcher.say({ type: 'becomePlayer' });
+      expect(watcher.room?.spectating).toBe(false);
+      expect(host.room?.players.map((p) => p.name)).toEqual(['Hana', 'Gus', 'Wes']);
+      expect(guest.room?.players).toHaveLength(3);
+    });
+
+    it('lets players step out to watch, and spectators step in, but only into a free place', () => {
+      const host = new FakeClient(lobby).hello('Hana');
+      host.say({ type: 'createRoom', settings: { mode: 'duel' } });
+      const guest = new FakeClient(lobby).hello('Gus');
+      guest.say({ type: 'joinRoom', code: host.room!.code });
+      const watcher = new FakeClient(lobby).hello('Wes');
+      watcher.say({ type: 'joinRoom', code: host.room!.code });
+      // The room is full: no place to take.
+      watcher.say({ type: 'becomePlayer' });
+      expect(watcher.last('rejected').reason).toMatch(/full/);
+      // A player steps out; the place stays empty until someone asks for it.
+      guest.say({ type: 'becomeSpectator' });
+      expect(guest.room?.spectating).toBe(true);
+      expect(host.room?.players).toHaveLength(1);
+      expect(watcher.room?.spectating).toBe(true);
+      watcher.say({ type: 'becomePlayer' });
+      expect(host.room?.players.map((p) => p.name)).toEqual(['Hana', 'Wes']);
+      // The host can step out too, and stays the host, even with no one else playing.
+      host.say({ type: 'becomeSpectator' });
+      expect(host.room).toMatchObject({ spectating: true, host: host.room!.you });
+      watcher.say({ type: 'becomeSpectator' });
+      expect(host.room?.players).toHaveLength(0);
+      expect(host.room?.host).toBe(host.room?.you);
+      // A host who is only watching keeps the room open, and can take a place again.
+      expect(guest.room).not.toBeNull();
+      host.say({ type: 'becomePlayer' });
+      expect(host.room?.players.map((p) => p.name)).toEqual(['Hana']);
     });
   });
 
@@ -699,6 +875,85 @@ describe('Lobby battle royale', () => {
     expect(host.last('snapshot').state.winner).toBe(snapshot.you);
   });
 
+  describe('spectators in private games', () => {
+    const fullRoom = () => {
+      const host = new FakeClient(lobby).hello('Hana');
+      host.say({ type: 'createRoom' });
+      const guest = new FakeClient(lobby).hello('Gus');
+      guest.say({ type: 'joinRoom', code: host.room!.code });
+      const watcher = new FakeClient(lobby).hello('Wes');
+      watcher.say({ type: 'joinRoom', code: host.room!.code });
+      return { host, guest, watcher };
+    };
+
+    it('does not take a place, and cannot start or change the game', () => {
+      const { host, guest, watcher } = fullRoom();
+      expect(watcher.room).toMatchObject({ spectating: true, state: 'lobby' });
+      expect(guest.room?.spectating).toBe(false);
+      watcher.say({ type: 'startGame' });
+      expect(watcher.last('rejected').reason).toMatch(/host/);
+      watcher.say({ type: 'updateRoom', settings: { mapSize: 'large' } });
+      expect(host.room?.settings.mapSize).not.toBe('large');
+      // Leaving costs the players nothing.
+      watcher.say({ type: 'leaveRoom' });
+      expect(watcher.room).toBeNull();
+      expect(host.room?.spectators).toEqual([]);
+      expect(host.room?.players).toHaveLength(2);
+    });
+
+    it('sees the whole match, with every queue, but cannot give orders', () => {
+      const { host, guest, watcher } = fullRoom();
+      host.say({ type: 'startGame' });
+      expect(watcher.room?.state).toBe('running');
+      const snapshot = watcher.last('snapshot');
+      expect(snapshot.you).toBeNull();
+      expect(snapshot.queues).toBeDefined();
+      const move = { type: 'move', from: { q: 0, r: 0 }, to: { q: 1, r: 0 } } as const;
+      watcher.say({ type: 'order', order: move });
+      expect(watcher.last('rejected').reason).toMatch(/not started/);
+      guest.say({ type: 'order', order: move });
+      expect(watcher.last('queued').player).toBe(guest.last('snapshot').you);
+      vi.advanceTimersByTime(options.prepMs + TICK_MS);
+      expect(watcher.last('tick').queueLengths ?? watcher.last('tick').queues).toBeDefined();
+      // The players never hear of it.
+      expect(host.all('queued')).toHaveLength(0);
+    });
+
+    it('lets people watch a game that has already begun', () => {
+      const { host } = fullRoom();
+      host.say({ type: 'startGame' });
+      const late = new FakeClient(lobby).hello('Lou');
+      late.say({ type: 'joinRoom', code: host.room!.code });
+      expect(late.room).toMatchObject({ spectating: true, state: 'running' });
+      expect(late.last('snapshot').you).toBeNull();
+    });
+
+    it('stays open for them to watch back in the room, and closes once no player is left', () => {
+      const { host, guest, watcher } = fullRoom();
+      host.say({ type: 'startGame' });
+      guest.say({ type: 'surrender' });
+      expect(watcher.room?.state).toBe('finished');
+      watcher.say({ type: 'returnToRoom' });
+      host.say({ type: 'returnToRoom' });
+      expect(watcher.room).toMatchObject({ state: 'lobby', spectating: true });
+      expect(host.room?.host).toBe(host.room?.you);
+      guest.say({ type: 'leaveRoom' });
+      host.say({ type: 'leaveRoom' });
+      // No one is left to play: the room closes, spectators and all.
+      expect(watcher.room).toBeNull();
+    });
+
+    it('is not offered by public games, which stay full', () => {
+      const [a, b] = [new FakeClient(lobby).hello('Ann'), new FakeClient(lobby).hello('Bob')];
+      a.say({ type: 'quickPlay', mode: 'duel' });
+      b.say({ type: 'quickPlay', mode: 'duel' });
+      const code = a.room!.code;
+      const stranger = new FakeClient(lobby).hello('Sam');
+      stranger.say({ type: 'joinRoom', code });
+      expect(stranger.last('rejected').reason).toMatch(/full|started/);
+    });
+  });
+
   describe('fog of war', () => {
     it('shows a player their own surroundings only, and everybody the scoreboard', () => {
       const clients = joinPublic(12);
@@ -789,6 +1044,22 @@ describe('Lobby activity counts', () => {
     const before = a.all('stats').length;
     vi.advanceTimersByTime(5000);
     expect(a.all('stats').length).toBe(before);
+    lobby.stop();
+  });
+
+  it('catches up someone who comes back to the menu after missing updates', () => {
+    const lobby = new Lobby({ ...options, statsMs: 1000 });
+    const a = new FakeClient(lobby).hello('Ann');
+    a.say({ type: 'quickPlay', mode: 'duel' });
+    const crowd = Array.from({ length: 2 }, (_, i) => new FakeClient(lobby).hello(`P${i}`));
+    for (const c of crowd) c.say({ type: 'quickPlay', mode: 'ffa' });
+    // Everyone else in the menu hears about the crowd; Ann, in a game, does not.
+    vi.advanceTimersByTime(1000);
+    // Back in the menu, the numbers have not changed since the others heard them, which used to
+    // leave her looking at the old ones.
+    a.say({ type: 'leaveRoom' });
+    vi.advanceTimersByTime(1000);
+    expect(a.last('stats')).toMatchObject({ duel: 0, ffa: 2 });
     lobby.stop();
   });
 });

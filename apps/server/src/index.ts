@@ -7,7 +7,8 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 const lobby = new Lobby({
   betaCode: process.env.BETA_CODE,
-  prepMs: Number(process.env.PREP_MS ?? 5000),
+  // 5 seconds to plan once the board is up, plus the client's 1.5 second loading screen before it.
+  prepMs: Number(process.env.PREP_MS ?? 6500),
   earlyStartMs: Number(process.env.EARLY_START_MS ?? 60_000),
   joinWaitMs: Number(process.env.JOIN_WAIT_MS ?? 10_000),
   fullWaitMs: Number(process.env.FULL_WAIT_MS ?? 5000),

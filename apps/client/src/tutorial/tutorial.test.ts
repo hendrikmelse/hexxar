@@ -143,9 +143,11 @@ describe('the lessons', () => {
       h.finishStep();
     },
     generation(h) {
-      h.finishStep(); // the city makes a troop by itself
-      const ring = hexNeighbors(at(2, 1));
-      h.order(at(2, 1), ring[0]!);
+      expect(h.view.startLabel).not.toBeNull();
+      h.runner.startClock();
+      h.finishStep(); // the city makes a troop
+      const ring = hexNeighbors(at(1, 1));
+      h.order(at(1, 1), ring[0]!);
       h.order(ring[0]!, ring[1]!);
       h.order(ring[1]!, ring[2]!);
       h.finishStep();
@@ -153,22 +155,17 @@ describe('the lessons', () => {
       h.runner.next();
     },
     battles(h) {
-      h.order(at(2, 2), at(3, 2));
+      h.order(at(3, 2), at(4, 2));
       h.finishStep();
       // 5 attackers against a village that counts as 5: a tie, and the village is left empty.
-      h.order(at(2, 1), at(3, 1));
+      h.order(at(3, 1), at(4, 1));
       h.advance(5 * TUTORIAL_TICK_MS);
       expect(h.view.done).toBe(true);
-      expect(h.game.tiles[hexKey(at(3, 1))]).toMatchObject({ owner: RIVAL, troops: 0 });
-      h.runner.next();
-      h.order(at(2, 1), at(3, 1));
-      h.advance(5 * TUTORIAL_TICK_MS);
-      expect(h.game.tiles[hexKey(at(3, 1))]).toMatchObject({ owner: YOU });
-      h.finishStep();
+      expect(h.game.tiles[hexKey(at(4, 1))]).toMatchObject({ owner: RIVAL, troops: 0 });
+      h.runner.next(); // the swapping page
       h.runner.next();
     },
     fog(h) {
-      h.runner.next();
       h.order(at(1, 2), at(2, 2));
       h.order(at(2, 2), at(3, 2));
       h.order(at(3, 2), at(4, 2));
@@ -177,10 +174,12 @@ describe('the lessons', () => {
     },
     interface(h) {
       h.runner.next(); // camera
+      h.runner.next(); // reference sheet
+      h.runner.next(); // surrender button
       h.runner.next(); // pie
       h.runner.next(); // list
-      h.order(at(2, 3), at(3, 3));
-      h.order(at(3, 3), at(4, 3));
+      h.order(at(1, 1), at(2, 1));
+      h.order(at(2, 1), at(3, 1));
       h.finishStep();
       h.runner.next();
     },
@@ -258,20 +257,20 @@ describe('the lessons', () => {
     const h = harness();
     h.runner.start(2); // battles
     h.runner.next();
-    h.runner.next();
     // An order that does not go at the village.
-    h.order(at(2, 1), at(2, 0));
+    h.order(at(3, 1), at(3, 0));
     h.advance(TUTORIAL_TICK_MS + 100);
     expect(h.view.failure).toMatch(/whole army/);
     // Nothing resets by itself.
     h.advance(10_000);
     expect(h.view.failure).not.toBeNull();
     h.runner.retry();
-    expect(h.view).toMatchObject({ lesson: 2, step: 2, failure: null });
+    expect(h.view).toMatchObject({ lesson: 2, step: 1, failure: null });
     // The wrong order is gone, and the right one now works.
-    h.order(at(2, 1), at(3, 1));
-    h.finishStep();
-    expect(h.game.tiles[hexKey(at(3, 1))]).toMatchObject({ owner: YOU });
+    h.order(at(3, 1), at(4, 1));
+    h.advance(5 * TUTORIAL_TICK_MS);
+    expect(h.view.done).toBe(true);
+    expect(h.game.tiles[hexKey(at(4, 1))]).toMatchObject({ owner: RIVAL, troops: 0 });
   });
 
   it('can go back a step and jump between lessons', () => {
@@ -302,7 +301,7 @@ describe('the lessons', () => {
     expect(h.game.tiles[hexKey(at(3, 1))]?.owner ?? null).toBe(null);
   });
 
-  it('keeps the clock running once a task is done', () => {
+  it('stops the clock once a task is done', () => {
     const h = harness();
     h.runner.start(0);
     h.runner.next();
@@ -311,6 +310,6 @@ describe('the lessons', () => {
     expect(h.view.done).toBe(true);
     const tick = h.game.tick;
     h.advance(3 * TUTORIAL_TICK_MS);
-    expect(h.game.tick).toBeGreaterThan(tick);
+    expect(h.game.tick).toBe(tick);
   });
 });

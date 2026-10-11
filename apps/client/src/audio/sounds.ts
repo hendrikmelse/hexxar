@@ -16,7 +16,7 @@ export interface SoundDef {
   readonly file: string | null;
   /** Where the file came from, for crediting and for finding a better one. */
   readonly source: string | null;
-  /** How loud this sound is next to the others, 0 to 1 (1 if not set). */
+  /** How loud this sound is next to the others, 0 to 2 (1 if not set). */
   readonly volume: number;
 }
 
@@ -34,14 +34,11 @@ export type SoundGroup = (typeof SOUND_GROUPS)[number];
 /**
  * Which file each sound uses (and where it came from). Fill in `file` (a name in
  * `public/sounds/`, such as 'ui.click.mp3') to give a sound its file; an empty string means there
- * is no sound yet. `source` is a note on where it came from. `volume` (0 to 1, default 1) turns one
- * sound down next to the rest.
+ * is no sound yet. `source` is a note on where it came from. `volume` (0 to 2, default 1) turns one
+ * sound down, or up, next to the rest.
  */
 const FILES: Readonly<Record<string, { file: string; source: string; volume?: number }>> = {
-  'ui.click': {
-    file: 'ImpactSounds/footstep_concrete_000.ogg',
-    source: 'Kenney - Impact Sounds - footstep_concrete_000.ogg',
-  },
+  'ui.click': { file: 'UIAudio/click3.ogg', source: 'Kenney - UI Audio - click3.ogg' },
   'ui.back': { file: 'UIAudio/click4.ogg', source: 'Kenney - UI Audio - click4.ogg' },
   'ui.error': {
     file: 'InterfaceSounds/switch_003.ogg',
@@ -55,7 +52,6 @@ const FILES: Readonly<Record<string, { file: string; source: string; volume?: nu
     file: 'InterfaceSounds/bong_001.ogg',
     source: 'Kenney - Interface Sounds - bong_001.ogg',
   },
-  'lobby.found': { file: '', source: '' },
   'lobby.count': {
     file: 'InterfaceSounds/tick_001.ogg',
     source: 'Kenney - Interface Sounds - tick_001.ogg',
@@ -64,12 +60,16 @@ const FILES: Readonly<Record<string, { file: string; source: string; volume?: nu
     file: 'ImpactSounds/impactBell_heavy_000.ogg',
     source: 'Kenney - Impact Sounds - impactBell_heavy_000.ogg',
   },
-  'order.select': { file: '', source: '' },
+  'order.back': {
+    file: 'ImpactSounds/footstep_grass_003.ogg',
+    source: 'Kenney - Impact Sounds - footstep_grass_003.ogg',
+    volume: 0.8,
+  },
   'order.step': {
     file: 'ImpactSounds/footstep_wood_000.ogg',
     source: 'Kenney - Impact Sounds - footstep_wood_000.ogg',
+    volume: 1.2,
   },
-  'order.queue': { file: '', source: '' },
   'order.refused': {
     file: 'InterfaceSounds/back_001.ogg',
     source: 'Kenney - Interface Sounds - back_001.ogg',
@@ -103,16 +103,17 @@ const FILES: Readonly<Record<string, { file: string; source: string; volume?: nu
     source: 'Kenney - Impact Sounds - impactBell_heavy_002.ogg',
   },
   'result.gameOver': {
-    file: 'MusicJingles/SaxJingles/jingles_SAX09.ogg',
-    source: 'Kenney - Music Jingles - jingles_SAX09.ogg',
+    file: 'ImpactSounds/impactBell_heavy_002.ogg',
+    source: 'Kenney - Impact Sounds - impactBell_heavy_002.ogg',
   },
   'result.victory': {
-    file: 'MusicJingles/SaxJingles/jingles_SAX10.ogg',
-    source: 'Kenney - Music Jingles - jingles_SAX10.ogg',
+    file: 'Other/floraphonic-tada-military-2-183973.mp3',
+    source: 'Pixabay',
   },
   'tutorial.next': {
     file: 'RPGAudio/bookFlip3.ogg',
     source: 'Kenney - RPG Audio - bookFlip3.ogg',
+    volume: 0.7,
   },
   'tutorial.task': {
     file: 'MusicJingles/PizzicatoJingles/jingles_PIZZI04.ogg',
@@ -123,7 +124,10 @@ const FILES: Readonly<Record<string, { file: string; source: string; volume?: nu
     file: 'InterfaceSounds/error_006.ogg',
     source: 'Kenney - Interface Sounds - error_006.ogg',
   },
-  'tutorial.finished': { file: '', source: '' },
+  'tutorial.finished': {
+    file: 'Other/floraphonic-tada-military-2-183973.mp3',
+    source: 'Pixabay',
+  },
 };
 
 const sound = (
@@ -182,13 +186,6 @@ export const SOUNDS: readonly SoundDef[] = [
     'Someone leaves your room before the match.',
   ),
   sound(
-    'lobby.found',
-    'Opponent found',
-    'Lobby',
-    'A confirming, slightly dramatic stab: the duel is on. This is the main "match found" sound.',
-    'Second player joins a quick-play duel; the countdown starts running.',
-  ),
-  sound(
     'lobby.count',
     'Countdown tick',
     'Lobby',
@@ -205,13 +202,6 @@ export const SOUNDS: readonly SoundDef[] = [
   ),
   // -- Orders ----------------------------------------------------------------------------
   sound(
-    'order.select',
-    'Pick up an army',
-    'Orders',
-    'A tiny click as you press on a tile you can command.',
-    'Pointer down on a commandable tile (the start of a drag).',
-  ),
-  sound(
     'order.step',
     'Path step',
     'Orders',
@@ -219,11 +209,11 @@ export const SOUNDS: readonly SoundDef[] = [
     'PathDraft adding a hex while you drag.',
   ),
   sound(
-    'order.queue',
-    'Order queued',
+    'order.back',
+    'Path backtrack',
     'Orders',
-    'A confirming snap or stamp as the path is committed. Scales slightly with path length.',
-    'Drag released and orders sent; the "queued" reply from the server.',
+    'A soft, lower tick as the drag walks back over the last tile and shortens the path.',
+    'PathDraft removing a hex while you drag.',
   ),
   sound(
     'order.refused',
@@ -245,7 +235,7 @@ export const SOUNDS: readonly SoundDef[] = [
     'Tile captured (yours)',
     'Armies and battles',
     'A satisfying claim: a bright stamp or flag-plant. Also what an army arriving on empty ground sounds like (and an attack that wins the tile). Pitch or weight can step up for villages and cities.',
-    'A tile changing to your colour. Variants for farm, village and city could share this id with a pitch change.',
+    'A tile changing to your colour. Variants for farm, village and city could share this id with a pitch change. Also played at 70% volume when another player takes a tile you can see (or any, if you are watching).',
   ),
   sound(
     'tile.lost',
@@ -259,7 +249,7 @@ export const SOUNDS: readonly SoundDef[] = [
     'Failed to capture a tile',
     'Armies and battles',
     'A flat, deflated thud: your attack was beaten, or both armies were wiped out, and the tile stays as it was.',
-    'Your attack on a held tile ending without the tile changing to you (the battle flight with won: false).',
+    'Your attack on a held tile ending without the tile changing to you (the battle flight with won: false). Also played at 70% volume for a failed attack by another player that you can see.',
   ),
   sound(
     'tile.defended',
@@ -280,8 +270,8 @@ export const SOUNDS: readonly SoundDef[] = [
     'result.defeat',
     'Defeat card',
     'Players and results',
-    'A somber descending phrase as the Defeat card appears (you are out, the match goes on). Also used when you confirm a surrender.',
-    'The Out card showing (cardReady with eliminated), and confirming Surrender in the HUD.',
+    'A somber descending phrase as the Defeat card appears (you are out, the match goes on). Surrendering plays it too, when the card comes up (unless your surrender ends the match, which gets the game over sound instead).',
+    'The Out card showing (cardReady with eliminated).',
   ),
   sound(
     'result.gameOver',

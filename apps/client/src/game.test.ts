@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseMatchConfig, type Order, type ServerMessage, type Tile } from '@hexxar/shared';
-import { applyMessage, emptyGame, visionFor } from './game.js';
+import { applyMessage, emptyGame, isWatching, visionFor } from './game.js';
 
 const move = (q: number): Order => ({
   type: 'move',
@@ -142,5 +142,48 @@ describe('scores', () => {
     if (message.type === 'snapshot') message.scores = scores;
     applyMessage(game, message);
     expect(game.scores).toEqual(scores);
+  });
+});
+
+describe('watching', () => {
+  const watcherSnapshot = (): ServerMessage => {
+    const message = snapshot();
+    if (message.type !== 'snapshot') throw new Error('not a snapshot');
+    return {
+      ...message,
+      state: { ...message.state, eliminated: ['P1'] },
+      queues: { P1: [], P2: [move(0), move(1)] },
+    };
+  };
+
+  it('knows every queue once it is a watcher, and follows them as orders come and go', () => {
+    const game = emptyGame();
+    applyMessage(game, watcherSnapshot());
+    expect(isWatching(game)).toBe(true);
+    expect(game.queues.P2).toEqual([move(0), move(1)]);
+    applyMessage(game, { type: 'queued', order: move(2), player: 'P2' });
+    expect(game.queues.P2).toHaveLength(3);
+    // The queue you were given for yourself is not touched by someone else's order.
+    expect(game.queue).toEqual([]);
+    applyMessage(game, {
+      type: 'tick',
+      tick: 1,
+      nextTickAt: 2000,
+      serverTime: 0,
+      changed: [],
+      eliminated: ['P1'],
+      winner: null,
+      queueLength: 0,
+      queueLengths: { P1: 0, P2: 2 },
+      scores: [],
+    });
+    expect(game.queues.P2).toEqual([move(1), move(2)]);
+  });
+
+  it('is not watching, and knows no queues, while still in the match', () => {
+    const game = emptyGame();
+    applyMessage(game, snapshot([move(0)]));
+    expect(isWatching(game)).toBe(false);
+    expect(game.queues).toEqual({});
   });
 });

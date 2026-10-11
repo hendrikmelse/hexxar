@@ -23,4 +23,6 @@ export interface Session {
   /** `null` while the guest's connection is down. */
   connection: Connection | null;
   room: Room | null;
+  /** The numbers last sent to this guest's menu, so they are sent again once they differ. */
+  statsSent?: string;
 }

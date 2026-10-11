@@ -55,7 +55,6 @@ export class Lobby {
   private readonly rooms = new Map<string, Room>();
   private readonly codes = new Map<string, Room>();
   private statsTimer: ReturnType<typeof setInterval> | null = null;
-  private lastStats = '';
 
   constructor(private readonly options: LobbyOptions) {
     if (options.statsMs > 0) {
@@ -128,7 +127,7 @@ export class Lobby {
     if (session.room) session.room.reconnect(session);
     else {
       connection.send({ type: 'room', room: null });
-      connection.send({ type: 'stats', ...this.stats() });
+      this.sendStats(session, this.stats());
     }
     return session;
   }
@@ -142,14 +141,23 @@ export class Lobby {
     return counts;
   }
 
-  /** Tell everyone in the menu, but only when the numbers have changed. */
+  private sendStats(session: Session, stats: { duel: number; ffa: number }): void {
+    session.statsSent = `${stats.duel}/${stats.ffa}`;
+    session.connection?.send({ type: 'stats', ...stats });
+  }
+
+  /**
+   * Tell everyone in the menu whose numbers are out of date. This is tracked per guest: someone who
+   * was in a game (and so missed the updates) or who reconnected into one is caught up as soon as
+   * they are back in the menu, even if the numbers have not changed since.
+   */
   private broadcastStats(): void {
     const stats = this.stats();
     const key = `${stats.duel}/${stats.ffa}`;
-    if (key === this.lastStats) return;
-    this.lastStats = key;
     for (const session of this.sessions.values()) {
-      if (!session.room) session.connection?.send({ type: 'stats', ...stats });
+      if (!session.room && session.connection && session.statsSent !== key) {
+        this.sendStats(session, stats);
+      }
     }
   }
 
@@ -189,6 +197,12 @@ export class Lobby {
           case 'leaveRoom':
             room.leave(session);
             return null;
+          case 'returnToRoom':
+            return room.returnToRoom(session);
+          case 'becomeSpectator':
+            return room.setSpectating(session, true);
+          case 'becomePlayer':
+            return room.setSpectating(session, false);
           case 'order':
             return this.reply(session, room.enqueue(session, message.order), message.order);
           case 'surrender':

@@ -12,11 +12,11 @@ import {
 } from '@hexxar/shared';
 import { playSound } from './audio/audio.js';
 import { Clouds, cloudsMerge, drawsMerge, isBigCloud, type Cover } from './clouds.js';
-import { visionFor, type GameView } from './game.js';
+import { isWatching, visionFor, type GameView } from './game.js';
 import { HEX_SIZE, hexCorners, hexToPixel, pixelToHex, type Point } from './layout.js';
 
 /** Distinct, flat player colors, assigned by player order. */
-const PLAYER_COLORS = [
+export const PLAYER_COLORS = [
   0x4f9dff, // blue
   0xff6b6b, // red
   0xffd166, // yellow
@@ -32,11 +32,11 @@ const PLAYER_COLORS = [
 ];
 
 /** The sea: land floats on it, and lakes are the holes in the board. */
-const WATER = 0x0e1c27;
+export const WATER = 0x0e1c27;
 /** What owned tiles are tinted from, so owner colors look the same wherever they are. */
 const OWNED_BASE = 0x14161c;
 /** Unclaimed land: green fields, packed earth around a village, grey flagstones for a city. */
-const NEUTRAL_FILL = { farmland: 0x2a3a2c, village: 0x3a382f, city: 0x3a3e46 } as const;
+export const NEUTRAL_FILL = { farmland: 0x2a3a2c, village: 0x3a382f, city: 0x3a3e46 } as const;
 const NEUTRAL_ICON = 0xaab3c8;
 /** What a tile hidden by fog is drawn on, under its clouds. */
 const FOG_GROUND = 0x16212d;
@@ -71,6 +71,8 @@ const POP_PEAK = 0.35;
 const RING_POP_MS = 300;
 /** How long the numbers floating up from a battle last, and the grey of neutral troops. */
 const FLOAT_MS = 1000;
+/** How loud the sounds of other players' fights are, next to the sounds of your own. */
+const OTHERS_VOLUME = 0.7;
 const NEUTRAL_TROOPS = 0xa3abb8;
 const RING_FINISH_MS = 750;
 /** A segment leaving the ring: it pops out, then the rest slide round to fill its place. */
@@ -241,8 +243,12 @@ export class Board {
   private pointerPath: readonly Hex[] = [];
   private pointerStarted = 0;
   private readonly highlightLayer = new Graphics();
+  /** Yellow over the segments of a ring being pointed at, fading in and out. */
+  private readonly ringFlash = new Graphics();
   /** Tiles a lesson is pointing at. */
   private highlights: readonly Hex[] = [];
+  /** Tiles whose generation ring is pointed at. */
+  private ringHighlights: readonly Hex[] = [];
   private readonly moveLayer = new Container();
   private readonly trails = new Graphics();
   private readonly bursts = new Graphics();
@@ -264,6 +270,7 @@ export class Board {
       this.tileLayer,
       this.fogLayer,
       this.highlightLayer,
+      this.ringFlash,
       this.queueLayer,
       this.pendingLayer,
       this.selectionLayer,
@@ -331,9 +338,13 @@ export class Board {
   }
 
   /** Point at some tiles (a pulsing outline), or at none. Used by the tutorial. */
-  setHighlights(hexes: readonly Hex[]): void {
+  setHighlights(hexes: readonly Hex[], rings: readonly Hex[] = []): void {
     this.highlights = hexes;
+    this.ringHighlights = rings;
     if (hexes.length === 0) this.highlightLayer.clear();
+    if (rings.length === 0) {
+      this.ringFlash.clear();
+    }
   }
 
   /**
@@ -419,10 +430,24 @@ export class Board {
   }
 
   private drawHighlights(): void {
-    if (this.highlights.length === 0) return;
+    if (this.highlights.length === 0 && this.ringHighlights.length === 0) return;
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
     const g = this.highlightLayer;
     g.clear();
+    // Each segment of the ring flashes yellow, within its own shape.
+    this.ringFlash.clear();
+    for (const hex of this.ringHighlights) {
+      const segments = this.views.get(hexKey(hex))?.ringSegments ?? 0;
+      if (segments === 0) continue;
+      const spec: RingSpec = {
+        center: hexToPixel(hex),
+        color: 0xffd966,
+        segments,
+        filled: segments,
+        paused: false,
+      };
+      drawRing(this.ringFlash, spec, () => ({ alpha: 0.9 * pulse }));
+    }
     for (const hex of this.highlights) {
       const center = hexToPixel(hex);
       g.poly(hexCorners(center, -3)).stroke({
@@ -699,15 +724,25 @@ export class Board {
     }
   }
 
-  /** The sound of an army arriving: a tile taken, an attack failing, a tile lost or held. */
+  /**
+   * The sound of an army arriving: a tile taken, an attack failing, a tile lost or held. Fights
+   * that are not yours but that you can see (or any, if you are watching) make the same sounds,
+   * a little quieter.
+   */
   private landingSound(flight: Flight, oldOwner: string | null, newOwner: string | null): void {
     const me = flight.game.playerId;
-    if (me === null || flight.clash) return;
-    if (flight.player === me) {
+    if (flight.clash) return;
+    if (me !== null && flight.player === me) {
       if (flight.battle && !flight.battle.won) playSound('tile.captureFailed');
       else if (newOwner === me && oldOwner !== me) playSound('tile.capture');
-    } else if (oldOwner === me) {
+    } else if (me !== null && oldOwner === me) {
       playSound(newOwner === me ? 'tile.defended' : 'tile.lost');
+    } else {
+      const quiet = { volume: OTHERS_VOLUME };
+      if (flight.battle && !flight.battle.won) playSound('tile.captureFailed', quiet);
+      else if (newOwner === flight.player && oldOwner !== flight.player) {
+        playSound('tile.capture', quiet);
+      }
     }
   }
 
@@ -1134,16 +1169,39 @@ export class Board {
 
   /** Draw the player's queued moves as arrows. */
   drawQueue(queue: readonly Order[], color: number): void {
+    this.drawQueues([{ queue, color }]);
+  }
+
+  /** Draw several players' queued moves as arrows, each in their own color (for watching). */
+  drawQueues(entries: readonly { queue: readonly Order[]; color: number }[]): void {
     const g = this.queueLayer;
     g.clear();
-    // The order that runs next stands out; the rest are a little darker and thinner.
-    const next: ArrowStyle = { color: mix(color, 0xffffff, 0.2), width: 5.5 };
-    const later: ArrowStyle = { color: mix(color, 0x141a24, 0.3), width: 4 };
+    const arrows: (Arrow & { rank: number; entry: number })[] = [];
+    entries.forEach(({ queue, color }, entry) => {
+      // The order that runs next stands out; the rest are a little darker and thinner.
+      const next: ArrowStyle = { color: mix(color, 0xffffff, 0.2), width: 5.5 };
+      const later: ArrowStyle = { color: mix(color, 0x141a24, 0.3), width: 4 };
+      queue.slice(0, 300).forEach((order, i) => {
+        arrows.push({
+          from: order.from,
+          to: order.to,
+          style: i === 0 ? next : later,
+          rank: i,
+          entry,
+        });
+      });
+    });
+    // Arrows over the same tiles stack, the ones nearer the front of their queue on top.
+    arrows.sort((a, b) => a.rank - b.rank || a.entry - b.entry);
+    const used = new Map<string, number>();
     drawArrows(
       g,
-      queue
-        .slice(0, 300)
-        .map((order, i) => ({ from: order.from, to: order.to, style: i === 0 ? next : later })),
+      arrows.map((arrow) => {
+        const key = segmentKey(arrow.from, arrow.to);
+        const slot = used.get(key) ?? 0;
+        used.set(key, slot + 1);
+        return { from: arrow.from, to: arrow.to, style: arrow.style, slot };
+      }),
     );
   }
 
@@ -1369,7 +1427,15 @@ interface Arrow {
   readonly from: Hex;
   readonly to: Hex;
   readonly style: ArrowStyle;
+  /**
+   * Arrows over the same two tiles (in either direction) are stacked: slot 0 is on top, in the
+   * right place, and each slot after it sits a little further to one side, underneath.
+   */
+  readonly slot?: number;
 }
+
+/** How far each arrow in a stack sits from the one above it, in pixels. */
+const STACK_STEP = 3.2;
 
 /**
  * Arrows from the middle of one hex to just short of the next, with rounded heads and a dark
@@ -1392,8 +1458,9 @@ function ringSpec(
   owner: number | null,
   game: GameView,
 ): RingSpec | null {
-  // Only the owner sees a tile's generation timing.
-  if (owner === null || tile.owner !== game.playerId || !game.config) return null;
+  // Only the owner sees a tile's generation timing, unless the viewer is watching (out, or it is over).
+  if (owner === null || !game.config) return null;
+  if (tile.owner !== game.playerId && !isWatching(game)) return null;
   // Only cities and villages produce troops, and the cycle shortens with each owned farm around them.
   const total = generationInterval(game.config, tile.type, ownedFarmNeighbors(game.tiles, tile));
   if (total === null || total < 2) return null;
@@ -1505,13 +1572,27 @@ function drawRing(
   }
 }
 
+/** The same for a pair of tiles whichever way round they are given. */
+const segmentKey = (from: Hex, to: Hex): string => {
+  const a = hexKey(from);
+  const b = hexKey(to);
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+};
+
 function drawArrows(g: Graphics, arrows: readonly Arrow[]): void {
-  const shapes = arrows.map(({ from, to, style }) => {
-    const a = hexToPixel(from);
-    const b = hexToPixel(to);
-    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const ux = (b.x - a.x) / length;
-    const uy = (b.y - a.y) / length;
+  const shapes = arrows.map(({ from, to, style, slot = 0 }) => {
+    const raw = { a: hexToPixel(from), b: hexToPixel(to) };
+    const length = Math.hypot(raw.b.x - raw.a.x, raw.b.y - raw.a.y) || 1;
+    const ux = (raw.b.x - raw.a.x) / length;
+    const uy = (raw.b.y - raw.a.y) / length;
+    // Stacked arrows slide sideways, to the same side whichever way each one points: read the
+    // segment as running to the right, and the stack goes up from it. (A segment between the top
+    // left and the bottom right comes out up and to the right.)
+    const side = ux > 0 ? -1 : 1;
+    const sx = -uy * side * slot * STACK_STEP;
+    const sy = ux * side * slot * STACK_STEP;
+    const a = { x: raw.a.x + sx, y: raw.a.y + sy };
+    const b = { x: raw.b.x + sx, y: raw.b.y + sy };
     const start = { x: a.x + ux * HEX_SIZE * 0.44, y: a.y + uy * HEX_SIZE * 0.44 };
     const tip = { x: b.x - ux * HEX_SIZE * 0.4, y: b.y - uy * HEX_SIZE * 0.4 };
     const headLength = 7 + style.width * 0.5;
@@ -1527,8 +1608,26 @@ function drawArrows(g: Graphics, arrows: readonly Arrow[]): void {
     ];
     // The shaft runs a little into the head so no gap shows where they meet.
     const shaftEnd = { x: base.x + ux * 2, y: base.y + uy * 2 };
-    return { start, shaftEnd, head, style };
+    return { start, shaftEnd, head, style, slot };
   });
+  // The deepest of a stack first, so the one on top has its dark edge over the ones below it.
+  const slots = [...new Set(shapes.map((shape) => shape.slot))].sort((x, y) => y - x);
+  for (const slot of slots)
+    drawLayer(
+      g,
+      shapes.filter((shape) => shape.slot === slot),
+    );
+}
+
+interface ArrowShape {
+  readonly start: Point;
+  readonly shaftEnd: Point;
+  readonly head: number[];
+  readonly style: ArrowStyle;
+}
+
+/** One layer of arrows: all the edges go down first, then all the colored bodies. */
+function drawLayer(g: Graphics, shapes: readonly ArrowShape[]): void {
   for (const { start, shaftEnd, head, style } of shapes) {
     const edge = { color: ARROW_OUTLINE, alpha: 0.55 };
     g.moveTo(start.x, start.y)

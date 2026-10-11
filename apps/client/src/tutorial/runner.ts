@@ -22,6 +22,8 @@ export interface TutorialView {
   readonly done: boolean;
   /** Whether the step has a task at all. */
   readonly hasTask: boolean;
+  /** A button to start the clock, while the player has not pressed it (none: no such button). */
+  readonly startLabel: string | null;
   /** Something went wrong and the player is being sent back to try again. */
   readonly failure: string | null;
   readonly hud: HudTarget | null;
@@ -41,7 +43,7 @@ export interface TutorialEnv {
   /** Wipe the previous match off the screen. */
   reset(): void;
   show(view: TutorialView | null): void;
-  highlight(hexes: readonly Hex[]): void;
+  highlight(hexes: readonly Hex[], rings?: readonly Hex[]): void;
   /** Show a pointer dragging across these tiles, over and over (none: stop showing it). */
   pointer(path: readonly Hex[]): void;
   /** Has everything that was moving on the board arrived (every tile shows what it now is)? */
@@ -66,6 +68,8 @@ export class TutorialRunner {
   /** While a step is being set up, messages do not count as the player doing anything. */
   private entering = true;
   private done = false;
+  /** The page's start button has been pressed. */
+  private started = false;
   private finished = false;
   private failure: string | null = null;
   /** A pending look at the step again, once the board has caught up with the match. */
@@ -171,6 +175,17 @@ export class TutorialRunner {
     this.start(lessonIndex);
   }
 
+  /** The player pressed the page's start button: let the clock run. */
+  startClock(): void {
+    const step = this.lesson?.steps[this.stepIndex];
+    if (!step?.startButton || this.started || this.failure !== null) return;
+    this.started = true;
+    // The page's pointing is done once the player is ready to watch.
+    this.env.highlight(step.tiles ?? []);
+    this.match?.setRunning(true);
+    this.publish();
+  }
+
   /** Put the player back at the start of the current step. */
   retry(): void {
     const step = this.lesson?.steps[this.stepIndex];
@@ -216,6 +231,7 @@ export class TutorialRunner {
     if (finished) {
       // The player goes on when they are ready: nothing moves them along.
       this.done = true;
+      match.setRunning(false);
       this.env.pointer([]);
       this.publish();
     }
@@ -260,9 +276,10 @@ export class TutorialRunner {
     this.startTick = match.state.tick;
     this.startOrders = match.ordersRun;
 
-    this.env.highlight(step.tiles ?? []);
+    this.env.highlight(step.tiles ?? [], step.rings ?? []);
     this.env.pointer(step.drag ?? []);
     match.setRunning(step.clock === 'running');
+    this.started = false;
     this.entering = false;
     this.publish();
     // A task that is already done when the step begins needs no waiting.
@@ -282,6 +299,7 @@ export class TutorialRunner {
       text: step.text,
       done: step.done === undefined || this.done,
       hasTask: step.done !== undefined,
+      startLabel: step.startButton && !this.started ? step.startButton : null,
       failure: this.failure,
       hud: step.hud ?? null,
       hudOutline: step.hudOutline ?? true,

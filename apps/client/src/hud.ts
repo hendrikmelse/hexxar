@@ -1,3 +1,4 @@
+import { generationInterval, tileRules, type MatchConfig } from '@hexxar/shared';
 import type { GameView } from './game.js';
 import { playerColor } from './board.js';
 import { appStore } from './store.js';
@@ -7,6 +8,8 @@ const css = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 
 /** A "Really surrender?" prompt goes back to a plain button after this long. */
 const CONFIRM_MS = 4000;
+/** How long a remark above the surrender button stays up. */
+const REMARK_MS = 3500;
 
 /** What the HUD's buttons do. */
 export interface HudActions {
@@ -20,6 +23,8 @@ interface Row {
   readonly item: HTMLLIElement;
   readonly label: HTMLElement;
   readonly troops: HTMLElement;
+  /** The troop count last shown, to tell by how much it has changed. */
+  last: number;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -40,8 +45,18 @@ export class Hud {
   private readonly pie = el('div', 'pie');
   private readonly standings = el('ol', 'standings');
   private readonly rows = new Map<string, Row>();
+  /** The heading above the players who are out, shown only while there are some. */
+  private readonly defeatedHeading = el('li', 'defeated-heading');
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
+  /** How many people are watching this game, in small print beside the surrender button. */
+  private readonly tally = el('span', 'spectator-tally');
+  /** A short remark in a bubble above the surrender button. */
+  private readonly remark = el('div', 'surrender-remark');
+  private remarkTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly reference = el('div', 'reference');
+  private readonly referenceBody = el('div', 'reference-body');
+  private readonly referenceButton: HTMLButtonElement;
   private game: GameView | null = null;
   private lastTick = -1;
   /** How long the planning period was when we first saw it, for drawing the countdown ring. */
@@ -97,12 +112,65 @@ export class Hud {
       cameraButton('', 'Show the whole board', () => actions.fit(), 'fit'),
     );
 
-    root.append(left, top, this.surrender, camera);
+    // The reference sheet: a button just left of "show the whole board" that grows into the sheet.
+    this.referenceButton = el('button', 'reference-toggle');
+    this.referenceButton.textContent = '?';
+    this.referenceButton.title = 'Reference';
+    this.referenceButton.setAttribute('aria-label', 'Reference');
+    this.referenceButton.setAttribute('aria-expanded', 'false');
+    this.referenceButton.addEventListener('click', () => this.toggleReference());
+    this.reference.append(this.referenceBody, this.referenceButton);
+    // Pressing anywhere outside the sheet puts it away (without getting in the way of what was
+    // pressed: this only listens).
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (
+          this.reference.classList.contains('open') &&
+          !this.reference.contains(event.target as Node)
+        ) {
+          this.toggleReference();
+        }
+      },
+      true,
+    );
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.reference.classList.contains('open')) {
+        this.toggleReference();
+      }
+    });
+
+    this.remark.hidden = true;
+    this.remark.setAttribute('role', 'status');
+    this.tally.hidden = true;
+    const bottom = el('div', 'bottom-left');
+    bottom.append(this.surrender, this.tally);
+    root.append(left, top, bottom, this.remark, camera, this.reference);
     const frame = (): void => {
       this.updateTimer();
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
+  }
+
+  private toggleReference(): void {
+    const open = !this.reference.classList.contains('open');
+    this.reference.classList.toggle('open', open);
+    this.referenceButton.textContent = open ? '×' : '?';
+    // Closing it makes the back sound, opening it the usual click (read when the button is pressed).
+    if (open) this.referenceButton.dataset.sound = 'ui.back';
+    else delete this.referenceButton.dataset.sound;
+    this.referenceButton.setAttribute('aria-expanded', String(open));
+    if (!open) {
+      this.reference.style.height = '';
+      return;
+    }
+    // The numbers are this match's own, so they follow any custom rules.
+    const config = this.game?.config ?? null;
+    this.referenceBody.replaceChildren(...(config ? referenceContent(config) : []));
+    // Grow to fit the sheet, never past the screen.
+    const room = window.innerHeight - 40;
+    this.reference.style.height = `${Math.min(room, this.referenceBody.offsetHeight)}px`;
   }
 
   render(game: GameView): void {
@@ -119,14 +187,14 @@ export class Hud {
     if (mine !== null) this.badge.style.setProperty('--c', css(mine));
 
     this.renderStandings(game, live);
-    this.surrender.hidden = game.status !== 'playing' || eliminated;
+    // Spectators have no army to give up.
+    this.surrender.hidden = game.status !== 'playing' || eliminated || me === null;
     if (this.surrender.hidden) this.resetSurrender();
 
     // The match result is shown by the results screen, not here.
     let text = '';
     let kind = '';
-    if (eliminated && game.status === 'playing') text = 'You were eliminated';
-    else if (game.notice) text = game.notice;
+    if (game.notice) text = game.notice;
     else if (this.preparing(game)) {
       text = 'Plan your opening: drag from your land to queue orders';
       kind = 'prep';
@@ -177,7 +245,21 @@ export class Hud {
     for (const [id, row] of this.rows) before.set(id, row.item.offsetTop);
     const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
+    // Rows (and the "Defeated" heading before the first of the players who are out) are placed
+    // one slot at a time, so the list stays in order without being rebuilt.
+    let slot = 0;
+    let headed = false;
+    const place = (node: HTMLElement): void => {
+      if (this.standings.children[slot] !== node)
+        this.standings.insertBefore(node, this.standings.children[slot] ?? null);
+      slot++;
+    };
+    this.defeatedHeading.textContent = 'Defeated';
     standings.forEach((standing, index) => {
+      if (standing.out && !headed) {
+        headed = true;
+        place(this.defeatedHeading);
+      }
       let row = this.rows.get(standing.id);
       let fresh = false;
       if (!row) {
@@ -188,6 +270,9 @@ export class Hud {
         this.rows.set(standing.id, row);
       }
       const shown = String(standing.mobile);
+      const change = standing.mobile - row.last;
+      row.last = standing.mobile;
+      if (!fresh && !calm && change !== 0) floatChange(row.item, change);
       if (!fresh && !calm && row.troops.textContent !== shown) restartAnimation(row.troops, 'bump');
       const you = standing.id === game.playerId;
       row.label.textContent = game.names[standing.id] ?? names.get(standing.id) ?? standing.id;
@@ -195,11 +280,11 @@ export class Hud {
       row.item.classList.toggle('me', you);
       row.item.classList.toggle('out', standing.out);
       row.item.dataset.rank = standing.out ? '' : String(index + 1);
-      // Re-appending in order keeps the list sorted without rebuilding the rows.
-      if (this.standings.children[index] !== row.item)
-        this.standings.insertBefore(row.item, this.standings.children[index] ?? null);
+      place(row.item);
       if (fresh && !calm && before.size > 0) restartAnimation(row.item, 'enter');
     });
+
+    if (!headed) this.defeatedHeading.remove();
 
     if (calm) return;
     for (const [id, row] of this.rows) {
@@ -263,6 +348,24 @@ export class Hud {
     this.actions.surrender();
   }
 
+  /** Show how many people are watching (nothing, when no one is). */
+  setSpectators(count: number): void {
+    this.tally.hidden = count === 0;
+    this.tally.textContent = `${count} spectating`;
+  }
+
+  /** Say something in a little bubble above the surrender button, for a few seconds. */
+  say(text: string): void {
+    this.remark.textContent = text;
+    this.remark.hidden = false;
+    restartAnimation(this.remark, 'pop');
+    if (this.remarkTimer) clearTimeout(this.remarkTimer);
+    this.remarkTimer = setTimeout(() => {
+      this.remark.hidden = true;
+      this.remarkTimer = null;
+    }, REMARK_MS);
+  }
+
   private resetSurrender(): void {
     if (this.confirmTimer) clearTimeout(this.confirmTimer);
     this.confirmTimer = null;
@@ -306,6 +409,70 @@ export class Hud {
   }
 }
 
+/** The reference sheet's contents for a match: troop generation speeds and defensive bonuses. */
+function referenceContent(config: MatchConfig): HTMLElement[] {
+  const section = (heading: string): HTMLHeadingElement => {
+    const node = el('h4', '');
+    node.textContent = heading;
+    return node;
+  };
+
+  // Ticks per troop for 0 to 6 farms around the tile, and where production stops.
+  const table = el('table', 'speeds');
+  const header = table.createTHead().insertRow();
+  for (const text of ['# Farms', '0', '1', '2', '3', '4', '5', '6', 'Cap']) {
+    const cell = el('th', text === 'Cap' ? 'cap' : text === '# Farms' ? 'across' : '');
+    cell.textContent = text;
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  for (const id of ['village', 'city'] as const) {
+    const rules = tileRules(config, id);
+    const row = body.insertRow();
+    const name = el('th', 'kind');
+    name.textContent = rules.name;
+    row.append(name);
+    const ticks = Array.from(
+      { length: 7 },
+      (_, farms) => generationInterval(config, id, farms) ?? 0,
+    );
+    for (const value of ticks) row.insertCell().textContent = String(value);
+    const cap = row.insertCell();
+    cap.className = 'cap';
+    cap.textContent = String(rules.generation?.cap);
+  }
+
+  const bonus = (percent: number): string =>
+    percent === 100 ? 'None' : `${percent > 100 ? '+' : ''}${percent - 100}%`;
+  const chips = el('div', 'bonuses');
+  for (const id of ['village', 'city'] as const) {
+    const rules = tileRules(config, id);
+    const chip = el('div', `bonus ${id}`);
+    const name = el('span', '');
+    name.textContent = rules.name;
+    const value = el('strong', rules.defensePercent === 100 ? 'none' : '');
+    value.textContent = bonus(rules.defensePercent);
+    chip.append(name, value);
+    chips.append(chip);
+  }
+
+  const column = (...children: HTMLElement[]): HTMLElement => {
+    const node = el('div', 'reference-column');
+    node.append(...children);
+    return node;
+  };
+  return [column(section('Troop Generation'), table), column(section('Defensive bonus'), chips)];
+}
+
+/** A small number floats up beside a player's troop count: green for more troops, red for fewer. */
+function floatChange(item: HTMLElement, change: number): void {
+  const note = el('span', `delta ${change > 0 ? 'gain' : 'loss'}`);
+  note.textContent = change > 0 ? `+${change}` : `−${-change}`;
+  note.setAttribute('aria-hidden', 'true');
+  note.addEventListener('animationend', () => note.remove());
+  item.append(note);
+}
+
 function createRow(): Row {
   const item = el('li', 'standing');
   const name = el('span', 'name');
@@ -314,7 +481,7 @@ function createRow(): Row {
   const troops = el('span', 'stat troops');
   troops.title = 'Mobile troops';
   item.append(el('span', 'swatch'), name, troops);
-  return { item, label, troops };
+  return { item, label, troops, last: 0 };
 }
 
 function cameraButton(

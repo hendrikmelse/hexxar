@@ -10,7 +10,8 @@ import { Logo } from './Logo.js';
 export function Out({ actions }: { actions: Actions }) {
   const app = useApp();
 
-  if (app.spectating) {
+  // Someone in a private room to watch is a spectator from the start.
+  if (app.spectating || app.room?.spectating) {
     return (
       <div className="spectating">
         <span>Spectating</span>

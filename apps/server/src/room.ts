@@ -1,6 +1,5 @@
 import {
-  FFA_MAX_PLAYERS,
-  DUEL_RADIUS,
+  symmetricRadius,
   ROYALE_TILES_PER_PLAYER,
   createFreeForAllMatch,
   createRng,
@@ -33,6 +32,8 @@ type Timer = ReturnType<typeof setTimeout>;
  * that always fails must not be allowed to keep trying for long.
  */
 const BOARD_ATTEMPTS = 100;
+/** Most people who may watch one private game. */
+const MAX_SPECTATORS = 20;
 const BOARD_BUDGET_MS = 2000;
 
 /**
@@ -92,6 +93,15 @@ interface Member {
   playerId: string | null;
   /** Has left the room (kept in the list for the result and the player list). */
   left: boolean;
+  /**
+   * Private rooms only: still looking at the result of the last match, and not yet back in the
+   * room for the next one.
+   */
+  reviewing: boolean;
+  /** Out of the match (or it is over), so allowed to see everyone's queue. */
+  watching: boolean;
+  /** Private rooms only: here to watch, not to play. Joined once the room was full or begun. */
+  spectator: boolean;
   afkTimer: Timer | null;
 }
 
@@ -127,6 +137,8 @@ export class Room {
   /** Enough votes are in: the wait has been cut short and the room takes no more players. */
   private lockedIn = false;
   private closed = false;
+  /** Who was in the last match, for those still looking at its result. */
+  private resultPlayers: RoomView['players'] | null = null;
 
   constructor(private readonly options: RoomOptions) {
     this.id = options.id;
@@ -139,10 +151,25 @@ export class Room {
   // -- Membership ----------------------------------------------------------
 
   join(session: Session): string | null {
+    // A private room that is full, or has begun, takes people as spectators.
+    if (
+      this.visibility === 'private' &&
+      (this.state !== 'lobby' || this.activeMembers().length >= this.capacity)
+    ) {
+      return this.watch(session);
+    }
     if (this.state !== 'lobby') return 'that game has already started';
     if (this.lockedIn) return 'that game is about to start';
     if (this.activeMembers().length >= this.capacity) return 'that game is full';
-    this.members.push({ session, playerId: null, left: false, afkTimer: null });
+    this.members.push({
+      session,
+      playerId: null,
+      left: false,
+      reviewing: false,
+      watching: false,
+      spectator: false,
+      afkTimer: null,
+    });
     session.room = this;
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
     if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
@@ -162,6 +189,52 @@ export class Room {
     return null;
   }
 
+  /** Join as a spectator: see the room, and the match once it runs, without taking a place. */
+  private watch(session: Session): string | null {
+    if (this.state === 'finished') return 'that game is over';
+    if (this.members.filter((m) => m.spectator && !m.left).length >= MAX_SPECTATORS) {
+      return 'that game has too many spectators';
+    }
+    const member: Member = {
+      session,
+      playerId: null,
+      left: false,
+      reviewing: false,
+      watching: true,
+      spectator: true,
+      afkTimer: null,
+    };
+    this.members.push(member);
+    session.room = this;
+    this.broadcastRoom();
+    if (this.state === 'running') this.sendSnapshot(member);
+    return null;
+  }
+
+  /**
+   * In a private room's lobby, move between playing and watching. Places are never filled for
+   * anyone: a spectator takes a free one only by asking.
+   */
+  setSpectating(session: Session, spectating: boolean): string | null {
+    const member = this.memberOf(session);
+    if (!member || member.left) return 'you are not in this game';
+    if (this.visibility !== 'private') return 'this game has no spectators';
+    if (this.state !== 'lobby' || member.reviewing) return 'the game has already started';
+    if (member.spectator === spectating) return null;
+    if (spectating) {
+      // The host stays the host, watching or not.
+      member.spectator = true;
+      member.watching = true;
+      this.votes.delete(session.userId);
+    } else {
+      if (this.activeMembers().length >= this.capacity) return 'that game is full';
+      member.spectator = false;
+      member.watching = false;
+    }
+    this.broadcastRoom();
+    return null;
+  }
+
   /** The player chose to leave. During a match that is a surrender. */
   leave(session: Session): void {
     const member = this.memberOf(session);
@@ -170,8 +243,13 @@ export class Room {
       this.members.splice(this.members.indexOf(member), 1);
       this.votes.delete(session.userId);
       this.detach(session);
-      if (this.members.length === 0) return this.close();
-      if (this.host === session) this.host = this.members[0]!.session;
+      // When the host goes, the next player takes over; with no one left to play, the room is
+      // over, whoever is still watching. A host who is only watching keeps the room open.
+      if (this.host === session) {
+        const next = this.activeMembers()[0] ?? this.members.find((m) => !m.spectator);
+        if (!next) return this.close();
+        this.host = next.session;
+      }
       this.scheduleEarlyStart();
       // With one fewer player, the votes already in may now be enough.
       this.checkVotes();
@@ -188,7 +266,8 @@ export class Room {
   disconnect(session: Session): void {
     const member = this.memberOf(session);
     if (!member || member.left) return;
-    if (this.state === 'lobby') return this.leave(session);
+    // Nothing to keep for a spectator who is gone.
+    if (member.spectator || this.state === 'lobby') return this.leave(session);
     if (this.state === 'running' && member.afkTimer === null) {
       // Their queue keeps running; if they stay away this long, their army surrenders.
       member.afkTimer = setTimeout(() => {
@@ -207,7 +286,53 @@ export class Room {
     if (member.afkTimer) clearTimeout(member.afkTimer);
     member.afkTimer = null;
     this.broadcastRoom();
-    this.sendSnapshot(member);
+    if (!member.reviewing) this.sendSnapshot(member);
+  }
+
+  /**
+   * Private rooms: after a match, go back to the room to set up the next one. The room is a
+   * lobby again from the first person who returns; the others keep their result until they do.
+   */
+  returnToRoom(session: Session): string | null {
+    const member = this.memberOf(session);
+    if (!member || member.left || !member.reviewing) return 'there is no game to go back to';
+    // A spectator back from the result carries on watching if the next game is already on.
+    if (member.spectator && this.state === 'running') {
+      member.reviewing = false;
+      this.broadcastRoom();
+      this.sendSnapshot(member);
+      return null;
+    }
+    if (
+      this.state === 'running' ||
+      (!member.spectator && this.activeMembers().length >= this.capacity)
+    ) {
+      const started = this.state === 'running';
+      this.members.splice(this.members.indexOf(member), 1);
+      this.detach(session);
+      if (this.members.length === 0) this.close();
+      return started ? 'the next game has already started' : 'that game is full';
+    }
+    if (this.state === 'finished') this.resetToLobby();
+    member.reviewing = false;
+    member.playerId = null;
+    if (!member.spectator && this.memberOf(this.host)?.reviewing !== false) this.host = session;
+    this.broadcastRoom();
+    return null;
+  }
+
+  /** The finished match is put away and the room is open for the next one. */
+  private resetToLobby(): void {
+    if (this.lingerTimer) clearTimeout(this.lingerTimer);
+    this.lingerTimer = null;
+    this.resetEarlyStart();
+    this.state = 'lobby';
+    this.match = null;
+    this.nextTickAt = null;
+    for (let i = this.members.length - 1; i >= 0; i--) {
+      if (this.members[i]!.left) this.members.splice(i, 1);
+    }
+    for (const member of this.members) member.playerId = null;
   }
 
   // -- Host controls -------------------------------------------------------
@@ -218,12 +343,31 @@ export class Room {
     if (this.state !== 'lobby') return 'the game has already started';
     const next = applySettingsPatch(this.settings, patch);
     if (typeof next === 'string') return next;
-    if (this.activeMembers().length > Math.min(next.size, FFA_MAX_PLAYERS)) {
-      return 'there are too many players for that kind of game';
-    }
     this.settings = next;
+    this.rebalance();
     this.broadcastRoom();
     return null;
+  }
+
+  /**
+   * The kind of game decides how many players fit: players who no longer fit a smaller one (the
+   * latest to arrive, never the host) become spectators. Places a bigger game opens up are left
+   * empty, for spectators to take if they want them.
+   */
+  private rebalance(): void {
+    const players = this.activeMembers();
+    if (players.length <= this.capacity) return;
+    const keep = new Set(
+      [...players]
+        .sort((a, b) => Number(b.session === this.host) - Number(a.session === this.host))
+        .slice(0, this.capacity),
+    );
+    for (const member of players) {
+      if (keep.has(member)) continue;
+      member.spectator = true;
+      member.watching = true;
+      this.votes.delete(member.session.userId);
+    }
   }
 
   /** Host only: start the match, once there are enough players (never more than fit). */
@@ -241,7 +385,16 @@ export class Room {
     const member = this.memberOf(session);
     if (!member || member.left || !member.playerId || !this.match)
       return 'the match has not started';
-    return this.match.enqueue(member.playerId, order);
+    const refused = this.match.enqueue(member.playerId, order);
+    if (refused === null) {
+      // Anyone watching sees every player's orders as they are given.
+      for (const other of this.members) {
+        if (other.watching && !other.left && !other.reviewing) {
+          other.session.connection?.send({ type: 'queued', order, player: member.playerId });
+        }
+      }
+    }
+    return refused;
   }
 
   surrender(session: Session): void {
@@ -252,19 +405,25 @@ export class Room {
   // -- Views ---------------------------------------------------------------
 
   view(session: Session): RoomView {
+    // Someone still looking at the result sees the result, whatever the room has moved on to.
+    const reviewing = this.memberOf(session)?.reviewing === true && this.resultPlayers !== null;
     return {
       id: this.id,
       code: this.code,
       visibility: this.visibility,
-      state: this.state,
+      state: reviewing ? 'finished' : this.state,
       host: this.host.userId,
       settings: this.settings,
-      players: this.members.map((m) => ({
-        userId: m.session.userId,
-        name: m.session.name,
-        connected: !m.left && m.session.connection !== null,
-        playerId: m.playerId,
-      })),
+      players: reviewing
+        ? this.resultPlayers!
+        : this.members
+            .filter((m) => !m.reviewing && !m.spectator)
+            .map((m) => ({
+              userId: m.session.userId,
+              name: m.session.name,
+              connected: !m.left && m.session.connection !== null,
+              playerId: m.playerId,
+            })),
       minPlayers: this.minPlayers,
       // How long the wait on screen starts from: a battle royale's, or a duel's short pause.
       waitMs: this.votesApply ? this.options.earlyStartMs : this.options.fullWaitMs,
@@ -272,6 +431,8 @@ export class Room {
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
       youVoted: this.votes.has(session.userId),
+      spectators: this.members.filter((m) => m.spectator && !m.left).map((m) => m.session.name),
+      spectating: this.memberOf(session)?.spectator === true,
       serverTime: Date.now(),
       you: session.userId,
     };
@@ -311,8 +472,9 @@ export class Room {
 
   // -- Internals -----------------------------------------------------------
 
+  /** Everyone who is in the room and ready for a match (not gone, not looking at the last result). */
   private activeMembers(): Member[] {
-    return this.members.filter((m) => !m.left);
+    return this.members.filter((m) => !m.left && !m.reviewing && !m.spectator);
   }
 
   private memberOf(session: Session): Member | undefined {
@@ -333,7 +495,7 @@ export class Room {
   }
 
   private closeIfEmpty(): void {
-    if (this.members.every((m) => m.left)) this.close();
+    if (this.members.every((m) => m.left || m.spectator)) this.close();
   }
 
   private close(): void {
@@ -438,7 +600,7 @@ export class Room {
     this.resetEarlyStart();
     const seed = Math.floor(Math.random() * 2 ** 32);
     // Who starts where is random, so nobody always gets the same side.
-    const order = shuffle(this.members, createRng(seed));
+    const order = shuffle(this.activeMembers(), createRng(seed));
     const players = order.map((_, i) => `P${i + 1}`);
     order.forEach((member, i) => (member.playerId = players[i] ?? null));
 
@@ -484,7 +646,12 @@ export class Room {
           config,
           params: { tilesPerPlayer: ROYALE_TILES_PER_PLAYER[mapSize] },
         })
-      : createSymmetricMatch({ players, seed, radius: DUEL_RADIUS[mapSize], config });
+      : createSymmetricMatch({
+          players,
+          seed,
+          radius: symmetricRadius(mapSize, players.length),
+          config,
+        });
   }
 
   private scheduleTick(): void {
@@ -501,8 +668,14 @@ export class Room {
     const scores = scoresOf(state, config);
 
     for (const member of this.members) {
-      if (!member.playerId) continue;
-      const id = member.playerId;
+      // Players and spectators get the ticks; people who have gone, or are reading a result, do not.
+      if (member.left || member.reviewing || (!member.playerId && !member.spectator)) continue;
+      const id = member.playerId ?? '';
+      // Out of the match, or the match over, or only here to watch: this person sees everyone's
+      // queue, from now on.
+      const watching = member.spectator || state.eliminated.includes(id) || state.winner !== null;
+      const firstWatch = watching && !member.watching;
+      member.watching = watching;
       member.session.connection?.send({
         type: 'tick',
         tick: state.tick,
@@ -512,6 +685,8 @@ export class Room {
         eliminated: [...state.eliminated],
         winner: state.winner,
         queueLength: match.queueOf(id).length,
+        ...(firstWatch ? { queues: this.allQueues(match) } : {}),
+        ...(watching && !firstWatch ? { queueLengths: this.queueLengths(match) } : {}),
         moves: visibleMoves(moves, id, previous, state, config),
         scores,
       });
@@ -535,6 +710,10 @@ export class Room {
     this.tickTimer = null;
     this.nextTickAt = null;
     this.state = 'finished';
+    if (this.visibility === 'private') {
+      this.resultPlayers = this.view(this.host).players;
+      for (const member of this.members) member.reviewing = !member.left;
+    }
     for (const member of this.members) {
       if (member.afkTimer) clearTimeout(member.afkTimer);
       member.afkTimer = null;
@@ -543,10 +722,22 @@ export class Room {
     this.broadcastRoom();
   }
 
+  private allQueues(match: Match): Record<string, Order[]> {
+    return Object.fromEntries(match.state.players.map((id) => [id, [...match.queueOf(id)]]));
+  }
+
+  private queueLengths(match: Match): Record<string, number> {
+    return Object.fromEntries(match.state.players.map((id) => [id, match.queueOf(id).length]));
+  }
+
   private snapshotFor(member: Member): ServerMessage | null {
     const match = this.match;
     if (!match) return null;
-    const state = visibleState(match.state, member.playerId ?? '', match.config);
+    const id = member.playerId ?? '';
+    // Out of the match, or it is over: then everyone's queue may be seen.
+    member.watching =
+      member.spectator || match.state.eliminated.includes(id) || match.state.winner !== null;
+    const state = visibleState(match.state, id, match.config);
     return {
       type: 'snapshot',
       matchId: match.id,
@@ -554,6 +745,7 @@ export class Room {
       state: { ...state, players: [...state.players], eliminated: [...state.eliminated] },
       you: member.playerId,
       queue: member.playerId ? [...match.queueOf(member.playerId)] : [],
+      ...(member.watching ? { queues: this.allQueues(match) } : {}),
       nextTickAt: this.nextTickAt,
       serverTime: Date.now(),
       scores: scoresOf(match.state, match.config),
@@ -566,7 +758,8 @@ export class Room {
   }
 
   private broadcastSnapshots(): void {
-    for (const member of this.members) if (!member.left) this.sendSnapshot(member);
+    for (const member of this.members)
+      if (!member.left && !member.reviewing) this.sendSnapshot(member);
   }
 
   private broadcastRoom(): void {

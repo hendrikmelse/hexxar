@@ -14,9 +14,9 @@ import { FitText } from './FitText.js';
 import { useFlip } from './useFlip.js';
 
 const MIN_STARTING_TROOPS = 5;
-const MAX_STARTING_TROOPS = 50;
-const MIN_TICK_SECONDS = 0.1;
-const MAX_TICK_SECONDS = 5;
+const MAX_STARTING_TROOPS = 30;
+const MIN_TICK_SECONDS = 0.2;
+const MAX_TICK_SECONDS = 2;
 
 const MAP_SIZE_LABELS: Record<MapSize, string> = {
   small: 'Small',
@@ -26,20 +26,14 @@ const MAP_SIZE_LABELS: Record<MapSize, string> = {
 const MODE_LABELS: Record<RoomMode, string> = { duel: 'Duel', ffa: 'Battle Royale' };
 
 /** The room before the match: who is here, the settings, and the wait before it starts. */
-/** Someone joining or leaving, the opponent turning up, and the last seconds of the countdown. */
-function useLobbySounds(
-  players: number,
-  size: number,
-  publicDuel: boolean,
-  waitSeconds: number | null,
-): void {
+/** Someone joining or leaving, and the last seconds of the countdown. */
+function useLobbySounds(players: number, waitSeconds: number | null): void {
   const before = useRef(players);
   useEffect(() => {
-    if (players > before.current)
-      playSound(publicDuel && players >= size ? 'lobby.found' : 'lobby.join');
+    if (players > before.current) playSound('lobby.join');
     else if (players < before.current) playSound('lobby.leave');
     before.current = players;
-  }, [players, size, publicDuel]);
+  }, [players]);
   useEffect(() => {
     if (waitSeconds !== null && waitSeconds > 0 && waitSeconds <= 3) playSound('lobby.count');
   }, [waitSeconds]);
@@ -60,12 +54,12 @@ export function Lobby({ actions }: { actions: Actions }) {
   const canVote = mode === 'ffa' && !isPrivate;
   const publicDuel = mode === 'duel' && !isPrivate;
   const waitingForOpponent = publicDuel && players < size;
-  useLobbySounds(players, size, publicDuel, waitSeconds);
+  useLobbySounds(players, waitSeconds);
   const lockedIn = canVote && room.votesNeeded > 0 && room.startVotes >= room.votesNeeded;
 
   return (
     <div className="screen">
-      <div className="card lobby">
+      <div className={`card lobby ${isPrivate ? 'compact' : ''}`}>
         <h2>{isPrivate ? 'Private game' : mode === 'ffa' ? 'Battle Royale' : 'Duel'}</h2>
 
         {isPrivate && <InviteCode code={room.code} />}
@@ -133,7 +127,26 @@ export function Lobby({ actions }: { actions: Actions }) {
           </div>
         )}
 
+        {/* Private games always keep the line's place, empty or not, so nothing moves when someone starts watching. */}
+        {isPrivate && (
+          <p
+            className="muted center spectator-count"
+            style={room.spectators.length === 0 ? { visibility: 'hidden' } : undefined}
+          >
+            {room.spectators.length} spectator{room.spectators.length === 1 ? '' : 's'}
+            {room.spectating && (
+              <>
+                <span className="dot">·</span>
+                You are a spectator
+              </>
+            )}
+          </p>
+        )}
+
         <div className="buttons">
+          <button data-sound="ui.back" onClick={actions.leaveRoom}>
+            Leave
+          </button>
           {isHost && isPrivate && room.state === 'lobby' && (
             <Tip
               text={
@@ -149,9 +162,19 @@ export function Lobby({ actions }: { actions: Actions }) {
               </button>
             </Tip>
           )}
-          <button data-sound="ui.back" onClick={actions.leaveRoom}>
-            Leave
-          </button>
+          {/* In the bottom right: players can step out to watch, and spectators can take a free place. */}
+          {isPrivate && !room.spectating && (
+            <button className="side-button" onClick={actions.becomeSpectator}>
+              Spectate
+            </button>
+          )}
+          {room.spectating && (
+            <Tip text={players < size ? undefined : 'The game is full'}>
+              <button className="primary" disabled={players >= size} onClick={actions.becomePlayer}>
+                Join as player
+              </button>
+            </Tip>
+          )}
         </div>
       </div>
     </div>
@@ -297,7 +320,7 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
           <div
             key={entry.player.userId}
             data-flip={entry.player.userId}
-            className={`roster-slot ${boxClass(entry, entry.player.connected)}`}
+            className={`roster-slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
           >
             <FitText className="name" text={entry.player.name} max={14} min={10} />
             {!entry.player.connected && <em>disconnected</em>}
@@ -308,31 +331,32 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   );
 }
 
-/** The two sides of a duel: you, and your opponent or a placeholder while one is found. */
+/**
+ * The two sides of a duel, in the order the players joined (the same for everyone, so each box
+ * is always the same person), with your own highlighted. A missing opponent shows dots.
+ */
 function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const armed = useArmed();
-  const you = shown.find((entry) => entry.player.userId === room.you);
-  const opponent = shown.find((entry) => entry.player.userId !== room.you);
+  const side = (entry: ShownPlayer | undefined) =>
+    entry ? (
+      <div
+        key={entry.player.userId}
+        className={`slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
+      >
+        <FitText className="name" text={entry.player.name} max={15} min={11} />
+        {!entry.player.connected && <em>disconnected</em>}
+      </div>
+    ) : (
+      <EmptyBox base="slot" armed={armed}>
+        <SearchingDots />
+      </EmptyBox>
+    );
   return (
     // In a private game the panels match the roster's height, so switching mode moves nothing.
     <div className={`versus ${room.visibility === 'private' ? 'roster-height' : ''}`}>
-      <div className="slot you">
-        <FitText className="name" text={you?.player.name ?? ''} max={15} min={11} />
-      </div>
+      {side(shown[0])}
       <div className="vs">VS</div>
-      {opponent ? (
-        <div
-          key={opponent.player.userId}
-          className={`slot ${boxClass(opponent, opponent.player.connected)}`}
-        >
-          <FitText className="name" text={opponent.player.name} max={15} min={11} />
-          {!opponent.player.connected && <em>disconnected</em>}
-        </div>
-      ) : (
-        <EmptyBox base="slot" armed={armed}>
-          <SearchingDots />
-        </EmptyBox>
-      )}
+      {side(shown[1])}
     </div>
   );
 }
@@ -380,12 +404,12 @@ function Settings({
         <dd>{MODE_LABELS[mode]}</dd>
         <dt>Map size</dt>
         <dd>{MAP_SIZE_LABELS[mapSize]}</dd>
+        <dt>Fog of war</dt>
+        <dd>{config.fog === 'on' ? 'On' : 'Off'}</dd>
         <dt>Tick length</dt>
         <dd>{(config.tickMs / 1000).toFixed(1)}s</dd>
         <dt>Starting troops</dt>
         <dd>{config.startingTroops}</dd>
-        <dt>Fog of war</dt>
-        <dd>{config.fog === 'on' ? 'On' : 'Off'}</dd>
       </dl>
     );
   }
@@ -410,17 +434,6 @@ function Settings({
         }))}
         onChange={(value) => onChange({ mapSize: value })}
       />
-      <Slider
-        label="Tick length"
-        value={config.tickMs / 1000}
-        min={MIN_TICK_SECONDS}
-        max={MAX_TICK_SECONDS}
-        limits={{ min: 0.1, max: 60 }}
-        step={0.1}
-        decimals={1}
-        unit="s"
-        onCommit={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
-      />
       <Segmented
         label="Fog of war"
         value={config.fog}
@@ -431,11 +444,22 @@ function Settings({
         onChange={(fog) => onChange({ config: { fog } })}
       />
       <Slider
+        label="Tick length"
+        value={config.tickMs / 1000}
+        min={MIN_TICK_SECONDS}
+        max={MAX_TICK_SECONDS}
+        limits={{ min: MIN_TICK_SECONDS, max: 5 }}
+        step={0.1}
+        decimals={1}
+        unit="s"
+        onCommit={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
+      />
+      <Slider
         label="Starting troops"
         value={config.startingTroops}
         min={MIN_STARTING_TROOPS}
         max={MAX_STARTING_TROOPS}
-        limits={{ min: 1, max: 1000 }}
+        limits={{ min: 1, max: 100 }}
         step={1}
         decimals={0}
         onCommit={(startingTroops) => onChange({ config: { startingTroops } })}
@@ -582,8 +606,18 @@ function Slider({
             }}
             // Selecting everything on focus makes typing a new value a single step.
             onFocus={(e) => e.currentTarget.select()}
-            // However it was left, show the value that actually counts.
-            onBlur={() => setDraft(shown.toFixed(decimals))}
+            // A number past the limits becomes the limit; anything that is not a number goes back to
+            // the value that counts.
+            onBlur={() => {
+              const typed = Number(draft);
+              if (draft.trim() === '' || !Number.isFinite(typed)) {
+                setDraft(shown.toFixed(decimals));
+                return;
+              }
+              const next = clean(Math.min(limits.max, Math.max(limits.min, typed)));
+              setDraft(next.toFixed(decimals));
+              if (next !== shown) change(next);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
             }}

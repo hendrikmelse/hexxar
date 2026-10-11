@@ -9,6 +9,8 @@ const TARGETS = {
   pie: { selector: '#hud .pie', padding: 14, round: true },
   list: { selector: '#hud .players', padding: 4, round: false },
   camera: { selector: '#hud .camera', padding: 6, round: false },
+  reference: { selector: '#hud .reference', padding: 6, round: false },
+  surrender: { selector: '#hud .surrender', padding: 6, round: false },
 } as const;
 
 /** Text with **bold** parts. */
@@ -53,7 +55,7 @@ function Spotlight({ target, outline }: { target: keyof typeof TARGETS; outline:
   }, [target]);
   if (!box) return null;
   // The arrow comes in from the side of the screen the thing is not on.
-  const fromLeft = target === 'camera';
+  const fromLeft = target === 'camera' || target === 'reference';
   return (
     <>
       {outline && (
@@ -224,7 +226,15 @@ export function Tutorial({ actions, view }: { actions: Actions; view: TutorialVi
             )}
           </span>
           <span className="tutorial-status">
-            {!view.failure && view.hasTask && !view.done ? 'Your turn' : ''}
+            {view.startLabel ? (
+              <button className="primary ready" onClick={actions.tutorialStartClock}>
+                {view.startLabel}
+              </button>
+            ) : !view.failure && view.hasTask && !view.done ? (
+              'Your turn'
+            ) : (
+              ''
+            )}
           </span>
           <span className="next-wrap">
             {canGoOn && view.hasTask && (

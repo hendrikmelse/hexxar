@@ -109,9 +109,17 @@ describe('randomShape', () => {
       for (const lake of found) expect(lake.length).toBeGreaterThanOrEqual(3);
       expect(found.length).toBeLessThanOrEqual(6);
     }
-    // Most boards have one, but not every board.
-    expect(boardsWithLakes).toBeGreaterThan(seeds.length / 3);
-    expect(boardsWithLakes).toBeLessThan(seeds.length);
+    // Nearly every board has one: the number of lakes stays near what is expected.
+    expect(boardsWithLakes).toBeGreaterThan(seeds.length * 0.8);
+  });
+
+  it('keeps the water to a share of the board', () => {
+    for (const seed of seeds) {
+      const shape = shapeFor(seed);
+      const water = lakes(shape, radius).reduce((sum, lake) => sum + lake.length, 0);
+      const share = water / (shape.length + water);
+      expect(share).toBeLessThanOrEqual(DEFAULT_GENERATION_PARAMS.maxTotalLakePercent / 100 + 0.02);
+    }
   });
 
   it('keeps lakes away from the coast so there is always room to walk around them', () => {

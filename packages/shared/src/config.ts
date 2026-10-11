@@ -7,11 +7,11 @@ import { TILE_TYPES, TILE_TYPE_IDS, type TileTypeDef, type TileTypeId } from './
  */
 export const matchConfigSchema = z.object({
   /** Milliseconds between ticks. The default here is the game's tick length (not a server setting). */
-  tickMs: z.number().int().min(100).max(60_000).default(1200),
+  tickMs: z.number().int().min(200).max(5000).default(800),
   /** Troop generation speed in percent (100 = normal, 200 = twice as fast). */
   generationSpeedPercent: z.number().int().min(10).max(1000).default(100),
   /** Troops on each player's starting tile. */
-  startingTroops: z.number().int().min(1).max(1000).default(10),
+  startingTroops: z.number().int().min(1).max(100).default(10),
   /** Override any tile type's rules for this match; unspecified values keep their defaults. */
   tileOverrides: z
     .partialRecord(

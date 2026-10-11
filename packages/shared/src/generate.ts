@@ -247,11 +247,16 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   config: MatchConfig;
 } {
   const { players, seed, radius = 6 } = options;
+  // Two players get a mirror or a half turn, picked by the seed (so the same seed is the same
+  // board, and different games get different kinds).
+  const twoPlayerSymmetry: Symmetry =
+    createRng(seed ^ 0x2b1d).next() < 0.5 ? 'mirror' : 'rotational';
   const symmetry =
-    options.symmetry ?? (players.length === 2 || players.length === 4 ? 'mirror' : 'rotational');
+    options.symmetry ??
+    (players.length === 2 ? twoPlayerSymmetry : players.length === 4 ? 'mirror' : 'rotational');
   const config = parseMatchConfig(options.config);
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
-  if (radius < 4) throw new Error('radius must be at least 4');
+  if (radius < 3) throw new Error('radius must be at least 3');
 
   const params = withDefaults(options.params);
   const { terrain, starts } = layout(players.length, symmetry, radius, params);

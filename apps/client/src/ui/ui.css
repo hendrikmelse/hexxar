@@ -218,6 +218,18 @@
   flex: 1;
 }
 
+/* The Spectate button sits at the far right of the row */
+#ui .buttons .side-button {
+  margin-left: auto;
+}
+
+/* Button labels stay on one line (Start game, beside Leave and Spectate), with a little less side padding to fit */
+#ui .buttons button {
+  white-space: nowrap;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
 #ui .muted {
   margin: 0;
   color: #8a93a8;
@@ -1525,11 +1537,11 @@
   font-size: 18px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  background: linear-gradient(180deg, #ffffff 0%, #d4e5ff 55%, #9cc3ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 1px 0 #1b2f57) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  /* Plain colored text: gradient-clipped text under a filter rendered blank or clipped in Chrome on Linux */
+  color: #d4e5ff;
+  text-shadow:
+    0 1px 0 #1b2f57,
+    0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 #ui .tutorial-dots {
@@ -1630,8 +1642,8 @@
 #ui .tutorial-top {
   position: absolute;
   top: 14px;
-  /* Leaves room for the sound button in the corner */
-  right: 64px;
+  /* Leaves room for the sound and fullscreen buttons in the corner */
+  right: 110px;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -1703,6 +1715,8 @@
 /* A pulsing outline around the part of the screen the guide is talking about */
 #ui .spotlight {
   position: fixed;
+  /* Over the guide card, and over the reference sheet (which is above it) when that is the target */
+  z-index: 21;
   box-sizing: border-box;
   border: 3px solid #ffd966;
   border-radius: 14px;
@@ -1744,6 +1758,8 @@
 /* The arrow that points at a part of the screen, bobbing toward it */
 #ui .spotlight-arrow {
   position: fixed;
+  /* Over the guide card, and over the reference sheet (which is above it) when that is the target */
+  z-index: 21;
   pointer-events: none;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5));
   animation: arrow-bob 0.9s ease-in-out infinite;
@@ -2187,6 +2203,190 @@
   color: #e8eaf0;
 }
 
+/* Just left of the sound button */
+#ui .fullscreen-toggle {
+  right: 60px;
+}
+
 #ui .sound-toggle.off {
   color: #8a93a8;
+}
+
+/* The dev map previewer (/?maps) */
+#ui .maps-page {
+  align-items: flex-start;
+}
+
+#ui .maps-wrap {
+  width: min(1100px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 40px;
+}
+
+#ui .maps-wrap header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#ui .maps-wrap header h2 {
+  margin: 0;
+}
+
+#ui .maps-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+#ui .maps-choice {
+  display: flex;
+  gap: 6px;
+}
+
+#ui .maps-players {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #c9d0de;
+}
+
+#ui .maps-board {
+  width: 100%;
+  max-height: 78vh;
+  background: #0e1c27;
+  border-radius: 12px;
+}
+
+#ui .maps-params {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+#ui .maps-params summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #c9d0de;
+}
+
+#ui .maps-group h4 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a93a8;
+}
+
+#ui .maps-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+#ui .maps-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #c9d0de;
+}
+
+#ui .maps-field.changed span {
+  color: #ffd966;
+}
+
+#ui .maps-field input {
+  width: 72px;
+}
+
+#ui .maps-flag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #c9d0de;
+}
+
+#ui .maps-actions {
+  margin-top: 12px;
+}
+
+#ui .maps-changes {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #0f1117;
+  color: #c9d0de;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+/* Your own box in the lobby, lit like your row in the player list during a match */
+#ui .versus .slot.me:not(.open),
+#ui .roster-slot.me {
+  background: linear-gradient(180deg, #1a2234 0%, #131a2a 100%);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 0 0 1px rgba(106, 174, 255, 0.7),
+    0 0 6px rgba(106, 174, 255, 0.25);
+}
+
+/* The private game's lobby, with its settings, a little tighter from top to bottom */
+#ui .card.lobby.compact {
+  padding: 16px 22px 18px;
+  gap: 9px;
+}
+
+#ui .lobby.compact h2 {
+  font-size: 19px;
+}
+
+#ui .lobby.compact .invite {
+  padding: 7px 12px;
+}
+
+#ui .lobby.compact .invite .code {
+  font-size: 22px;
+}
+
+#ui .lobby.compact .settings {
+  gap: 6px;
+}
+
+#ui .lobby.compact .field.stack {
+  gap: 3px;
+}
+
+#ui .lobby.compact button.segment {
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+#ui .lobby.compact input.slider-value {
+  padding: 1px 8px;
+  font-size: 18px;
+}
+
+/* How many are watching, above the lobby's buttons */
+#ui .muted.spectator-count {
+  /* A little room above the buttons */
+  margin-bottom: 6px;
+  color: #ffffff;
+  /* The same lettering as the buttons beneath it */
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#ui .spectator-count .dot {
+  margin: 0 6px;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 0;
+  vertical-align: middle;
 }

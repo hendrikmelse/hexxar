@@ -120,7 +120,8 @@ function start(buffer: AudioBuffer, volume: number): void {
   const source = ctx.createBufferSource();
   source.buffer = buffer;
   const gain = ctx.createGain();
-  gain.gain.value = Math.max(0, Math.min(1, volume));
+  // Up to 2: a sound can be given a boost over the default, though a loud file may distort.
+  gain.gain.value = Math.max(0, Math.min(2, volume));
   source.connect(gain).connect(master);
   source.start();
 }
