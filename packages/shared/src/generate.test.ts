@@ -8,12 +8,7 @@ import {
   hexRotate,
   type Hex,
 } from './hex.js';
-import {
-  createFreeForAllMatch,
-  createSymmetricMatch,
-  recommendedRadius,
-  type Symmetry,
-} from './generate.js';
+import { createFreeForAllMatch, createSymmetricMatch, type Symmetry } from './generate.js';
 import { TILE_TYPES } from './tiles.js';
 import { DEFAULT_GENERATION_PARAMS } from './params.js';
 import { createRng } from './rng.js';
@@ -289,9 +284,10 @@ describe('terrain rules', () => {
 
 describe('battle royale boards', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
-  const board = (n: number, seed: number, radius?: number) =>
-    createFreeForAllMatch({ players: ids(n), seed, radius, params: { villageChance: 100 } }).state;
-  const counts = [2, 3, 5, 8, 20, 100];
+  const board = (n: number, seed: number) =>
+    createFreeForAllMatch({ players: ids(n), seed, params: { villageChance: 100 } }).state;
+  const counts = [3, 5, 8, 12];
+  const minDistance = DEFAULT_GENERATION_PARAMS.minStartDistance;
 
   it('is deterministic for a seed and different for different seeds', () => {
     expect(board(8, 5)).toEqual(board(8, 5));
@@ -299,15 +295,16 @@ describe('battle royale boards', () => {
   });
 
   it('scales the board with the number of players', () => {
-    let previous = 0;
     for (const n of counts) {
-      const radius = recommendedRadius(n);
-      expect(radius).toBeGreaterThanOrEqual(previous);
-      previous = radius;
-      // The outline is irregular, so the board does not fill the radius exactly.
-      expect(Object.keys(board(n, 1).tiles).length / n).toBeGreaterThan(
-        DEFAULT_GENERATION_PARAMS.tilesPerPlayer / 2,
+      const perPlayer = Math.max(
+        DEFAULT_GENERATION_PARAMS.tilesPerPlayer,
+        DEFAULT_GENERATION_PARAMS.minTilesPerPlayer,
       );
+      for (let seed = 1; seed <= 3; seed++) {
+        const tiles = Object.keys(board(n, seed).tiles).length;
+        expect(tiles / (n * perPlayer)).toBeGreaterThan(0.85);
+        expect(tiles / (n * perPlayer)).toBeLessThan(1.15);
+      }
     }
   });
 
@@ -325,10 +322,7 @@ describe('battle royale boards', () => {
         }
         for (const a of owned) {
           for (const b of owned)
-            if (a !== b)
-              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
-                DEFAULT_GENERATION_PARAMS.minCityDistance,
-              );
+            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(minDistance);
         }
       }
     }
@@ -345,7 +339,7 @@ describe('battle royale boards', () => {
   });
 
   it('follows the same city and village rules as symmetric boards', () => {
-    for (const n of [3, 8, 40]) {
+    for (const n of [3, 8, 12]) {
       for (let seed = 1; seed <= 3; seed++) {
         const state = board(n, seed);
         const tiles = Object.values(state.tiles);
@@ -353,10 +347,7 @@ describe('battle royale boards', () => {
         for (const a of cities) {
           for (const nb of hexNeighbors(a)) expect(state.tiles[hexKey(nb)]).toBeDefined();
           for (const b of cities)
-            if (a !== b)
-              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
-                DEFAULT_GENERATION_PARAMS.minCityDistance,
-              );
+            if (a !== b) expect(hexDistance(a, b)).toBeGreaterThanOrEqual(minDistance);
         }
         for (const village of tiles.filter((t) => t.type === 'village')) {
           for (const nb of hexNeighbors(village)) {
@@ -378,11 +369,7 @@ describe('battle royale boards', () => {
     }
   });
 
-  it('rejects boards that are too small, and matches with fewer than two players', () => {
-    expect(() => createFreeForAllMatch({ players: ids(100), seed: 1, radius: 6 })).toThrow(
-      /too small/,
-    );
+  it('rejects matches with fewer than two players', () => {
     expect(() => createFreeForAllMatch({ players: ids(1), seed: 1 })).toThrow();
-    expect(() => createFreeForAllMatch({ players: ids(3), seed: 1, radius: 3 })).toThrow();
   });
 });

@@ -1,6 +1,6 @@
 import {
   symmetricRadius,
-  ROYALE_TILES_PER_PLAYER,
+  royaleTilesPerPlayer,
   createFreeForAllMatch,
   createRng,
   createSymmetricMatch,
@@ -646,7 +646,7 @@ export class Room {
           players,
           seed,
           config,
-          params: { tilesPerPlayer: ROYALE_TILES_PER_PLAYER[mapSize] },
+          params: { tilesPerPlayer: royaleTilesPerPlayer(mapSize, players.length) },
         })
       : createSymmetricMatch({
           players,

@@ -10,7 +10,8 @@ import {
   type Hex,
 } from './hex.js';
 import { createRng, type Rng } from './rng.js';
-import { DEFAULT_GENERATION_PARAMS, withDefaults, type GenerationParams } from './params.js';
+import { withDefaults, type GenerationParams } from './params.js';
+import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
 import { randomShape } from './shape.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
@@ -314,124 +315,44 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
   };
 }
 
-/**
- * How many tiles each player gets on a battle royale board: as few as keep every player room
- * of their own. Starting cities end up about 6 tiles apart, with farmland for a full ring
- * around each city and space for a few villages.
- */
-export function recommendedRadius(
-  players: number,
-  tilesPerPlayer: number = DEFAULT_GENERATION_PARAMS.tilesPerPlayer,
-): number {
-  // 3r(r+1) + 1 tiles on a board of radius r.
-  return Math.max(MIN_FFA_RADIUS, Math.ceil(Math.sqrt((players * tilesPerPlayer) / 3)));
-}
-
-const MIN_FFA_RADIUS = 5;
-
 export interface FreeForAllOptions {
   readonly players: readonly PlayerId[];
   readonly seed: number;
-  /** Board radius in hexes; by default one that suits the number of players. */
-  readonly radius?: number;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
+  /** Which kind of board to make; by default one picked by the seed. */
+  readonly archetype?: ArchetypeId | 'random';
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
 }
 
 /**
- * Pick `count` starting hexes from `candidates` (the tiles that are not on the edge) that are
- * well spread out: many random attempts at "put each next player as far from the others as it fits",
- * keeping the attempt whose closest pair of players is furthest apart.
- */
-function spreadStarts(
-  count: number,
-  candidates: readonly Hex[],
-  rng: Rng,
-  minDistance: number,
-): Hex[] {
-  if (candidates.length < count) throw new Error('the board is too small for that many players');
-  let best: Hex[] = [];
-  let bestSpacing = -1;
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const chosen: Hex[] = [candidates[rng.int(candidates.length)]!];
-    let spacing = Infinity;
-    while (chosen.length < count) {
-      let pick: Hex | null = null;
-      let pickGap = -1;
-      for (let i = 0; i < 24; i++) {
-        const hex = candidates[rng.int(candidates.length)]!;
-        const gap = Math.min(...chosen.map((other) => hexDistance(hex, other)));
-        if (gap > pickGap) {
-          pick = hex;
-          pickGap = gap;
-        }
-      }
-      chosen.push(pick!);
-      spacing = Math.min(spacing, pickGap);
-    }
-    if (spacing > bestSpacing) {
-      best = chosen;
-      bestSpacing = spacing;
-    }
-  }
-  if (bestSpacing < minDistance) throw new Error('the board is too small for that many players');
-  return best;
-}
-
-/**
- * The board's hexes and where everyone starts. A random shape might leave too little room for
- * everyone, so in that case another shape is tried.
- */
-function chooseFreeForAllLayout(
-  count: number,
-  radius: number,
-  params: GenerationParams,
-  rng: Rng,
-): { ordered: Hex[]; present: Set<string>; starts: Hex[] } {
-  for (let attempt = 0; ; attempt++) {
-    const ordered = randomShape({ radius, rng, group: [(h) => h], protect: [], params }).sort(
-      (a, b) => a.q - b.q || a.r - b.r,
-    );
-    const present = new Set(ordered.map(hexKey));
-    const isEdge = edgeTest(present);
-    try {
-      const starts = shuffle(
-        spreadStarts(
-          count,
-          ordered.filter((hex) => !isEdge(hex)),
-          rng,
-          params.minCityDistance,
-        ),
-        rng,
-      );
-      return { ordered, present, starts };
-    } catch (error) {
-      if (attempt >= 20) throw error;
-    }
-  }
-}
-
-/**
- * A battle royale board: random terrain with no symmetry, and starting cities spread out as
- * evenly as the board allows. The same terrain rules apply as on symmetric boards.
- * Players are assigned to the starting cities at random.
+ * A battle royale board: random terrain with no symmetry, drawn from a blueprint of rooms and
+ * passages (see `royale/`), with a starting city in every spawn chamber. Cities are never on
+ * the edge and never closer than `minStartDistance`. The same terrain rules apply as on
+ * symmetric boards. Players are assigned to the starting cities at random.
  */
 export function createFreeForAllMatch(options: FreeForAllOptions): {
   state: GameState;
   config: MatchConfig;
+  report: RoyaleReport;
 } {
   const { players, seed } = options;
   const config = parseMatchConfig(options.config);
   if (players.length < 2) throw new Error('a match needs at least 2 players');
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
   const params = withDefaults(options.params);
-  const radius = options.radius ?? recommendedRadius(players.length, params.tilesPerPlayer);
-  if (radius < MIN_FFA_RADIUS) throw new Error(`radius must be at least ${MIN_FFA_RADIUS}`);
 
   const rng = createRng(seed);
-  const { ordered, present, starts } = chooseFreeForAllLayout(players.length, radius, params, rng);
+  const layout = generateRoyaleLayout({
+    players: players.length,
+    seed,
+    params,
+    archetype: options.archetype,
+  });
+  const ordered = layout.hexes;
+  const present = new Set(ordered.map(hexKey));
+  const starts = shuffle(layout.starts, rng);
   const startOwners = new Map<string, PlayerId>();
   starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
 
@@ -443,11 +364,15 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
     isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
     extraCities: params.freeForAllCities,
-    params,
+    params: {
+      ...params,
+      minCityDistance: Math.max(params.minCityDistance, params.minStartDistance),
+    },
     rng,
   });
   return {
     config,
+    report: layout.report,
     state: {
       tick: 0,
       players: [...players],

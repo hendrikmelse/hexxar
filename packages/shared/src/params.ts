@@ -61,6 +61,22 @@ export interface GenerationParams {
   startRoom: number;
   /** Battle Royale boards: tiles of board per player, which decides the board size. */
   tilesPerPlayer: number;
+  /**
+   * Battle Royale boards never get less than this many tiles per player. Cities are at least
+   * `minStartDistance` apart, so below a certain size there is no room left for water or chokes.
+   */
+  minTilesPerPlayer: number;
+  /** Battle Royale boards: starting cities are never closer than this to each other. */
+  minStartDistance: number;
+
+  // -- Battle royale terrain ------------------------------------------------------------
+
+  /** How far noise pushes the coast in and out, in tiles (0 leaves the blueprint's smooth outline). */
+  coastRoughness: number;
+  /** Size of the coast's bumps, in tiles. */
+  coastDetail: number;
+  /** How far noise bends the rooms out of round, in tiles. */
+  warpStrength: number;
 }
 
 export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
@@ -90,6 +106,12 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   startInset: 1,
   startRoom: 1,
   tilesPerPlayer: 20,
+  minTilesPerPlayer: 30,
+  minStartDistance: 5,
+
+  coastRoughness: 1,
+  coastDetail: 5,
+  warpStrength: 1.5,
 };
 
 /** Fill in defaults for anything not given. */
@@ -132,11 +154,16 @@ export const DUEL_RADIUS: Readonly<Record<MapSize, number>> = {
 };
 
 /**
- * Tiles per player in a battle royale at each map size, which decides the board size. Normal
- * is what quick play uses.
+ * Tiles per player in a battle royale at each map size with 6 players, which decides the board
+ * size. Normal is what quick play uses. See `royaleTilesPerPlayer` for other player counts.
  */
 export const ROYALE_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 14,
-  normal: 24,
-  large: 48,
+  small: 15,
+  normal: 25,
+  large: 45,
 };
+
+/** Tiles per player in a battle royale: fewer for each player when there are many of them. */
+export function royaleTilesPerPlayer(size: MapSize, players: number): number {
+  return Math.round(ROYALE_TILES_PER_PLAYER[size] * (6 / Math.max(players, 2)) ** 0.25);
+}

@@ -7,6 +7,7 @@ export * from './orders.js';
 export * from './params.js';
 export * from './protocol.js';
 export * from './resolve.js';
+export * from './royale/index.js';
 export * from './rng.js';
 export * from './scores.js';
 export * from './shape.js';

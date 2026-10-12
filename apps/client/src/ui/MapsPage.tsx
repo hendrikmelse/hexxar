@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ARCHETYPE_IDS,
   DEFAULT_GENERATION_PARAMS,
   symmetricRadius,
   FFA_MAX_PLAYERS,
   FFA_MIN_PLAYERS,
   MAP_SIZES,
-  ROYALE_TILES_PER_PLAYER,
+  corridorPath,
   createFreeForAllMatch,
   createSymmetricMatch,
+  royaleTilesPerPlayer,
+  type ArchetypeId,
   type GameState,
   type GenerationParams,
   type MapSize,
   type RoomMode,
+  type RoyaleReport,
 } from '@hexxar/shared';
 import { NEUTRAL_FILL, PLAYER_COLORS } from '../board.js';
 import { HEX_SIZE, hexCorners, hexToPixel } from '../layout.js';
@@ -23,6 +27,9 @@ const randomSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
 /** The player counts a symmetric board supports. */
 const SYMMETRIC_PLAYERS = [2, 3, 4, 6] as const;
 
+/** A board, and for battle royales how it was made. Or the reason it could not be made. */
+type Generated = { state: GameState; report: RoyaleReport | null } | string;
+
 /** Make a board the way a room would for these settings. */
 function generate(
   mode: RoomMode,
@@ -30,16 +37,39 @@ function generate(
   players: number,
   seed: number,
   params: GenerationParams,
-): GameState | string {
+  archetype: ArchetypeId | 'random',
+): Generated {
   const ids = Array.from({ length: players }, (_, i) => `p${i}`);
   try {
-    return mode === 'ffa'
-      ? createFreeForAllMatch({ players: ids, seed, params }).state
-      : createSymmetricMatch({ players: ids, seed, radius, params }).state;
+    if (mode === 'ffa') {
+      const { state, report } = createFreeForAllMatch({ players: ids, seed, params, archetype });
+      return { state, report };
+    }
+    return {
+      state: createSymmetricMatch({ players: ids, seed, radius, params }).state,
+      report: null,
+    };
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
 }
+
+/** What many seeds of one set of settings add up to, to judge a generator by more than one board. */
+interface Stats {
+  runs: number;
+  failures: number;
+  attempts: number;
+  maxAttempts: number;
+  tiles: number;
+  chokes: number;
+  cutChokes: number;
+  interiorShare: number;
+  widths: number[];
+  rejections: Record<string, number>;
+  milliseconds: number;
+}
+
+const STATS_RUNS = 100;
 
 type NumberKey = {
   [K in keyof GenerationParams]: GenerationParams[K] extends number ? K : never;
@@ -48,7 +78,21 @@ type NumberKey = {
 /** The generation parameters, in the groups `params.ts` keeps them in, with what each one does. */
 const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] }[] = [
   {
-    title: 'Outline',
+    title: 'Battle royale terrain',
+    fields: [
+      { key: 'tilesPerPlayer', hint: 'Tiles of board per player, which decides the board size' },
+      {
+        key: 'minTilesPerPlayer',
+        hint: 'Boards never get less than this per player: cities are spaced out, so below it there is no room for water or chokes',
+      },
+      { key: 'minStartDistance', hint: 'Starting cities are never closer than this' },
+      { key: 'coastRoughness', hint: 'How far noise pushes the coast in and out, in tiles' },
+      { key: 'coastDetail', hint: 'Size of the coast bumps, in tiles' },
+      { key: 'warpStrength', hint: 'How far noise bends the rooms out of round, in tiles' },
+    ],
+  },
+  {
+    title: 'Outline (duels)',
     fields: [
       {
         key: 'outlineScale',
@@ -69,7 +113,7 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
     ],
   },
   {
-    title: 'Lakes',
+    title: 'Lakes (duels)',
     fields: [
       { key: 'tilesPerLake', hint: 'About one lake per this many tiles (0 for none)' },
       {
@@ -102,17 +146,13 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
     ],
   },
   {
-    title: 'Starting positions',
+    title: 'Starting positions (duels)',
     fields: [
       {
         key: 'startInset',
         hint: 'Symmetric boards: starting cities sit this many tiles in from the edge',
       },
       { key: 'startRoom', hint: 'Rings of land kept around each starting city on random shapes' },
-      {
-        key: 'tilesPerPlayer',
-        hint: 'Battle royales: tiles of board per player, which decides the board size',
-      },
     ],
   },
 ];
@@ -160,6 +200,45 @@ function NumberField({
   );
 }
 
+/** The numbers from a batch of boards. */
+function StatsTable({ stats }: { stats: Stats }) {
+  const ok = Math.max(1, stats.runs - stats.failures);
+  const rejected = Object.entries(stats.rejections)
+    .map(([reason, n]) => `${reason} ${n}`)
+    .join(', ');
+  const rows: [string, string][] = [
+    ['boards made', `${stats.runs - stats.failures} of ${stats.runs} (${stats.failures} failed)`],
+    ['attempts per board', `${(stats.attempts / ok).toFixed(2)} (worst ${stats.maxAttempts})`],
+    ['rejected candidates', rejected || 'none'],
+    ['tiles', (stats.tiles / ok).toFixed(0)],
+    [
+      'chokes per board',
+      `${(stats.chokes / ok).toFixed(1)} (${(stats.cutChokes / ok).toFixed(1)} cut the map)`,
+    ],
+    [
+      'chokes by width',
+      stats.widths
+        .slice(1)
+        .map((n, i) => `${i + 1}: ${(n / ok).toFixed(1)}`)
+        .join(', '),
+    ],
+    ['deep inland', `${Math.round((stats.interiorShare / ok) * 100)}%`],
+    ['time per board', `${(stats.milliseconds / stats.runs).toFixed(0)} ms`],
+  ];
+  return (
+    <table className="maps-stats">
+      <tbody>
+        {rows.map(([label, value]) => (
+          <tr key={label}>
+            <th>{label}</th>
+            <td>{value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /** Open with `/?maps`. Generates boards with the same settings a room uses, to look them over. */
 export function MapsPage() {
   const [mode, setMode] = useState<RoomMode>('duel');
@@ -167,27 +246,39 @@ export function MapsPage() {
   const [players, setPlayers] = useState(4);
   const [symmetricPlayers, setSymmetricPlayers] = useState<number>(2);
   const [seed, setSeed] = useState(randomSeed);
+  const [archetype, setArchetype] = useState<ArchetypeId | 'random'>('random');
+  const [showBlueprint, setShowBlueprint] = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [statsRunning, setStatsRunning] = useState(false);
 
-  // What a room would use for this map size; anything changed by hand is shown against it.
-  const sizeDefaults = (size: MapSize): GenerationParams => ({
+  // What a room would use for this map size and number of players; anything changed by hand is
+  // shown against it.
+  const sizeDefaults = (size: MapSize, royalePlayers: number): GenerationParams => ({
     ...DEFAULT_GENERATION_PARAMS,
-    tilesPerPlayer: ROYALE_TILES_PER_PLAYER[size],
+    tilesPerPlayer: royaleTilesPerPlayer(size, royalePlayers),
   });
-  const [params, setParams] = useState<GenerationParams>(() => sizeDefaults('normal'));
+  const [params, setParams] = useState<GenerationParams>(() => sizeDefaults('normal', 4));
   const [radius, setRadius] = useState<number>(symmetricRadius('normal', 2));
 
   // The radius that gives each player about the same land, for this size and number of players.
   const defaultRadius = symmetricRadius(mapSize, symmetricPlayers);
   const chooseSize = (size: MapSize): void => {
     setMapSize(size);
-    setParams(sizeDefaults(size));
+    setParams(sizeDefaults(size, players));
     setRadius(symmetricRadius(size, symmetricPlayers));
+  };
+  const chooseRoyalePlayers = (count: number): void => {
+    setPlayers(count);
+    setParams((current) => ({
+      ...current,
+      tilesPerPlayer: royaleTilesPerPlayer(mapSize, count),
+    }));
   };
   const choosePlayers = (count: number): void => {
     setSymmetricPlayers(count);
     setRadius(symmetricRadius(mapSize, count));
   };
-  const baseline = sizeDefaults(mapSize);
+  const baseline = sizeDefaults(mapSize, players);
   const changes: Record<string, number | boolean> = {};
   for (const key of Object.keys(params) as (keyof GenerationParams)[]) {
     if (params[key] !== baseline[key]) changes[key] = params[key];
@@ -196,13 +287,61 @@ export function MapsPage() {
 
   const count = mode === 'duel' ? symmetricPlayers : players;
   const result = useMemo(
-    () => generate(mode, radius, count, seed, params),
-    [mode, radius, count, seed, params],
+    () => generate(mode, radius, count, seed, params, archetype),
+    [mode, radius, count, seed, params, archetype],
   );
+
+  /** Make many boards one slice at a time, so the page stays usable while it works. */
+  const runStats = (): void => {
+    setStatsRunning(true);
+    const total: Stats = {
+      runs: 0,
+      failures: 0,
+      attempts: 0,
+      maxAttempts: 0,
+      tiles: 0,
+      chokes: 0,
+      cutChokes: 0,
+      interiorShare: 0,
+      widths: [],
+      rejections: {},
+      milliseconds: 0,
+    };
+    const first = randomSeed();
+    const step = (done: number): void => {
+      const started = performance.now();
+      for (let i = done; i < Math.min(done + 5, STATS_RUNS); i++) {
+        const board = generate('ffa', radius, players, first + i, params, archetype);
+        total.runs++;
+        if (typeof board === 'string' || !board.report) {
+          total.failures++;
+          continue;
+        }
+        const { report } = board;
+        total.attempts += report.attempts;
+        total.maxAttempts = Math.max(total.maxAttempts, report.attempts);
+        total.tiles += report.metrics.tiles;
+        total.chokes += report.metrics.chokes.length;
+        total.cutChokes += report.metrics.chokes.filter((choke) => choke.cut).length;
+        total.interiorShare += report.metrics.interiorShare;
+        report.metrics.widths.forEach((n, width) => {
+          total.widths[width] = (total.widths[width] ?? 0) + n;
+        });
+        for (const [reason, n] of Object.entries(report.rejections)) {
+          total.rejections[reason] = (total.rejections[reason] ?? 0) + n;
+        }
+      }
+      total.milliseconds += performance.now() - started;
+      setStats({ ...total, widths: [...total.widths], rejections: { ...total.rejections } });
+      if (done + 5 < STATS_RUNS) setTimeout(() => step(done + 5), 0);
+      else setStatsRunning(false);
+    };
+    step(0);
+  };
 
   const picture = useMemo(() => {
     if (typeof result === 'string') return null;
-    const tiles = Object.values(result.tiles);
+    const tiles = Object.values(result.state.tiles);
     const centers = tiles.map((tile) => hexToPixel(tile));
     const pad = HEX_SIZE * 1.2;
     const minX = Math.min(...centers.map((c) => c.x)) - pad;
@@ -212,7 +351,10 @@ export function MapsPage() {
     return { tiles, box: `${minX} ${minY} ${maxX - minX} ${maxY - minY}` };
   }, [result]);
 
-  const tileCount = typeof result === 'string' ? 0 : Object.keys(result.tiles).length;
+  const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
+  const report = typeof result === 'string' ? null : result.report;
+  // The blueprint is drawn in tile units; one unit is the distance between neighboring hex centers.
+  const unit = HEX_SIZE * Math.sqrt(3);
 
   return (
     <div className="screen maps-page">
@@ -268,13 +410,38 @@ export function MapsPage() {
                 min={FFA_MIN_PLAYERS}
                 max={FFA_MAX_PLAYERS}
                 value={players}
-                onChange={(event) => setPlayers(Number(event.target.value))}
+                onChange={(event) => chooseRoyalePlayers(Number(event.target.value))}
               />
+            </label>
+          )}
+          {mode === 'ffa' && (
+            <label className="maps-players">
+              Archetype{' '}
+              <select
+                value={archetype}
+                onChange={(event) => setArchetype(event.target.value as ArchetypeId | 'random')}
+              >
+                {(['random', ...ARCHETYPE_IDS] as const).map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
             </label>
           )}
           <button className="primary" data-sound="none" onClick={() => setSeed(randomSeed())}>
             Generate new map
           </button>
+          {mode === 'ffa' && (
+            <label className="maps-flag">
+              <input
+                type="checkbox"
+                checked={showBlueprint}
+                onChange={(event) => setShowBlueprint(event.target.checked)}
+              />
+              Show blueprint
+            </label>
+          )}
         </div>
 
         <details className="maps-params">
@@ -342,13 +509,37 @@ export function MapsPage() {
 
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
+          {report &&
+            ` · ${report.archetype}, ${report.attempts} ${report.attempts === 1 ? 'attempt' : 'attempts'}` +
+              ` · ${report.metrics.chokes.length} chokes (${report.metrics.widths
+                .slice(1)
+                .map((n, i) => `${n}×${i + 1}`)
+                .join(
+                  ', ',
+                )} wide, ${report.metrics.chokes.filter((c) => c.cut).length} cut the map)` +
+              ` · ${report.metrics.loops} loops, ${report.metrics.deadEnds} dead ends` +
+              ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland`}
         </p>
+
+        {mode === 'ffa' && (
+          <details className="maps-params">
+            <summary>
+              Statistics over {STATS_RUNS} seeds{stats ? ` (${stats.runs} done)` : ''}
+            </summary>
+            <div className="maps-actions">
+              <button data-sound="none" disabled={statsRunning} onClick={runStats}>
+                {statsRunning ? 'Working…' : 'Run'}
+              </button>
+            </div>
+            {stats && stats.runs > 0 && <StatsTable stats={stats} />}
+          </details>
+        )}
 
         {picture && (
           <svg className="maps-board" viewBox={picture.box} role="img" aria-label="Map preview">
             {picture.tiles.map((tile) => {
               const owner =
-                typeof result === 'string' ? -1 : result.players.indexOf(tile.owner ?? '');
+                typeof result === 'string' ? -1 : result.state.players.indexOf(tile.owner ?? '');
               const fill =
                 tile.owner !== null && owner >= 0
                   ? css(PLAYER_COLORS[owner % PLAYER_COLORS.length]!)
@@ -373,6 +564,30 @@ export function MapsPage() {
                 </g>
               );
             })}
+            {report && showBlueprint && (
+              <g fill="none" stroke="#ffd166" strokeWidth={2} opacity={0.8} pointerEvents="none">
+                {report.blueprint.corridors.map((corridor, index) => (
+                  <polyline
+                    key={`corridor${index}`}
+                    points={corridorPath(report.blueprint, corridor)
+                      .map((p) => `${p.x * unit},${p.y * unit}`)
+                      .join(' ')}
+                    strokeWidth={corridor.width * 3}
+                    strokeLinecap="round"
+                    opacity={0.5}
+                  />
+                ))}
+                {report.blueprint.chambers.map((chamber, index) => (
+                  <circle
+                    key={`chamber${index}`}
+                    cx={chamber.center.x * unit}
+                    cy={chamber.center.y * unit}
+                    r={chamber.radius * unit}
+                    strokeDasharray={chamber.spawn ? undefined : '8 6'}
+                  />
+                ))}
+              </g>
+            )}
           </svg>
         )}
       </div>

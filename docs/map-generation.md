@@ -36,15 +36,23 @@ Neutral tiles start with their type's base garrison.
 
 ## Battle Royale boards
 
-A battle royale board has no symmetry; the terrain is simply random, within the tile rules above.
+A battle royale board has no symmetry. It is drawn from a **blueprint** by the code in `packages/shared/src/royale/`, not by `randomShape` (which only duels use).
 
-- **Size:** the board is always the smallest that gives each player their share, 20 tiles per player by default (radius 5 for 3 players, 8 for 8, 26 for 100), so starting cities end up only a few tiles apart. `recommendedRadius` decides it from the number of players and the tiles per player of the chosen map size. A duel's radius comes from the map size (4, 5 or 7).
-- **Starting cities:** one per player, at least 3 tiles apart and at least one tile in from the edge, spread as evenly as the board allows. The generator tries many random layouts, each time putting the next player as far as it can from the ones already placed, and keeps the layout whose closest pair of players is furthest apart. It rejects boards too small to hold everyone 3 tiles apart.
-- **Who starts where:** players are assigned to the starting cities at random.
-- **Cities and villages:** there are no cities except the starting ones, so each player's start is the only city nearby. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.
+1. **Blueprint** (`archetypes/`): an archetype lays out round **chambers** and **corridors** between them, in tile units (one unit is the distance between neighboring hex centers), never touching hexes. There is one **spawn chamber** per player, all the same size so no player starts with a roomier bowl, spread out by picking the best of several random spots for each. Neutral chambers vary in size, and corridors get a random width (1, 2, 3 or 4 hexes; about 85% are narrow enough to count as chokes) and a slight bend. Chamber and corridor sizes are absolute: only the distances between chambers scale with the board, so a 1-wide choke is 1 wide on every map size. Only one archetype exists so far, `scattered` (chambers at random, joined by a spanning tree plus a few extra loops).
+2. **Rasterize** (`rasterize.ts`): every hex center is tested against a field that is positive inside the chambers and corridors (blended smoothly where they meet) and bent by seeded noise, so rooms are lumpy and the coast is natural. The hexes along every corridor's centerline, and the city and the ring around it in every spawn chamber, are land whatever the noise says.
+3. **Area:** the same blueprint is redrawn at a corrected scale (up to 6 times) until the land is within 6% of the target. A candidate more than 12% off is thrown away.
+4. **Cleanup:** one-tile bays are filled, one-tile spurs trimmed, and everything but the biggest connected piece removed. The board is then recentered on the origin.
+5. **Analyze** (`analyze.ts`): the finished board is measured, not the blueprint. For each corridor, the land is measured at right angles to its centerline along its middle stretch; the narrowest cross section is its width (a **choke** if at most 3 hexes) and it is a **cut** if closing it splits the board in two pieces.
+6. **Validate:** a candidate must have every city on a non-edge tile (so a full ring of neighbors), cities at least `minStartDistance` (5) apart, at least 2 chokes, and no more than 40% of its land deeper than 4 tiles inland (that would be a blob). Otherwise the next seed is tried, up to 80 times. The reasons candidates are thrown away are in the report that `createFreeForAllMatch` returns, which the map previewer shows.
 
-Because nothing about the layout is symmetric, battle royale boards are not perfectly fair. The spacing and the farm rings around every producer keep it close, and we can tune it further as we play.
+- **Size:** the target is the number of players times the larger of `tilesPerPlayer` and `minTilesPerPlayer`. A map size sets `tilesPerPlayer` (15, 25 or 45 at 6 players; fewer per player for more players, see `royaleTilesPerPlayer`). Cities have to be at least 5 apart, which takes about 25 tiles each on its own, so `minTilesPerPlayer` (30) keeps boards big enough for water and chokes: small and normal currently end up about the same size.
+- **Starting cities:** one per player, at the center of its spawn chamber, never on the edge. Players are assigned to them at random.
+- **Cities and villages:** there are no cities except the starting ones. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.
+
+Because nothing about the layout is symmetric, battle royale boards are not perfectly fair. We plan to check fairness (reachable land and exits per player) and to place villages evenly between players.
+
+The map previewer (`/?maps`) shows the archetype, the number of attempts, the chokes by width, and can draw the blueprint over the board and collect statistics over 100 seeds.
 
 ## Settings
 
-Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`): outline size and waves, lake frequency and size, city density and spacing, village chance and spacing, start inset and room, and tiles per player. Matches use the defaults, except that the map size picks the duel radius and the battle royale tiles per player. The generators take a `params` option with overrides, which tests use.
+Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`): outline size and waves, lake frequency and size, city density and spacing, village chance and spacing, start inset and room, tiles per player, and the battle royale coast and spacing settings. Matches use the defaults, except that the map size picks the duel radius and the battle royale tiles per player (which also depends on the number of players). The generators take a `params` option with overrides, which tests use.
