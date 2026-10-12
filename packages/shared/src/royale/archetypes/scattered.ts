@@ -116,6 +116,14 @@ function placeSpawns(
   return centers.map((center) => ({ center, radius: spawnRadius(startDistance), spawn: true }));
 }
 
+/**
+ * How many neutral rooms (round chambers with no city) this archetype asks for. None: on most
+ * boards the starting bowls fill the land, so the rooms only fit on a few (mostly 3-player boards),
+ * and a city-less room next to the starting bowls looks like a start with nobody in it. Archetypes
+ * that want real neutral hubs use `placeNeutrals` with a count of their own.
+ */
+const neutralRooms = (): number => 0;
+
 /** Neutral rooms, scattered anywhere they fit without crowding another room. */
 function placeNeutrals(
   chambers: Chamber[],
@@ -372,8 +380,7 @@ export function buildScattered({
   const spawns = placeSpawns(players, scale, startDistance, rng);
   if (!spawns) return null;
   const chambers: Chamber[] = [...spawns];
-  const neutrals = Math.max(1, Math.round(players * 0.5) + 1);
-  placeNeutrals(chambers, neutrals, scale, 2.2 + 0.15 * scale, startDistance, rng);
+  placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, startDistance, rng);
   const exits = evenSpawns ? spawnExits(players, startDistance, rng) : null;
   return { chambers, corridors: connect(chambers, exits, rng) };
 }
