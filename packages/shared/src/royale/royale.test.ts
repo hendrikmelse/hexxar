@@ -14,6 +14,7 @@ import { components, depthFromCoast } from './grid.js';
 import { createFreeForAllMatch } from '../generate.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
 import { territories } from './fairness.js';
+import { hexNeighbors } from '../hex.js';
 
 const params = DEFAULT_GENERATION_PARAMS;
 const layout = (players: number, seed: number, archetype?: (typeof ARCHETYPE_IDS)[number]) =>
@@ -207,5 +208,26 @@ describe('royale villages', () => {
         }
       }
     }
+  });
+
+  it('is as dense with villages next to the cities as everywhere else', () => {
+    const near = { villages: 0, tiles: 0 };
+    const far = { villages: 0, tiles: 0 };
+    for (let seed = 1; seed <= 30; seed++) {
+      const { state } = createFreeForAllMatch({ players: ids(6), seed });
+      const tiles = Object.values(state.tiles);
+      const cities = tiles.filter((t) => t.type === 'city');
+      const cityKeys = new Set(cities.map(hexKey));
+      const { distance } = territories(new Map(tiles.map((t) => [hexKey(t), t])), cities);
+      for (const tile of tiles) {
+        // Villages can never be on a city or next to one, so those tiles do not count.
+        if (cityKeys.has(hexKey(tile)) || hexNeighbors(tile).some((n) => cityKeys.has(hexKey(n))))
+          continue;
+        const band = distance.get(hexKey(tile))! <= 3 ? near : far;
+        band.tiles++;
+        if (tile.type === 'village') band.villages++;
+      }
+    }
+    expect(near.villages / near.tiles).toBeGreaterThan(0.85 * (far.villages / far.tiles));
   });
 });

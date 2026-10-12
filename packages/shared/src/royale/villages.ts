@@ -24,9 +24,10 @@ function shuffle<T>(items: readonly T[], rng: Rng): T[] {
  *
  * The land is split between the players by walking distance from their cities. Villages are then
  * placed in rounds: in each round every player gets one in their own territory, as near as
- * possible to the same distance from their city (2 steps in the first round, 3 in the second,
- * and so on), so everyone gets villages at the same distances, and far ones sit near the borders
- * where players meet. A round is only kept if every player got a village in it. If the rounds
+ * possible to the same distance from their city. That distance is picked at random in proportion
+ * to how much land there is at each distance, so villages are as dense next to the cities as
+ * anywhere else, and everyone gets villages at the same distances. A round is only kept if every
+ * player got a village in it. If the rounds
  * run out of room before the village count is reached, the rest go on the borders at random.
  *
  * Villages never touch each other or a city (see `minVillageDistance`), and keep off the edge of
@@ -72,16 +73,26 @@ export function placeVillages(input: {
   }
 
   for (let round = 0; round < rounds; round++) {
-    const target = 2 + round;
+    // Every player's options this round, kept to the interior where there is any.
+    const choices = starts.map((_, player) => {
+      const options = own[player]!.filter(fits);
+      const interior = options.filter(isInterior);
+      return interior.length > 0 ? interior : options;
+    });
+    // The round's distance is that of a random eligible tile anywhere on the board, so the
+    // distances come up as often as there is land at them: villages are as dense next to the
+    // cities as everywhere else.
+    const everywhere = choices.flat();
+    if (everywhere.length === 0) break;
+    const target = split.distance.get(hexKey(everywhere[rng.int(everywhere.length)]!))!;
     const placedThisRound: number[] = [];
     let complete = true;
     for (const player of shuffle(
       starts.map((_, i) => i),
       rng,
     )) {
-      const options = own[player]!.filter(fits);
-      const interior = options.filter(isInterior);
-      const pool = interior.length > 0 ? interior : options;
+      // Earlier placements this round may have used up some of this player's options.
+      const pool = choices[player]!.filter(fits);
       let best: Hex | null = null;
       let bestScore = Infinity;
       for (const hex of pool) {
