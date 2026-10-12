@@ -165,8 +165,18 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
   },
 ];
 
-const FLAGS: { key: 'villagesNextToCities'; label: string }[] = [
-  { key: 'villagesNextToCities', label: 'Villages may touch cities' },
+/** On/off settings, shown in the group of the same title. */
+const FLAGS: {
+  group: string;
+  key: 'villagesNextToCities' | 'checkFairness';
+  label: string;
+}[] = [
+  {
+    group: 'Battle royale terrain',
+    key: 'checkFairness',
+    label: 'Check fairness (equal exits for every start, reject lopsided boards, best of several)',
+  },
+  { group: 'Cities and villages', key: 'villagesNextToCities', label: 'Villages may touch cities' },
 ];
 
 /** A number box that lets you type half-finished numbers ("0.") and only passes on whole ones. */
@@ -513,17 +523,16 @@ export function MapsPage() {
                     onChange={(value) => setParams({ ...params, [key]: value })}
                   />
                 ))}
-                {group.title === 'Cities and villages' &&
-                  FLAGS.map(({ key, label }) => (
-                    <label key={key} className="maps-flag">
-                      <input
-                        type="checkbox"
-                        checked={params[key]}
-                        onChange={(event) => setParams({ ...params, [key]: event.target.checked })}
-                      />
-                      {label}
-                    </label>
-                  ))}
+                {FLAGS.filter((flag) => flag.group === group.title).map(({ key, label }) => (
+                  <label key={key} className="maps-flag">
+                    <input
+                      type="checkbox"
+                      checked={params[key]}
+                      onChange={(event) => setParams({ ...params, [key]: event.target.checked })}
+                    />
+                    {label}
+                  </label>
+                ))}
               </div>
             </div>
           ))}

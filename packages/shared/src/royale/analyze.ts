@@ -23,7 +23,7 @@ export interface RoyaleMetrics {
   readonly widths: readonly number[];
   /** Independent loops in the layout: passages beyond what it takes to join every chamber. */
   readonly loops: number;
-  /** Neutral chambers with a single way in: places to hold out, or to be cornered in. */
+  /** Chambers with a single corridor, starts included: peninsulas, to hold out in or be cornered in. */
   readonly deadEnds: number;
   /** Fewest tiles between any two starting cities. */
   readonly spawnSpacing: number;
@@ -172,7 +172,7 @@ export function analyze(
     chokes,
     widths,
     loops: blueprint.corridors.length - (blueprint.chambers.length - 1),
-    deadEnds: blueprint.chambers.filter((c, i) => !c.spawn && degree[i] === 1).length,
+    deadEnds: degree.filter((d) => d === 1).length,
     spawnSpacing,
   };
 }

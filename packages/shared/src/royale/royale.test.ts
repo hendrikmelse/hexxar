@@ -159,10 +159,11 @@ describe('royale layouts', () => {
     }
   });
 
-  it('shares the land between the players fairly, picking the fairest of several boards', () => {
+  it('with fairness checking on, picks the fairest of several boards', () => {
+    const fair = { ...params, checkFairness: true };
     for (const players of playerCounts) {
       for (const seed of seeds) {
-        const { report, hexes, starts } = layout(players, seed);
+        const { report, hexes, starts } = generateRoyaleLayout({ players, seed, params: fair });
         expect(report.compared).toBeGreaterThanOrEqual(1);
         expect(report.compared).toBeLessThanOrEqual(params.fairnessCandidates);
         expect(report.fairness.score).toBeLessThanOrEqual(0.8);
@@ -176,12 +177,12 @@ describe('royale layouts', () => {
     const one = generateRoyaleLayout({
       players: 8,
       seed: 3,
-      params: { ...params, fairnessCandidates: 1 },
+      params: { ...params, checkFairness: true, fairnessCandidates: 1 },
     });
     const many = generateRoyaleLayout({
       players: 8,
       seed: 3,
-      params: { ...params, fairnessCandidates: 6 },
+      params: { ...params, checkFairness: true, fairnessCandidates: 6 },
     });
     expect(many.report.fairness.score).toBeLessThanOrEqual(one.report.fairness.score);
   });
@@ -209,24 +210,42 @@ describe('royale layouts', () => {
     }
   });
 
-  it('has some peninsulas, and is not always one big ring', () => {
-    for (const size of ['normal', 'large'] as const) {
-      let withPeninsula = 0;
-      let connected = 0;
-      const seedCount = 12;
-      for (let seed = 1; seed <= seedCount; seed++) {
-        const sizeParams = {
-          ...params,
-          tilesPerPlayer: royaleTilesPerPlayer(size, 8),
-          minStartDistance: ROYALE_START_DISTANCE[size],
-        };
-        const { report } = generateRoyaleLayout({ players: 8, seed, params: sizeParams });
-        if (report.metrics.deadEnds >= 1) withPeninsula++;
-        if (report.metrics.loops >= 3) connected++;
-      }
-      expect(withPeninsula).toBeGreaterThanOrEqual(seedCount * 0.75);
-      expect(connected).toBeGreaterThanOrEqual(1);
+  it('sometimes has a peninsula, a starting city included, but not always', () => {
+    let withPeninsula = 0;
+    let startOnPeninsula = 0;
+    const seedCount = 30;
+    for (let seed = 1; seed <= seedCount; seed++) {
+      const { report } = layout(8, seed);
+      const { chambers, corridors } = report.blueprint;
+      const degree = chambers.map(
+        (_, i) => corridors.filter((c) => c.from === i || c.to === i).length,
+      );
+      if (report.metrics.deadEnds >= 1) withPeninsula++;
+      if (chambers.some((c, i) => c.spawn && degree[i] === 1)) startOnPeninsula++;
     }
+    expect(withPeninsula).toBeGreaterThanOrEqual(3);
+    expect(withPeninsula).toBeLessThan(seedCount);
+    expect(startOnPeninsula).toBeGreaterThanOrEqual(1);
+  });
+
+  it('with fairness checking on, starting chambers have much more even exits', () => {
+    const unevenness = (checkFairness: boolean): number => {
+      let total = 0;
+      for (const seed of seeds) {
+        const { report } = generateRoyaleLayout({
+          players: 6,
+          seed,
+          params: { ...params, checkFairness },
+        });
+        const { chambers, corridors } = report.blueprint;
+        const exits = chambers.flatMap((c, i) =>
+          c.spawn ? [corridors.filter((k) => k.from === i || k.to === i).length] : [],
+        );
+        total += Math.max(...exits) - Math.min(...exits);
+      }
+      return total / seeds.length;
+    };
+    expect(unevenness(true)).toBeLessThan(unevenness(false) / 2);
   });
 
   it('is centered on the origin', () => {

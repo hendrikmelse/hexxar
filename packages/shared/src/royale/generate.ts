@@ -44,8 +44,6 @@ export interface RoyaleInput {
 }
 
 const MAX_ATTEMPTS = 80;
-/** Boards that cannot fit peninsulas get them dropped once this many attempts found nothing valid. */
-const PENINSULA_ATTEMPTS = 50;
 /** A board is drawn again at a corrected scale until its area is this close to the target. */
 const AREA_ITERATIONS = 6;
 const AREA_TOLERANCE = 0.06;
@@ -75,7 +73,6 @@ function drawCandidate(
   input: RoyaleInput,
   archetypeId: ArchetypeId,
   seed: number,
-  withoutPeninsulas: boolean,
 ): Candidate | Rejection {
   const { players, params } = input;
   const target = royaleTargetTiles(players, params);
@@ -94,7 +91,7 @@ function drawCandidate(
       scale,
       rng: createRng(layoutSeed),
       startDistance: params.minStartDistance,
-      withoutPeninsulas,
+      evenSpawns: params.checkFairness,
     });
     if (!blueprint) {
       drawn = null;
@@ -149,7 +146,7 @@ function drawCandidate(
   if (metrics.chokes.length < MIN_CHOKES) return 'chokes';
   if (metrics.interiorShare > MAX_INTERIOR_SHARE) return 'blobby';
   const fairness = measureFairness(land, starts, territories(land, starts));
-  if (fairness.score > MAX_UNFAIRNESS) return 'unfair';
+  if (params.checkFairness && fairness.score > MAX_UNFAIRNESS) return 'unfair';
   return { land, blueprint, starts, metrics, fairness };
 }
 
@@ -162,7 +159,7 @@ export function generateRoyaleLayout(input: RoyaleInput): RoyaleLayout {
   const { seed } = input;
   const rejections: Partial<Record<Rejection, number>> = {};
   const pick = createRng(seed ^ 0xa11ce);
-  const wanted = Math.max(1, input.params.fairnessCandidates);
+  const wanted = input.params.checkFairness ? Math.max(1, input.params.fairnessCandidates) : 1;
   let best: { candidate: Candidate; archetype: ArchetypeId } | null = null;
   let compared = 0;
   let attempts = 0;
@@ -176,7 +173,6 @@ export function generateRoyaleLayout(input: RoyaleInput): RoyaleLayout {
       input,
       archetype,
       (seed + Math.imul(attempts, 0x9e3779b1)) >>> 0,
-      attempts > PENINSULA_ATTEMPTS && compared === 0,
     );
     if (typeof candidate === 'string') {
       rejections[candidate] = (rejections[candidate] ?? 0) + 1;

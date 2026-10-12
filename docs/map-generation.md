@@ -42,9 +42,7 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
    **Topology rules** (`topology.ts`): no **tail or peninsula longer than one corridor**. A dead-end chamber may hang straight off a junction, but a dead end reached through a chain of chambers that each have only two corridors (a snake, or a dead end behind a dead end) is not allowed. The archetype fixes a tail by joining its end to the nearest chamber it is not yet joined to, which closes it into a loop, and the validator rejects any layout that still has one. Loops themselves are not required.
 
-   **Peninsulas:** on normal and large boards a few small dead-end chambers (about 1.5 for every 10 players, at least one) are added, each placed beside a chamber that already has two or more corridors, pointing away from the middle of the board, and joined by a single corridor, so each is one step off a junction. Neutral chambers host them where there are any. Normal boards have almost no neutral chambers (the spawn bowls fill the board), so a spawn chamber hosts them; the fairness score accounts for that. Small boards have no room for them. If a board cannot be made with peninsulas in 50 attempts, they are dropped.
-
-   **Connectedness:** spawn chambers get two exits, or, on boards with 5 or more players and cities at least 4 apart, three exits 30% of the time. Two exits give little more than one ring; three give several loops.
+   **Peninsulas** are dead-end chambers: one corridor, off a junction (the rule above keeps them from being any longer). Nothing adds them on purpose. They come up where the spanning tree has a leaf, and a player's starting chamber can be one. Not every board has one (with 6 or more players, about 55% to 85% do, usually one or two; boards for 3 players rarely do). Loops come from the extra corridors beyond the spanning tree and from the tails that are closed up; boards typically have 2 to 5.
 
 2. **Rasterize** (`rasterize.ts`): every hex center is tested against a field that is positive inside the chambers and corridors (blended smoothly where they meet) and bent by seeded noise, so rooms are lumpy and the coast is natural. The hexes along every corridor's centerline, and the city and the ring around it in every spawn chamber, are land whatever the noise says.
 3. **Area:** the same blueprint is redrawn at a corrected scale (up to 6 times) until the land is within 6% of the target. A candidate more than 12% off is thrown away.
@@ -57,9 +55,9 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
 ### Fairness
 
-Nothing about a battle royale layout is symmetric, so fairness is built in and measured (`fairness.ts`):
+**Switched off for now** (`checkFairness`, off by default; the previewer has a checkbox for it), to see how boards turn out without it. The score is still measured and shown. When it is on:
 
-- **By construction:** every spawn chamber gets the same number of ways out (two, or three on some boards, see above, where the layout allows it; the longest extra ones are dropped, as long as that leaves no long tail, or one is added to the nearest chamber), and all passages leaving a spawn chamber have the same width on a board. Spawn chambers are all the same size.
+- **By construction:** every spawn chamber gets the same number of ways out (two, or three on some boards with room; the longest extra ones are dropped, as long as that leaves no long tail, or one is added to the nearest chamber), all of one width on a board. This also means no starting chamber is a peninsula. Spawn chambers are all the same size either way.
 - **Territories:** the land is split between the players by walking distance from their cities. Each player's **reach** is the number of tiles within 5 steps of their city.
 - **Score:** how much territory sizes and reaches differ, each as a standard deviation over the mean, added up. 0 is perfectly even; boards over 0.8 are thrown away.
 - **Best of several:** `fairnessCandidates` (4) valid boards are drawn and the one with the lowest score is used. Boards with more players are inherently less even, since the players' land overlaps.
