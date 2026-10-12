@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Graphics } from 'pixi.js';
 import {
   ARCHETYPE_IDS,
   DEFAULT_GENERATION_PARAMS,
@@ -9,6 +10,8 @@ import {
   corridorPath,
   createFreeForAllMatch,
   createSymmetricMatch,
+  hexKey,
+  parseMatchConfig,
   ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
   territories,
@@ -19,12 +22,70 @@ import {
   type RoomMode,
   type RoyaleReport,
 } from '@hexxar/shared';
-import { NEUTRAL_FILL, PLAYER_COLORS } from '../board.js';
+import { playerColor } from '../board.js';
+import { emptyGame, type GameView } from '../game.js';
 import { HEX_SIZE, hexCorners, hexToPixel } from '../layout.js';
-
-const css = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;
+import { preview } from '../preview.js';
 
 const randomSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
+
+/** A generated board as the client's board drawing wants it: a match nobody is playing in. */
+function toGameView(state: GameState): GameView {
+  return {
+    ...emptyGame(),
+    status: 'playing',
+    config: parseMatchConfig({}),
+    tiles: { ...state.tiles },
+    players: [...state.players],
+  };
+}
+
+/** The blueprint is drawn in tile units; one unit is the distance between neighboring hex centers. */
+const UNIT = HEX_SIZE * Math.sqrt(3);
+const BLUEPRINT_COLOR = 0xffd166;
+const NEUTRAL_CHAMBER_COLOR = 0x9db4ff;
+
+/** What to draw over the board, or `null` for nothing. */
+function overlayFor(
+  game: GameView,
+  report: RoyaleReport | null,
+  show: { blueprint: boolean; territories: boolean },
+): ((graphics: Graphics) => void) | null {
+  if (!report || !(show.blueprint || show.territories)) return null;
+  return (g) => {
+    if (show.territories) {
+      // Tint every tile with the color of the player whose city is nearest (by walking).
+      const tiles = Object.values(game.tiles);
+      const starts = tiles.filter((tile) => tile.owner !== null);
+      const split = territories(new Map(tiles.map((tile) => [hexKey(tile), tile])), starts);
+      for (const [key, index] of split.owner) {
+        const color = playerColor(game, starts[index]!.owner) ?? 0xffffff;
+        g.poly(hexCorners(hexToPixel(game.tiles[key]!), 1.5)).fill({ color, alpha: 0.4 });
+      }
+    }
+    if (show.blueprint) {
+      for (const corridor of report.blueprint.corridors) {
+        const [first, ...rest] = corridorPath(report.blueprint, corridor);
+        g.moveTo(first!.x * UNIT, first!.y * UNIT);
+        for (const point of rest) g.lineTo(point.x * UNIT, point.y * UNIT);
+        g.stroke({
+          width: Math.max(3, corridor.width * UNIT * 0.3),
+          color: BLUEPRINT_COLOR,
+          alpha: 0.3,
+          cap: 'round',
+          join: 'round',
+        });
+      }
+      for (const chamber of report.blueprint.chambers) {
+        g.circle(chamber.center.x * UNIT, chamber.center.y * UNIT, chamber.radius * UNIT).stroke({
+          width: 2,
+          color: chamber.spawn ? BLUEPRINT_COLOR : NEUTRAL_CHAMBER_COLOR,
+          alpha: 0.9,
+        });
+      }
+    }
+  };
+}
 
 /** The player counts a symmetric board supports. */
 const SYMMETRIC_PLAYERS = [2, 3, 4, 6] as const;
@@ -260,14 +321,27 @@ function StatsTable({ stats }: { stats: Stats }) {
 
 /** Open with `/?maps`. Generates boards with the same settings a room uses, to look them over. */
 export function MapsPage() {
-  const [mode, setMode] = useState<RoomMode>('duel');
-  const [mapSize, setMapSize] = useState<MapSize>('normal');
-  const [players, setPlayers] = useState(4);
+  // The address can set where to start (`?maps&mode=ffa&size=large&players=8&seed=123`), to get
+  // back to a board or share one; everything is changed on the page itself from there.
+  const [query] = useState(() => new URLSearchParams(location.search));
+  const queryNumber = (name: string): number | null => {
+    const value = query.get(name);
+    return value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
+  };
+  const [mode, setMode] = useState<RoomMode>(query.get('mode') === 'ffa' ? 'ffa' : 'duel');
+  const [mapSize, setMapSize] = useState<MapSize>(
+    MAP_SIZES.find((size) => size === query.get('size')) ?? 'normal',
+  );
+  const [players, setPlayers] = useState(
+    Math.min(FFA_MAX_PLAYERS, Math.max(FFA_MIN_PLAYERS, queryNumber('players') ?? 4)),
+  );
   const [symmetricPlayers, setSymmetricPlayers] = useState<number>(2);
-  const [seed, setSeed] = useState(randomSeed);
-  const [archetype, setArchetype] = useState<ArchetypeId | 'random'>('random');
-  const [showBlueprint, setShowBlueprint] = useState(false);
-  const [showTerritories, setShowTerritories] = useState(false);
+  const [seed, setSeed] = useState(() => queryNumber('seed') ?? randomSeed());
+  const [archetype, setArchetype] = useState<ArchetypeId | 'random'>(
+    ARCHETYPE_IDS.find((id) => id === query.get('archetype')) ?? 'random',
+  );
+  const [showBlueprint, setShowBlueprint] = useState(query.has('blueprint'));
+  const [showTerritories, setShowTerritories] = useState(query.has('territories'));
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRunning, setStatsRunning] = useState(false);
 
@@ -278,8 +352,8 @@ export function MapsPage() {
     tilesPerPlayer: royaleTilesPerPlayer(size, royalePlayers),
     minStartDistance: ROYALE_START_DISTANCE[size],
   });
-  const [params, setParams] = useState<GenerationParams>(() => sizeDefaults('normal', 4));
-  const [radius, setRadius] = useState<number>(symmetricRadius('normal', 2));
+  const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
+  const [radius, setRadius] = useState<number>(symmetricRadius(mapSize, 2));
 
   // The radius that gives each player about the same land, for this size and number of players.
   const defaultRadius = symmetricRadius(mapSize, symmetricPlayers);
@@ -364,35 +438,28 @@ export function MapsPage() {
     step(0);
   };
 
-  const picture = useMemo(() => {
-    if (typeof result === 'string') return null;
-    const tiles = Object.values(result.state.tiles);
-    const centers = tiles.map((tile) => hexToPixel(tile));
-    const pad = HEX_SIZE * 1.2;
-    const minX = Math.min(...centers.map((c) => c.x)) - pad;
-    const maxX = Math.max(...centers.map((c) => c.x)) + pad;
-    const minY = Math.min(...centers.map((c) => c.y)) - pad;
-    const maxY = Math.max(...centers.map((c) => c.y)) + pad;
-    // Whose start is closest to each tile (by walking), for the territories overlay.
-    const territoryOf = new Map<string, string>();
-    if (result.report) {
-      const starts = tiles.filter((tile) => tile.owner !== null);
-      const split = territories(
-        new Map(tiles.map((tile) => [`${tile.q},${tile.r}`, tile])),
-        starts,
-      );
-      for (const [key, index] of split.owner) territoryOf.set(key, starts[index]!.owner!);
-    }
-    return { tiles, territoryOf, box: `${minX} ${minY} ${maxX - minX} ${maxY - minY}` };
-  }, [result]);
-
   const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
   const report = typeof result === 'string' ? null : result.report;
-  // The blueprint is drawn in tile units; one unit is the distance between neighboring hex centers.
-  const unit = HEX_SIZE * Math.sqrt(3);
+
+  // The board itself is the game's own, drawn by `main.ts`: hand it each new board, then the overlays.
+  const game = useMemo(
+    () => (typeof result === 'string' ? null : toGameView(result.state)),
+    [result],
+  );
+  useEffect(() => {
+    if (game) preview.show(game);
+  }, [game]);
+  useEffect(() => {
+    preview.overlay(
+      game
+        ? overlayFor(game, report, { blueprint: showBlueprint, territories: showTerritories })
+        : null,
+    );
+    return () => preview.overlay(null);
+  }, [game, report, showBlueprint, showTerritories]);
 
   return (
-    <div className="screen maps-page">
+    <div className="maps-panel">
       <div className="maps-wrap">
         <header>
           <h2>Map preview</h2>
@@ -578,76 +645,6 @@ export function MapsPage() {
             </div>
             {stats && stats.runs > 0 && <StatsTable stats={stats} />}
           </details>
-        )}
-
-        {picture && (
-          <svg className="maps-board" viewBox={picture.box} role="img" aria-label="Map preview">
-            {picture.tiles.map((tile) => {
-              const owner =
-                typeof result === 'string' ? -1 : result.state.players.indexOf(tile.owner ?? '');
-              const fill =
-                tile.owner !== null && owner >= 0
-                  ? css(PLAYER_COLORS[owner % PLAYER_COLORS.length]!)
-                  : css(NEUTRAL_FILL[tile.type]);
-              const center = hexToPixel(tile);
-              const points = hexCorners(center, 1.5).join(' ');
-              return (
-                <g key={`${tile.q},${tile.r}`}>
-                  <polygon points={points} fill={fill} opacity={tile.owner !== null ? 0.85 : 1} />
-                  {showTerritories && typeof result !== 'string' && (
-                    <polygon
-                      points={points}
-                      fill={css(
-                        PLAYER_COLORS[
-                          result.state.players.indexOf(
-                            picture.territoryOf.get(`${tile.q},${tile.r}`) ?? '',
-                          ) % PLAYER_COLORS.length
-                        ]!,
-                      )}
-                      opacity={0.4}
-                      pointerEvents="none"
-                    />
-                  )}
-                  {tile.type !== 'farmland' && (
-                    <text
-                      x={center.x}
-                      y={center.y + 6}
-                      textAnchor="middle"
-                      fontSize={tile.type === 'city' ? 20 : 14}
-                      fontWeight="800"
-                      fill={tile.type === 'city' ? '#ffffff' : '#c9d0de'}
-                    >
-                      {tile.type === 'city' ? 'C' : 'V'}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-            {report && showBlueprint && (
-              <g fill="none" stroke="#ffd166" strokeWidth={2} opacity={0.8} pointerEvents="none">
-                {report.blueprint.corridors.map((corridor, index) => (
-                  <polyline
-                    key={`corridor${index}`}
-                    points={corridorPath(report.blueprint, corridor)
-                      .map((p) => `${p.x * unit},${p.y * unit}`)
-                      .join(' ')}
-                    strokeWidth={corridor.width * 3}
-                    strokeLinecap="round"
-                    opacity={0.5}
-                  />
-                ))}
-                {report.blueprint.chambers.map((chamber, index) => (
-                  <circle
-                    key={`chamber${index}`}
-                    cx={chamber.center.x * unit}
-                    cy={chamber.center.y * unit}
-                    r={chamber.radius * unit}
-                    strokeDasharray={chamber.spawn ? undefined : '8 6'}
-                  />
-                ))}
-              </g>
-            )}
-          </svg>
         )}
       </div>
     </div>

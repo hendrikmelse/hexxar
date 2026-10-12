@@ -13,6 +13,7 @@ import { applyMessage, emptyGame, isWatching } from './game.js';
 import { Hud } from './hud.js';
 import { connect, loadToken, saveCode, saveToken } from './net.js';
 import { PathDraft } from './path.js';
+import { isPreview, PREVIEW_PANEL_WIDTH, setPreviewSink } from './preview.js';
 import { appStore, saveName } from './store.js';
 import { TutorialRunner } from './tutorial/runner.js';
 import { mountUi } from './ui/mount.js';
@@ -53,7 +54,7 @@ function showDraft(): void {
 
 /** The board and the match HUD are only shown during a match. */
 function updateVisibility(): void {
-  appEl.style.display = inMatch() ? 'block' : 'none';
+  appEl.style.display = inMatch() || isPreview() ? 'block' : 'none';
   hudEl.hidden = !inMatch();
   hudEl.classList.toggle('tutorial', appStore.get().tutorial !== null);
 }
@@ -327,6 +328,19 @@ const board = await Board.create(appEl, {
     showDraft();
   },
 });
+// The map previewer (/?maps) shows its boards on this board, next to its own panel.
+if (isPreview()) {
+  appEl.style.display = 'block';
+  board.setLeftInset(PREVIEW_PANEL_WIDTH);
+  setPreviewSink({
+    show(view) {
+      board.setAll(view);
+      board.fitToBoard();
+    },
+    overlay: (draw) => board.setOverlay(draw),
+  });
+}
+
 // Load the sounds in the background once the page has settled, so the first clicks are not late
 // and the game itself is not slowed down getting started.
 function startSoundPreload(): void {

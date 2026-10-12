@@ -238,6 +238,8 @@ export class Board {
   private readonly coastLayer = new Graphics();
   private readonly tileLayer = new Container();
   private readonly fogLayer = new Container();
+  /** Drawn over the tiles by whoever asks (the map previewer), under everything the game draws. */
+  private readonly overlayLayer = new Graphics();
   private readonly clouds: Clouds;
   /** What the player can see (`null`: everything), as of the last time it was worked out. */
   private vision: Map<string, Vision> | null = null;
@@ -251,6 +253,8 @@ export class Board {
   private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
   private bottomInset = 0;
+  /** Room the page keeps on the left when fitting the board; `null` is the HUD's column. */
+  private leftInset: number | null = null;
   private readonly pointerLayer = new Graphics();
   /** The tiles a lesson's demonstration pointer drags across, and when it started. */
   private pointerPath: readonly Hex[] = [];
@@ -282,6 +286,7 @@ export class Board {
       this.coastLayer,
       this.tileLayer,
       this.fogLayer,
+      this.overlayLayer,
       this.highlightLayer,
       this.ringFlash,
       this.queueLayer,
@@ -1542,13 +1547,24 @@ export class Board {
     this.bottomInset = pixels;
   }
 
+  /** Keep this many pixels at the left of wide screens clear when fitting the board (the previewer's panel). */
+  setLeftInset(pixels: number | null): void {
+    this.leftInset = pixels;
+  }
+
+  /** Draw something over the tiles, replacing what was drawn before; `null` clears it. */
+  setOverlay(draw: ((graphics: Graphics) => void) | null): void {
+    this.overlayLayer.clear();
+    draw?.(this.overlayLayer);
+  }
+
   /** Zoom and center so the whole board is visible. */
   fitToBoard(): void {
     const bounds = this.tileLayer.getLocalBounds();
     const { width, height: fullHeight } = this.app.screen;
     const height = fullHeight - this.bottomInset;
     // On wide screens the HUD's left column takes up room, so the board is centered in the rest.
-    const left = width >= WIDE_SCREEN ? LEFT_HUD_WIDTH : 0;
+    const left = width >= WIDE_SCREEN ? (this.leftInset ?? LEFT_HUD_WIDTH) : 0;
     const free = width - left;
     const scale = Math.min(
       MAX_ZOOM,

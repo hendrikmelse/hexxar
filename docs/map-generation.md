@@ -66,7 +66,7 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
 Villages use the same placement as symmetric boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
 
-The map previewer (`/?maps`) shows the numbers for each board, can tint the board by territory, and collects statistics over 100 seeds.
+The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint or tint the board by territory over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint&territories`, which also gets back to a particular board.
 
 ## Settings
 
