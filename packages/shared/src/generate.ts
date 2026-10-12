@@ -11,7 +11,13 @@ import {
 } from './hex.js';
 import { createRng, type Rng } from './rng.js';
 import { withDefaults, type GenerationParams } from './params.js';
-import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
+import {
+  depthFromCoast,
+  generateRoyaleLayout,
+  placeVillages,
+  type ArchetypeId,
+  type RoyaleReport,
+} from './royale/index.js';
 import { randomShape } from './shape.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
@@ -351,28 +357,23 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
     archetype: options.archetype,
   });
   const ordered = layout.hexes;
-  const present = new Set(ordered.map(hexKey));
+  const land = new Map(ordered.map((hex) => [hexKey(hex), hex]));
+  const { villages, summary } = placeVillages({
+    land,
+    starts: layout.starts,
+    depth: depthFromCoast(land),
+    params,
+    rng,
+  });
   const starts = shuffle(layout.starts, rng);
   const startOwners = new Map<string, PlayerId>();
   starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
-
-  const startKeys = new Set(starts.map(hexKey));
-  const others = ordered.filter((hex) => !startKeys.has(hexKey(hex))).map((hex) => [hex]);
-  const types = placeTerrain({
-    startHexes: starts,
-    others,
-    isEdgeHex: edgeTest(present),
-    totalTiles: ordered.length,
-    extraCities: params.freeForAllCities,
-    params: {
-      ...params,
-      minCityDistance: Math.max(params.minCityDistance, params.minStartDistance),
-    },
-    rng,
-  });
+  const types = new Map<string, TileTypeId>();
+  for (const hex of starts) types.set(hexKey(hex), 'city');
+  for (const hex of villages) types.set(hexKey(hex), 'village');
   return {
     config,
-    report: layout.report,
+    report: { ...layout.report, villages: summary },
     state: {
       tick: 0,
       players: [...players],

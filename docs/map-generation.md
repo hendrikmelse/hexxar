@@ -43,15 +43,25 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 3. **Area:** the same blueprint is redrawn at a corrected scale (up to 6 times) until the land is within 6% of the target. A candidate more than 12% off is thrown away.
 4. **Cleanup:** one-tile bays are filled, one-tile spurs trimmed, and everything but the biggest connected piece removed. The board is then recentered on the origin.
 5. **Analyze** (`analyze.ts`): the finished board is measured, not the blueprint. For each corridor, the land is measured at right angles to its centerline along its middle stretch; the narrowest cross section is its width (a **choke** if at most 3 hexes) and it is a **cut** if closing it splits the board in two pieces.
-6. **Validate:** a candidate must have every city on a non-edge tile (so a full ring of neighbors), cities at least `minStartDistance` apart, at least 2 chokes, and no more than 40% of its land deeper than 4 tiles inland (that would be a blob). Otherwise the next seed is tried, up to 80 times. The reasons candidates are thrown away are in the report that `createFreeForAllMatch` returns, which the map previewer shows.
+6. **Validate:** a candidate must have every city on a non-edge tile (so a full ring of neighbors), cities at least `minStartDistance` apart, at least 2 chokes, no more than 40% of its land deeper than 4 tiles inland (that would be a blob), and a fairness score of at most 0.8 (below). Otherwise the next seed is tried, up to 80 times in total. The reasons candidates are thrown away are in the report that `createFreeForAllMatch` returns, which the map previewer shows.
 
 - **Size:** the target is the number of players times `tilesPerPlayer` (or `minTilesPerPlayer`, a floor that is off by default). A map size sets both `tilesPerPlayer` (15, 25 or 45 at 6 players; fewer per player for more players, see `royaleTilesPerPlayer`) and `minStartDistance` (3, 4 or 5 on small, normal and large, see `ROYALE_START_DISTANCE`). Cities that far apart need about that distance squared in tiles each, so small boards could not hold their players with the large spacing. Spawn chambers shrink with the spacing (radius 1.2 to 2), and so does the open ground required between chambers.
-- **Starting cities:** one per player, at the center of its spawn chamber, never on the edge. Players are assigned to them at random.
-- **Cities and villages:** there are no cities except the starting ones. Villages follow the rules above, with each tile its own group instead of a symmetry orbit.
+- **Starting cities:** one per player, at the center of its spawn chamber, never on the edge. Players are assigned to them at random. There are no cities except the starting ones.
 
-Because nothing about the layout is symmetric, battle royale boards are not perfectly fair. We plan to check fairness (reachable land and exits per player) and to place villages evenly between players.
+### Fairness
 
-The map previewer (`/?maps`) shows the archetype, the number of attempts, the chokes by width, and can draw the blueprint over the board and collect statistics over 100 seeds.
+Nothing about a battle royale layout is symmetric, so fairness is built in and measured (`fairness.ts`):
+
+- **By construction:** every spawn chamber gets the same number of ways out (two, where the layout allows it; the longest extra ones are dropped, or one is added to the nearest chamber), and all passages leaving a spawn chamber have the same width on a board. Spawn chambers are all the same size.
+- **Territories:** the land is split between the players by walking distance from their cities. Each player's **reach** is the number of tiles within 5 steps of their city.
+- **Score:** how much territory sizes and reaches differ, each as a standard deviation over the mean, added up. 0 is perfectly even; boards over 0.8 are thrown away.
+- **Best of several:** `fairnessCandidates` (4) valid boards are drawn and the one with the lowest score is used. Boards with more players are inherently less even, since the players' land overlaps.
+
+### Villages
+
+Villages are placed in **rounds** (`villages.ts`), not scattered: the board has `villageDensity` villages per 100 tiles (15), and in each round every player gets one village in their own territory, as close as possible to the same distance from their city (2 steps in the first round, 3 in the second, and so on). A round only counts if every player got a village, so everyone has the same number at the same distances, and the far ones sit near the borders where players meet. If the rounds run out of room before the village count is reached (small boards with many players), the rest go on the borders at random. Villages never touch a city or each other, and keep off the edge unless a player has nowhere else.
+
+The map previewer (`/?maps`) shows the numbers for each board, can tint the board by territory, and collects statistics over 100 seeds.
 
 ## Settings
 

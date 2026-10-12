@@ -11,6 +11,7 @@ import {
   createSymmetricMatch,
   ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
+  territories,
   type ArchetypeId,
   type GameState,
   type GenerationParams,
@@ -65,6 +66,9 @@ interface Stats {
   chokes: number;
   cutChokes: number;
   interiorShare: number;
+  fairnessScore: number;
+  worstReachRatio: number;
+  villagesEven: number;
   widths: number[];
   rejections: Record<string, number>;
   milliseconds: number;
@@ -87,6 +91,14 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
         hint: 'Boards never get less than this per player (0 for no floor)',
       },
       { key: 'minStartDistance', hint: 'Starting cities are never closer than this' },
+      {
+        key: 'fairnessCandidates',
+        hint: 'This many valid boards are drawn and the fairest is used (1 is the first valid one)',
+      },
+      {
+        key: 'villageDensity',
+        hint: 'Villages per 100 tiles, shared out evenly between the players',
+      },
       { key: 'coastRoughness', hint: 'How far noise pushes the coast in and out, in tiles' },
       { key: 'coastDetail', hint: 'Size of the coast bumps, in tiles' },
       { key: 'warpStrength', hint: 'How far noise bends the rooms out of round, in tiles' },
@@ -158,8 +170,7 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
   },
 ];
 
-const FLAGS: { key: 'freeForAllCities' | 'villagesNextToCities'; label: string }[] = [
-  { key: 'freeForAllCities', label: 'Extra cities on royale boards' },
+const FLAGS: { key: 'villagesNextToCities'; label: string }[] = [
   { key: 'villagesNextToCities', label: 'Villages may touch cities' },
 ];
 
@@ -224,6 +235,9 @@ function StatsTable({ stats }: { stats: Stats }) {
         .join(', '),
     ],
     ['deep inland', `${Math.round((stats.interiorShare / ok) * 100)}%`],
+    ['unfairness score', `${(stats.fairnessScore / ok).toFixed(2)} (0 is perfectly even)`],
+    ['nearby land, best over worst player', `${(stats.worstReachRatio / ok).toFixed(2)}×`],
+    ['boards with equal village counts', `${stats.villagesEven} of ${ok}`],
     ['time per board', `${(stats.milliseconds / stats.runs).toFixed(0)} ms`],
   ];
   return (
@@ -249,6 +263,7 @@ export function MapsPage() {
   const [seed, setSeed] = useState(randomSeed);
   const [archetype, setArchetype] = useState<ArchetypeId | 'random'>('random');
   const [showBlueprint, setShowBlueprint] = useState(false);
+  const [showTerritories, setShowTerritories] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRunning, setStatsRunning] = useState(false);
 
@@ -305,6 +320,9 @@ export function MapsPage() {
       chokes: 0,
       cutChokes: 0,
       interiorShare: 0,
+      fairnessScore: 0,
+      worstReachRatio: 0,
+      villagesEven: 0,
       widths: [],
       rejections: {},
       milliseconds: 0,
@@ -326,6 +344,9 @@ export function MapsPage() {
         total.chokes += report.metrics.chokes.length;
         total.cutChokes += report.metrics.chokes.filter((choke) => choke.cut).length;
         total.interiorShare += report.metrics.interiorShare;
+        total.fairnessScore += report.fairness.score;
+        total.worstReachRatio += report.fairness.reachRatio;
+        if (report.villages && new Set(report.villages.perPlayer).size === 1) total.villagesEven++;
         report.metrics.widths.forEach((n, width) => {
           total.widths[width] = (total.widths[width] ?? 0) + n;
         });
@@ -350,7 +371,17 @@ export function MapsPage() {
     const maxX = Math.max(...centers.map((c) => c.x)) + pad;
     const minY = Math.min(...centers.map((c) => c.y)) - pad;
     const maxY = Math.max(...centers.map((c) => c.y)) + pad;
-    return { tiles, box: `${minX} ${minY} ${maxX - minX} ${maxY - minY}` };
+    // Whose start is closest to each tile (by walking), for the territories overlay.
+    const territoryOf = new Map<string, string>();
+    if (result.report) {
+      const starts = tiles.filter((tile) => tile.owner !== null);
+      const split = territories(
+        new Map(tiles.map((tile) => [`${tile.q},${tile.r}`, tile])),
+        starts,
+      );
+      for (const [key, index] of split.owner) territoryOf.set(key, starts[index]!.owner!);
+    }
+    return { tiles, territoryOf, box: `${minX} ${minY} ${maxX - minX} ${maxY - minY}` };
   }, [result]);
 
   const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
@@ -435,14 +466,24 @@ export function MapsPage() {
             Generate new map
           </button>
           {mode === 'ffa' && (
-            <label className="maps-flag">
-              <input
-                type="checkbox"
-                checked={showBlueprint}
-                onChange={(event) => setShowBlueprint(event.target.checked)}
-              />
-              Show blueprint
-            </label>
+            <>
+              <label className="maps-flag">
+                <input
+                  type="checkbox"
+                  checked={showBlueprint}
+                  onChange={(event) => setShowBlueprint(event.target.checked)}
+                />
+                Show blueprint
+              </label>
+              <label className="maps-flag">
+                <input
+                  type="checkbox"
+                  checked={showTerritories}
+                  onChange={(event) => setShowTerritories(event.target.checked)}
+                />
+                Show territories
+              </label>
+            </>
           )}
         </div>
 
@@ -520,7 +561,11 @@ export function MapsPage() {
                   ', ',
                 )} wide, ${report.metrics.chokes.filter((c) => c.cut).length} cut the map)` +
               ` · ${report.metrics.loops} loops, ${report.metrics.deadEnds} dead ends` +
-              ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland`}
+              ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland` +
+              ` · fairness ${report.fairness.score.toFixed(2)} (best of ${report.compared}; nearby land ${report.fairness.reachRatio.toFixed(1)}×)` +
+              (report.villages
+                ? ` · villages ${report.villages.perPlayer[0] ?? 0} each + ${report.villages.contested} on borders`
+                : '')}
         </p>
 
         {mode === 'ffa' && (
@@ -551,6 +596,20 @@ export function MapsPage() {
               return (
                 <g key={`${tile.q},${tile.r}`}>
                   <polygon points={points} fill={fill} opacity={tile.owner !== null ? 0.85 : 1} />
+                  {showTerritories && typeof result !== 'string' && (
+                    <polygon
+                      points={points}
+                      fill={css(
+                        PLAYER_COLORS[
+                          result.state.players.indexOf(
+                            picture.territoryOf.get(`${tile.q},${tile.r}`) ?? '',
+                          ) % PLAYER_COLORS.length
+                        ]!,
+                      )}
+                      opacity={0.4}
+                      pointerEvents="none"
+                    />
+                  )}
                   {tile.type !== 'farmland' && (
                     <text
                       x={center.x}

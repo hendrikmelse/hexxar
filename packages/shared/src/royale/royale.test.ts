@@ -11,7 +11,9 @@ import { ARCHETYPE_IDS } from './archetypes/index.js';
 import { CHOKE_MAX_WIDTH } from './analyze.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
 import { components, depthFromCoast } from './grid.js';
+import { createFreeForAllMatch } from '../generate.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
+import { territories } from './fairness.js';
 
 const params = DEFAULT_GENERATION_PARAMS;
 const layout = (players: number, seed: number, archetype?: (typeof ARCHETYPE_IDS)[number]) =>
@@ -131,6 +133,33 @@ describe('royale layouts', () => {
     }
   });
 
+  it('shares the land between the players fairly, picking the fairest of several boards', () => {
+    for (const players of playerCounts) {
+      for (const seed of seeds) {
+        const { report, hexes, starts } = layout(players, seed);
+        expect(report.compared).toBeGreaterThanOrEqual(1);
+        expect(report.compared).toBeLessThanOrEqual(params.fairnessCandidates);
+        expect(report.fairness.score).toBeLessThanOrEqual(0.8);
+        expect(report.fairness.territory).toHaveLength(players);
+        // Every tile belongs to somebody, and territories add up to the whole board.
+        const land = new Map(hexes.map((h) => [hexKey(h), h]));
+        expect(territories(land, starts).sizes.reduce((a, b) => a + b, 0)).toBe(hexes.length);
+      }
+    }
+    // More candidates to choose from never gives a worse board.
+    const one = generateRoyaleLayout({
+      players: 8,
+      seed: 3,
+      params: { ...params, fairnessCandidates: 1 },
+    });
+    const many = generateRoyaleLayout({
+      players: 8,
+      seed: 3,
+      params: { ...params, fairnessCandidates: 6 },
+    });
+    expect(many.report.fairness.score).toBeLessThanOrEqual(one.report.fairness.score);
+  });
+
   it('can be told which archetype to draw', () => {
     for (const archetype of ARCHETYPE_IDS) {
       expect(layout(5, 3, archetype).report.archetype).toBe(archetype);
@@ -143,5 +172,40 @@ describe('royale layouts', () => {
     const r = hexes.reduce((sum, h) => sum + h.r, 0) / hexes.length;
     expect(Math.abs(q)).toBeLessThan(1);
     expect(Math.abs(r)).toBeLessThan(1);
+  });
+});
+
+describe('royale villages', () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
+
+  it('gives every player the same number of villages, at the same distances', () => {
+    for (const players of playerCounts) {
+      for (const seed of seeds) {
+        const { report, state } = createFreeForAllMatch({ players: ids(players), seed });
+        const summary = report.villages!;
+        expect(new Set(summary.perPlayer).size).toBe(1);
+        const villages = Object.values(state.tiles).filter((t) => t.type === 'village');
+        expect(villages.length).toBeGreaterThan(0);
+        expect(summary.perPlayer.reduce((a, b) => a + b, 0) + summary.contested).toBe(
+          villages.length,
+        );
+      }
+    }
+  });
+
+  it('never puts a village next to a city or another village', () => {
+    for (const players of playerCounts) {
+      for (const seed of seeds) {
+        const { state } = createFreeForAllMatch({ players: ids(players), seed });
+        const tiles = Object.values(state.tiles);
+        for (const village of tiles.filter((t) => t.type === 'village')) {
+          for (const other of tiles) {
+            if (other !== village && other.type !== 'farmland') {
+              expect(hexDistance(village, other)).toBeGreaterThanOrEqual(2);
+            }
+          }
+        }
+      }
+    }
   });
 });

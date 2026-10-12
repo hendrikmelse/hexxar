@@ -203,7 +203,88 @@ function connect(chambers: readonly Chamber[], rng: Rng): Corridor[] {
   extras.sort((a, b) => a[2] - b[2] || rng.next() - 0.5);
   const loops = Math.round(chambers.length * 0.3);
   for (const [from, to] of extras.slice(0, loops)) add(from, to);
-  return corridors;
+  return evenOutSpawns(chambers, corridors, add, pairs, rng);
+}
+
+/** How many ways out every spawn chamber has, where the layout allows it. */
+const SPAWN_EXITS = 2;
+/** Widths of the passages leaving a spawn chamber (the same for every player on a board). */
+const SPAWN_EXIT_WIDTHS = [2, 3] as const;
+
+/** Is everything still joined up with the given corridors? */
+function joined(count: number, corridors: readonly Corridor[]): boolean {
+  const seen = new Set([0]);
+  const queue = [0];
+  while (queue.length > 0) {
+    const here = queue.pop()!;
+    for (const { from, to } of corridors) {
+      const other = from === here ? to : to === here ? from : -1;
+      if (other >= 0 && !seen.has(other)) {
+        seen.add(other);
+        queue.push(other);
+      }
+    }
+  }
+  return seen.size === count;
+}
+
+/**
+ * Give every spawn chamber the same kind of surroundings, so no player starts with a better
+ * hand than another: the same number of ways out (dropping the longest ones that are not the
+ * only way to somewhere, or adding one to the nearest chamber), all of one width.
+ */
+function evenOutSpawns(
+  chambers: readonly Chamber[],
+  corridors: Corridor[],
+  add: (from: number, to: number) => void,
+  pairs: Set<string>,
+  rng: Rng,
+): Corridor[] {
+  const touching = (spawn: number): number[] =>
+    corridors.flatMap((c, i) => (c.from === spawn || c.to === spawn ? [i] : []));
+  const lengthOf = (c: Corridor): number =>
+    distance(chambers[c.from]!.center, chambers[c.to]!.center);
+  chambers.forEach((chamber, spawn) => {
+    if (!chamber.spawn) return;
+    while (touching(spawn).length > SPAWN_EXITS) {
+      const longest = touching(spawn).sort(
+        (a, b) => lengthOf(corridors[b]!) - lengthOf(corridors[a]!),
+      );
+      const drop = longest.find((i) =>
+        joined(
+          chambers.length,
+          corridors.filter((_, k) => k !== i),
+        ),
+      );
+      if (drop === undefined) break;
+      const { from, to } = corridors[drop]!;
+      pairs.delete(`${Math.min(from, to)}-${Math.max(from, to)}`);
+      corridors.splice(drop, 1);
+    }
+    while (touching(spawn).length < SPAWN_EXITS) {
+      let nearest = -1;
+      let nearestLength = Infinity;
+      chambers.forEach((other, j) => {
+        const length = distance(chamber.center, other.center);
+        const key = `${Math.min(spawn, j)}-${Math.max(spawn, j)}`;
+        if (
+          j !== spawn &&
+          !pairs.has(key) &&
+          !blocked(chambers, spawn, j) &&
+          length < nearestLength
+        ) {
+          nearest = j;
+          nearestLength = length;
+        }
+      });
+      if (nearest < 0) break;
+      add(spawn, nearest);
+    }
+  });
+  const width = SPAWN_EXIT_WIDTHS[rng.int(SPAWN_EXIT_WIDTHS.length)]!;
+  return corridors.map((c) =>
+    chambers[c.from]!.spawn || chambers[c.to]!.spawn ? { ...c, width } : c,
+  );
 }
 
 /**

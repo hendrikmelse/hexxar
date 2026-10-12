@@ -44,8 +44,6 @@ export interface GenerationParams {
   tilesPerCity: number;
   /** Cities are never closer than this to each other, starting cities included. */
   minCityDistance: number;
-  /** Add extra cities on battle royale boards too (normally the starting cities are the only ones). */
-  freeForAllCities: boolean;
   /** Chance (percent) that a village is placed where one fits. 100 packs the board as full as it goes. */
   villageChance: number;
   /** Villages are never closer than this to each other (2 means they never touch). */
@@ -68,6 +66,10 @@ export interface GenerationParams {
   minTilesPerPlayer: number;
   /** Battle Royale boards: starting cities are never closer than this to each other. */
   minStartDistance: number;
+  /** Battle Royale boards: this many valid boards are drawn and the fairest one is used. */
+  fairnessCandidates: number;
+  /** Battle Royale boards: villages per 100 tiles, shared out evenly between the players. */
+  villageDensity: number;
 
   // -- Battle royale terrain ------------------------------------------------------------
 
@@ -98,7 +100,6 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
 
   tilesPerCity: 50,
   minCityDistance: 3,
-  freeForAllCities: false,
   villageChance: 40,
   minVillageDistance: 2,
   villagesNextToCities: false,
@@ -108,6 +109,8 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   tilesPerPlayer: 25,
   minTilesPerPlayer: 0,
   minStartDistance: 4,
+  fairnessCandidates: 4,
+  villageDensity: 15,
 
   coastRoughness: 1,
   coastDetail: 5,
