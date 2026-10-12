@@ -9,7 +9,6 @@ export {
 } from './blueprint.js';
 export { depthFromCoast } from './grid.js';
 export { measureFairness, territories, type Fairness, type Territories } from './fairness.js';
-export { placeVillages, type VillageSummary } from './villages.js';
 export {
   generateRoyaleLayout,
   royaleTargetTiles,

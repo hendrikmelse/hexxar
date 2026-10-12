@@ -68,7 +68,6 @@ interface Stats {
   interiorShare: number;
   fairnessScore: number;
   worstReachRatio: number;
-  villagesEven: number;
   widths: number[];
   rejections: Record<string, number>;
   milliseconds: number;
@@ -94,10 +93,6 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
       {
         key: 'fairnessCandidates',
         hint: 'This many valid boards are drawn and the fairest is used (1 is the first valid one)',
-      },
-      {
-        key: 'villageDensity',
-        hint: 'Villages per 100 tiles, shared out evenly between the players',
       },
       { key: 'coastRoughness', hint: 'How far noise pushes the coast in and out, in tiles' },
       { key: 'coastDetail', hint: 'Size of the coast bumps, in tiles' },
@@ -237,7 +232,6 @@ function StatsTable({ stats }: { stats: Stats }) {
     ['deep inland', `${Math.round((stats.interiorShare / ok) * 100)}%`],
     ['unfairness score', `${(stats.fairnessScore / ok).toFixed(2)} (0 is perfectly even)`],
     ['nearby land, best over worst player', `${(stats.worstReachRatio / ok).toFixed(2)}×`],
-    ['boards with equal village counts', `${stats.villagesEven} of ${ok}`],
     ['time per board', `${(stats.milliseconds / stats.runs).toFixed(0)} ms`],
   ];
   return (
@@ -322,7 +316,6 @@ export function MapsPage() {
       interiorShare: 0,
       fairnessScore: 0,
       worstReachRatio: 0,
-      villagesEven: 0,
       widths: [],
       rejections: {},
       milliseconds: 0,
@@ -346,7 +339,6 @@ export function MapsPage() {
         total.interiorShare += report.metrics.interiorShare;
         total.fairnessScore += report.fairness.score;
         total.worstReachRatio += report.fairness.reachRatio;
-        if (report.villages && new Set(report.villages.perPlayer).size === 1) total.villagesEven++;
         report.metrics.widths.forEach((n, width) => {
           total.widths[width] = (total.widths[width] ?? 0) + n;
         });
@@ -562,10 +554,7 @@ export function MapsPage() {
                 )} wide, ${report.metrics.chokes.filter((c) => c.cut).length} cut the map)` +
               ` · ${report.metrics.loops} loops, ${report.metrics.deadEnds} dead ends` +
               ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland` +
-              ` · fairness ${report.fairness.score.toFixed(2)} (best of ${report.compared}; nearby land ${report.fairness.reachRatio.toFixed(1)}×)` +
-              (report.villages
-                ? ` · villages ${report.villages.perPlayer[0] ?? 0} each + ${report.villages.contested} on borders`
-                : '')}
+              ` · fairness ${report.fairness.score.toFixed(2)} (best of ${report.compared}; nearby land ${report.fairness.reachRatio.toFixed(1)}×)`}
         </p>
 
         {mode === 'ffa' && (

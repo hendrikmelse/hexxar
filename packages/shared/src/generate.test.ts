@@ -284,7 +284,8 @@ describe('terrain rules', () => {
 
 describe('battle royale boards', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
-  const board = (n: number, seed: number) => createFreeForAllMatch({ players: ids(n), seed }).state;
+  const board = (n: number, seed: number) =>
+    createFreeForAllMatch({ players: ids(n), seed, params: { villageChance: 100 } }).state;
   const counts = [3, 5, 8, 12];
   const minDistance = DEFAULT_GENERATION_PARAMS.minStartDistance;
 
@@ -354,11 +355,14 @@ describe('battle royale boards', () => {
             expect(type === 'village' || type === 'city').toBe(false);
           }
         }
-        // About the intended number of villages.
-        const villages = tiles.filter((t) => t.type === 'village').length;
-        const density = (villages / tiles.length) * 100;
-        expect(density).toBeGreaterThan(DEFAULT_GENERATION_PARAMS.villageDensity * 0.6);
-        expect(density).toBeLessThan(DEFAULT_GENERATION_PARAMS.villageDensity * 1.2);
+        // No farmland tile could still become a village.
+        for (const farm of tiles.filter((t) => t.type === 'farmland')) {
+          const blocked = hexNeighbors(farm).some((nb) => {
+            const type = state.tiles[hexKey(nb)]?.type;
+            return type === 'village' || type === 'city';
+          });
+          expect(blocked).toBe(true);
+        }
         // Battle Royale boards have no cities beyond the starting ones.
         expect(cities).toHaveLength(n);
       }

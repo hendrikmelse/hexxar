@@ -68,8 +68,6 @@ export interface GenerationParams {
   minStartDistance: number;
   /** Battle Royale boards: this many valid boards are drawn and the fairest one is used. */
   fairnessCandidates: number;
-  /** Battle Royale boards: villages per 100 tiles, shared out evenly between the players. */
-  villageDensity: number;
 
   // -- Battle royale terrain ------------------------------------------------------------
 
@@ -110,7 +108,6 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   minTilesPerPlayer: 0,
   minStartDistance: 4,
   fairnessCandidates: 4,
-  villageDensity: 15,
 
   coastRoughness: 1,
   coastDetail: 5,

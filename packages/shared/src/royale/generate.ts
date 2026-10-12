@@ -5,7 +5,6 @@ import { ARCHETYPE_IDS, archetypeById, type ArchetypeId } from './archetypes/ind
 import { analyze, type RoyaleMetrics } from './analyze.js';
 import { translate, pointToHex, hexToPoint, type Blueprint } from './blueprint.js';
 import { depthFromCoast, type Land } from './grid.js';
-import type { VillageSummary } from './villages.js';
 import { measureFairness, territories, type Fairness } from './fairness.js';
 import { createNoise } from './noise.js';
 import { centroidShift, cleanup, rasterize } from './rasterize.js';
@@ -26,8 +25,6 @@ export interface RoyaleReport {
   /** How many valid boards were compared, the fairest being used. */
   readonly compared: number;
   readonly targetTiles: number;
-  /** Where the villages went; filled in once they are placed (after the layout). */
-  readonly villages: VillageSummary | null;
 }
 
 export interface RoyaleLayout {
@@ -197,7 +194,6 @@ export function generateRoyaleLayout(input: RoyaleInput): RoyaleLayout {
       fairness: candidate.fairness,
       compared,
       targetTiles: royaleTargetTiles(input.players, input.params),
-      villages: null,
     },
   };
 }

@@ -11,10 +11,8 @@ import { ARCHETYPE_IDS } from './archetypes/index.js';
 import { CHOKE_MAX_WIDTH } from './analyze.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
 import { components, depthFromCoast } from './grid.js';
-import { createFreeForAllMatch } from '../generate.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
 import { territories } from './fairness.js';
-import { hexNeighbors } from '../hex.js';
 
 const params = DEFAULT_GENERATION_PARAMS;
 const layout = (players: number, seed: number, archetype?: (typeof ARCHETYPE_IDS)[number]) =>
@@ -173,61 +171,5 @@ describe('royale layouts', () => {
     const r = hexes.reduce((sum, h) => sum + h.r, 0) / hexes.length;
     expect(Math.abs(q)).toBeLessThan(1);
     expect(Math.abs(r)).toBeLessThan(1);
-  });
-});
-
-describe('royale villages', () => {
-  const ids = (n: number) => Array.from({ length: n }, (_, i) => `P${i + 1}`);
-
-  it('gives every player the same number of villages, at the same distances', () => {
-    for (const players of playerCounts) {
-      for (const seed of seeds) {
-        const { report, state } = createFreeForAllMatch({ players: ids(players), seed });
-        const summary = report.villages!;
-        expect(new Set(summary.perPlayer).size).toBe(1);
-        const villages = Object.values(state.tiles).filter((t) => t.type === 'village');
-        expect(villages.length).toBeGreaterThan(0);
-        expect(summary.perPlayer.reduce((a, b) => a + b, 0) + summary.contested).toBe(
-          villages.length,
-        );
-      }
-    }
-  });
-
-  it('never puts a village next to a city or another village', () => {
-    for (const players of playerCounts) {
-      for (const seed of seeds) {
-        const { state } = createFreeForAllMatch({ players: ids(players), seed });
-        const tiles = Object.values(state.tiles);
-        for (const village of tiles.filter((t) => t.type === 'village')) {
-          for (const other of tiles) {
-            if (other !== village && other.type !== 'farmland') {
-              expect(hexDistance(village, other)).toBeGreaterThanOrEqual(2);
-            }
-          }
-        }
-      }
-    }
-  });
-
-  it('is as dense with villages next to the cities as everywhere else', () => {
-    const near = { villages: 0, tiles: 0 };
-    const far = { villages: 0, tiles: 0 };
-    for (let seed = 1; seed <= 30; seed++) {
-      const { state } = createFreeForAllMatch({ players: ids(6), seed });
-      const tiles = Object.values(state.tiles);
-      const cities = tiles.filter((t) => t.type === 'city');
-      const cityKeys = new Set(cities.map(hexKey));
-      const { distance } = territories(new Map(tiles.map((t) => [hexKey(t), t])), cities);
-      for (const tile of tiles) {
-        // Villages can never be on a city or next to one, so those tiles do not count.
-        if (cityKeys.has(hexKey(tile)) || hexNeighbors(tile).some((n) => cityKeys.has(hexKey(n))))
-          continue;
-        const band = distance.get(hexKey(tile))! <= 3 ? near : far;
-        band.tiles++;
-        if (tile.type === 'village') band.villages++;
-      }
-    }
-    expect(near.villages / near.tiles).toBeGreaterThan(0.85 * (far.villages / far.tiles));
   });
 });
