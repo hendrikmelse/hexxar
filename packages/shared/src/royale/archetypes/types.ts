@@ -12,6 +12,8 @@ export interface ArchetypeInput {
   readonly rng: Rng;
   /** Starting cities are at least this many tiles apart; chambers shrink to fit when it is small. */
   readonly startDistance: number;
+  /** Leave out peninsulas (dead-end chambers), for boards too tight to fit them. Default: include them. */
+  readonly withoutPeninsulas?: boolean;
 }
 
 /**

@@ -268,13 +268,17 @@ function repairTopology(
   }
 }
 
+/** Chance that a board with room for it gives every spawn chamber a third exit. */
+const THREE_EXITS_CHANCE = 0.3;
+
 /**
  * How many ways out every spawn chamber has, where the layout allows it. Three makes the board
- * well connected (several loops); two gives little more than one big ring. Boards with few
- * players or close cities are too small to fit a third corridor per bowl.
+ * well connected (several loops); two gives little more than one big ring. Boards with enough
+ * room for a third corridor per bowl (not few players, not close cities) get three now and then,
+ * at random, so boards differ in how connected they are.
  */
-const spawnExits = (players: number, startDistance: number): number =>
-  players >= 5 && startDistance >= 4 ? 3 : 2;
+const spawnExits = (players: number, startDistance: number, rng: Rng): number =>
+  players >= 5 && startDistance >= 4 && rng.next() < THREE_EXITS_CHANCE ? 3 : 2;
 /** Widths of the passages leaving a spawn chamber (the same for every player on a board). */
 const SPAWN_EXIT_WIDTHS = [2, 3] as const;
 
@@ -349,20 +353,111 @@ function evenOutSpawns(
   });
 }
 
+/** Peninsulas: dead-end chambers, this many for every ten players (at least one). */
+const PENINSULAS_PER_TEN_PLAYERS = 1.5;
+/** Tries to find room for a peninsula beside each possible junction. */
+const PENINSULA_TRIES = 40;
+
 /**
- * Rooms scattered at random, joined by a spanning tree and a few loops. The general-purpose
- * layout: no strong shape of its own, so it is the baseline the other archetypes are compared to.
+ * Add peninsulas: small dead-end chambers, each beside a neutral chamber that already has two
+ * or more corridors and joined to it by a single corridor, so it is one step off a junction and
+ * never a longer tail. They are placed right next to their junction, at a random angle and
+ * distance, and not searched for among the other rooms, since there is rarely room left inside
+ * the board; that also tends to push them outward. Spawn chambers never get one, so every
+ * player keeps the same exits. A peninsula with nowhere to go is left out.
+ */
+function addPeninsulas(
+  chambers: Chamber[],
+  corridors: Corridor[],
+  count: number,
+  startDistance: number,
+  rng: Rng,
+): void {
+  const gap = minGap(startDistance);
+  const smallest = Math.min(1.6, spawnRadius(startDistance));
+  const core = chambers.length;
+  const middle = {
+    x: chambers.reduce((sum, c) => sum + c.center.x, 0) / core,
+    y: chambers.reduce((sum, c) => sum + c.center.y, 0) / core,
+  };
+  const degree = (index: number): number =>
+    corridors.filter((c) => c.from === index || c.to === index).length;
+  for (let n = 0; n < count; n++) {
+    // Neutral chambers first, in random order so peninsulas are not always on the same ones.
+    // Tight boards have no neutral chambers (the spawn bowls fill them), so a spawn chamber
+    // with two or more corridors can host one too.
+    const shuffled = (list: number[]): number[] => {
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = rng.int(i + 1);
+        [list[i], list[j]] = [list[j]!, list[i]!];
+      }
+      return list;
+    };
+    const eligible = chambers.map((_, i) => i).filter((i) => i < core && degree(i) >= 2);
+    const hosts = [
+      ...shuffled(eligible.filter((i) => !chambers[i]!.spawn)),
+      ...shuffled(eligible.filter((i) => chambers[i]!.spawn)),
+    ];
+    let placed = false;
+    for (const host of hosts) {
+      const base = chambers[host]!;
+      for (let attempt = 0; attempt < PENINSULA_TRIES && !placed; attempt++) {
+        // Small, since they take land the rest of the board needs.
+        const radius = Math.max(1.2, smallest * 0.85) + rng.next() * 0.6;
+        // Mostly pointing away from the middle of the board, where there is room.
+        const outward = Math.atan2(base.center.y - middle.y, base.center.x - middle.x);
+        const angle = outward + (rng.next() - 0.5) * (attempt < PENINSULA_TRIES / 2 ? 1.8 : 6.28);
+        const reach = base.radius + radius + gap + rng.next() * 1.5;
+        const center = {
+          x: base.center.x + Math.cos(angle) * reach,
+          y: base.center.y + Math.sin(angle) * reach,
+        };
+        const candidate = [...chambers, { center, radius, spawn: false }];
+        const index = chambers.length;
+        const clear = chambers.every(
+          (other) => distance(center, other.center) >= radius + other.radius + gap,
+        );
+        if (!clear || blocked(candidate, host, index)) continue;
+        chambers.push(candidate[index]!);
+        corridors.push({
+          from: host,
+          to: index,
+          width: pickWidth(rng),
+          bend: (rng.next() - 0.5) * 0.3 * reach,
+        });
+        placed = true;
+      }
+      if (placed) break;
+    }
+  }
+}
+
+/**
+ * Rooms scattered at random, joined by a spanning tree and a few loops, with a few peninsulas
+ * (dead ends one corridor off a junction). The general-purpose layout: no strong shape of its
+ * own, so it is the baseline the other archetypes are compared to.
  */
 export function buildScattered({
   players,
   scale,
   rng,
   startDistance,
+  withoutPeninsulas,
 }: ArchetypeInput): Blueprint | null {
   const spawns = placeSpawns(players, scale, startDistance, rng);
   if (!spawns) return null;
-  const chambers: Chamber[] = [...spawns];
+  const core: Chamber[] = [...spawns];
   const neutrals = Math.max(1, Math.round(players * 0.5) + 1);
-  placeNeutrals(chambers, neutrals, scale, 2.2 + 0.15 * scale, startDistance, rng);
-  return { chambers, corridors: connect(chambers, spawnExits(players, startDistance), rng) };
+  const maxRadius = 2.2 + 0.15 * scale;
+  placeNeutrals(core, neutrals, scale, maxRadius, startDistance, rng);
+
+  const corridors = connect(core, spawnExits(players, startDistance, rng), rng);
+  const chambers = [...core];
+  const peninsulas = Math.max(1, Math.round((players * PENINSULAS_PER_TEN_PLAYERS) / 10));
+  // Small boards (cities 3 apart) have no room to spare: a peninsula there only makes the board
+  // take many tries to fit.
+  if (!withoutPeninsulas && startDistance >= 4) {
+    addPeninsulas(chambers, corridors, peninsulas, startDistance, rng);
+  }
+  return { chambers, corridors };
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { hexDistance, hexKey } from '../hex.js';
 import {
   DEFAULT_GENERATION_PARAMS,
@@ -14,6 +14,9 @@ import { components, depthFromCoast } from './grid.js';
 import { topologyIssues, topologyOk } from './topology.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
 import { territories } from './fairness.js';
+
+// Each test draws dozens of whole boards.
+vi.setConfig({ testTimeout: 60000 });
 
 const params = DEFAULT_GENERATION_PARAMS;
 const layout = (players: number, seed: number, archetype?: (typeof ARCHETYPE_IDS)[number]) =>
@@ -204,22 +207,25 @@ describe('royale layouts', () => {
         }
       }
     }
-  }, 60000);
+  });
 
-  it('is well connected on normal and large boards with many players', () => {
+  it('has some peninsulas, and is not always one big ring', () => {
     for (const size of ['normal', 'large'] as const) {
-      let loops = 0;
-      const seedCount = 8;
+      let withPeninsula = 0;
+      let connected = 0;
+      const seedCount = 12;
       for (let seed = 1; seed <= seedCount; seed++) {
         const sizeParams = {
           ...params,
           tilesPerPlayer: royaleTilesPerPlayer(size, 8),
           minStartDistance: ROYALE_START_DISTANCE[size],
         };
-        loops += generateRoyaleLayout({ players: 8, seed, params: sizeParams }).report.metrics
-          .loops;
+        const { report } = generateRoyaleLayout({ players: 8, seed, params: sizeParams });
+        if (report.metrics.deadEnds >= 1) withPeninsula++;
+        if (report.metrics.loops >= 3) connected++;
       }
-      expect(loops / seedCount).toBeGreaterThanOrEqual(2.5);
+      expect(withPeninsula).toBeGreaterThanOrEqual(seedCount * 0.75);
+      expect(connected).toBeGreaterThanOrEqual(1);
     }
   });
 
