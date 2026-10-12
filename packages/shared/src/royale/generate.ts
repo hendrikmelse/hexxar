@@ -77,7 +77,12 @@ function drawCandidate(
   let scale = Math.sqrt((target * (Math.sqrt(3) / 2)) / Math.PI);
   let drawn: { blueprint: Blueprint; land: Land; protectedKeys: Set<string> } | null = null;
   for (let i = 0; i < AREA_ITERATIONS; i++) {
-    const blueprint = archetype.build({ players, scale, rng: createRng(layoutSeed) });
+    const blueprint = archetype.build({
+      players,
+      scale,
+      rng: createRng(layoutSeed),
+      startDistance: params.minStartDistance,
+    });
     if (!blueprint) {
       drawn = null;
       scale *= 1.1;

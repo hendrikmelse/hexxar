@@ -10,12 +10,16 @@ import {
 } from '../blueprint.js';
 import type { ArchetypeInput } from './types.js';
 
-/** Spawn chambers are all this big, so no player starts with a roomier bowl than another. */
-export const SPAWN_RADIUS = 2;
-/** Spawn chambers are at least this far apart, centers measured, so their cities are 5+ apart. */
-const SPAWN_SPACING = 5.6;
+/**
+ * Spawn chambers are all the same size, so no player starts with a roomier bowl than another.
+ * Closer cities get smaller bowls, but never less than the city and the ring around it.
+ */
+export const spawnRadius = (startDistance: number): number =>
+  Math.min(2, Math.max(1.2, startDistance * 0.4));
+/** Spawn chamber centers are a little further apart than the cities are required to be. */
+const spawnSpacing = (startDistance: number): number => startDistance + 0.6;
 /** The least open ground between two chambers, so a corridor is long enough to read as one. */
-const MIN_GAP = 2.5;
+const minGap = (startDistance: number): number => Math.min(2.5, Math.max(1.5, startDistance * 0.5));
 /** How many random spots are tried for each room before it is given up on. */
 const PLACE_TRIES = 200;
 
@@ -47,26 +51,68 @@ function inDisc(radius: number, rng: Rng): Point {
 const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 
 /**
- * Spawn chambers: each is the best of a few random spots, the one furthest from the spawns
- * already placed, which spreads the players out. Centers sit on a hex so the city is exactly there.
+ * Push apart any points closer than `spacing`, keeping them inside a disc, until none are (or
+ * the rounds run out). Plain random spots cannot pack bowls tightly; this can.
  */
-function placeSpawns(count: number, spread: number, rng: Rng): Chamber[] | null {
-  const spawns: Chamber[] = [];
+function relax(points: Point[], spacing: number, limit: number): void {
+  for (let round = 0; round < 400; round++) {
+    let moved = false;
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const a = points[i]!;
+        const b = points[j]!;
+        const gap = distance(a, b);
+        if (gap >= spacing) continue;
+        moved = true;
+        const push = (spacing - gap) / 2 + 0.01;
+        const dx = gap === 0 ? 1 : (b.x - a.x) / gap;
+        const dy = gap === 0 ? 0 : (b.y - a.y) / gap;
+        points[i] = { x: a.x - dx * push, y: a.y - dy * push };
+        points[j] = { x: b.x + dx * push, y: b.y + dy * push };
+      }
+    }
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i]!;
+      const out = Math.hypot(p.x, p.y);
+      if (out > limit) points[i] = { x: (p.x / out) * limit, y: (p.y / out) * limit };
+    }
+    if (!moved) return;
+  }
+}
+
+/**
+ * Spawn chambers: each starts as the best of a few random spots, the one furthest from the spawns
+ * already placed, which spreads the players out; then they are pushed apart until every pair is
+ * far enough. Centers end up on a hex so the city is exactly there.
+ */
+function placeSpawns(
+  count: number,
+  spread: number,
+  startDistance: number,
+  rng: Rng,
+): Chamber[] | null {
+  const spacing = spawnSpacing(startDistance);
+  const points: Point[] = [];
   for (let i = 0; i < count; i++) {
-    let best: Point | null = null;
+    let best: Point = inDisc(spread, rng);
     let bestGap = -1;
     for (let attempt = 0; attempt < 40; attempt++) {
-      const spot = hexToPoint(pointToHex(inDisc(spread, rng)));
-      const gap = Math.min(Infinity, ...spawns.map((other) => distance(spot, other.center)));
+      const spot = inDisc(spread, rng);
+      const gap = Math.min(Infinity, ...points.map((other) => distance(spot, other)));
       if (gap > bestGap) {
         best = spot;
         bestGap = gap;
       }
     }
-    if (!best || bestGap < SPAWN_SPACING) return null;
-    spawns.push({ center: best, radius: SPAWN_RADIUS, spawn: true });
+    points.push(best);
   }
-  return spawns;
+  relax(points, spacing, spread * 1.15);
+  const centers = points.map((p) => hexToPoint(pointToHex(p)));
+  for (const [i, a] of centers.entries()) {
+    // Snapping to a hex moves a point a little, so the real gap is checked on the hexes.
+    if (centers.slice(i + 1).some((b) => distance(a, b) < startDistance)) return null;
+  }
+  return centers.map((center) => ({ center, radius: spawnRadius(startDistance), spawn: true }));
 }
 
 /** Neutral rooms, scattered anywhere they fit without crowding another room. */
@@ -75,14 +121,17 @@ function placeNeutrals(
   count: number,
   spread: number,
   maxRadius: number,
+  startDistance: number,
   rng: Rng,
 ): void {
+  const smallest = Math.min(1.6, spawnRadius(startDistance));
+  const gap = minGap(startDistance);
   for (let i = 0; i < count; i++) {
-    const radius = 1.6 + rng.next() * (maxRadius - 1.6);
+    const radius = smallest + rng.next() * Math.max(0, maxRadius - smallest);
     for (let attempt = 0; attempt < PLACE_TRIES; attempt++) {
       const center = inDisc(spread, rng);
       const fits = chambers.every(
-        (other) => distance(center, other.center) >= radius + other.radius + MIN_GAP,
+        (other) => distance(center, other.center) >= radius + other.radius + gap,
       );
       if (fits) {
         chambers.push({ center, radius, spawn: false });
@@ -161,11 +210,16 @@ function connect(chambers: readonly Chamber[], rng: Rng): Corridor[] {
  * Rooms scattered at random, joined by a spanning tree and a few loops. The general-purpose
  * layout: no strong shape of its own, so it is the baseline the other archetypes are compared to.
  */
-export function buildScattered({ players, scale, rng }: ArchetypeInput): Blueprint | null {
-  const spawns = placeSpawns(players, scale, rng);
+export function buildScattered({
+  players,
+  scale,
+  rng,
+  startDistance,
+}: ArchetypeInput): Blueprint | null {
+  const spawns = placeSpawns(players, scale, startDistance, rng);
   if (!spawns) return null;
   const chambers: Chamber[] = [...spawns];
   const neutrals = Math.max(1, Math.round(players * 0.5) + 1);
-  placeNeutrals(chambers, neutrals, scale, 2.2 + 0.15 * scale, rng);
+  placeNeutrals(chambers, neutrals, scale, 2.2 + 0.15 * scale, startDistance, rng);
   return { chambers, corridors: connect(chambers, rng) };
 }

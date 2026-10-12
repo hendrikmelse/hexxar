@@ -54,10 +54,29 @@ interface Section {
 }
 
 /**
+ * How far past a chamber's edge a corridor is measured from. A short corridor may have no
+ * stretch clear of its chambers by the first margin, so tighter ones are tried in turn.
+ */
+const MARGINS = [0.8, 0.3, -0.4];
+
+/**
  * Cross sections of a corridor, from its middle stretch (clear of the chambers at each end):
  * how wide the land is at right angles to the centerline, and where.
  */
 function sections(blueprint: Blueprint, index: number, land: ReadonlyMap<string, Hex>): Section[] {
+  for (const margin of MARGINS) {
+    const found = sectionsClearBy(margin, blueprint, index, land);
+    if (found.length > 0) return found;
+  }
+  return [];
+}
+
+function sectionsClearBy(
+  margin: number,
+  blueprint: Blueprint,
+  index: number,
+  land: ReadonlyMap<string, Hex>,
+): Section[] {
   const corridor = blueprint.corridors[index]!;
   const path = corridorPath(blueprint, corridor);
   const a = blueprint.chambers[corridor.from]!;
@@ -73,8 +92,8 @@ function sections(blueprint: Blueprint, index: number, land: ReadonlyMap<string,
     for (let s = 0; s <= length; s += SAMPLE_SPACING) {
       const spot = { x: start.x + along.x * s, y: start.y + along.y * s };
       if (
-        Math.hypot(spot.x - a.center.x, spot.y - a.center.y) < a.radius + 0.8 ||
-        Math.hypot(spot.x - b.center.x, spot.y - b.center.y) < b.radius + 0.8
+        Math.hypot(spot.x - a.center.x, spot.y - a.center.y) < a.radius + margin ||
+        Math.hypot(spot.x - b.center.x, spot.y - b.center.y) < b.radius + margin
       ) {
         continue;
       }

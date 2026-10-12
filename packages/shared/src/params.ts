@@ -105,9 +105,9 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
 
   startInset: 1,
   startRoom: 1,
-  tilesPerPlayer: 20,
-  minTilesPerPlayer: 30,
-  minStartDistance: 5,
+  tilesPerPlayer: 25,
+  minTilesPerPlayer: 0,
+  minStartDistance: 4,
 
   coastRoughness: 1,
   coastDetail: 5,
@@ -161,6 +161,16 @@ export const ROYALE_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
   small: 15,
   normal: 25,
   large: 45,
+};
+
+/**
+ * How close starting cities may be in a battle royale at each map size. Smaller boards have
+ * less land for each player, so their cities have to be closer together.
+ */
+export const ROYALE_START_DISTANCE: Readonly<Record<MapSize, number>> = {
+  small: 3,
+  normal: 4,
+  large: 5,
 };
 
 /** Tiles per player in a battle royale: fewer for each player when there are many of them. */

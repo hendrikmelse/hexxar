@@ -9,6 +9,7 @@ import {
   corridorPath,
   createFreeForAllMatch,
   createSymmetricMatch,
+  ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
   type ArchetypeId,
   type GameState,
@@ -83,7 +84,7 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
       { key: 'tilesPerPlayer', hint: 'Tiles of board per player, which decides the board size' },
       {
         key: 'minTilesPerPlayer',
-        hint: 'Boards never get less than this per player: cities are spaced out, so below it there is no room for water or chokes',
+        hint: 'Boards never get less than this per player (0 for no floor)',
       },
       { key: 'minStartDistance', hint: 'Starting cities are never closer than this' },
       { key: 'coastRoughness', hint: 'How far noise pushes the coast in and out, in tiles' },
@@ -256,6 +257,7 @@ export function MapsPage() {
   const sizeDefaults = (size: MapSize, royalePlayers: number): GenerationParams => ({
     ...DEFAULT_GENERATION_PARAMS,
     tilesPerPlayer: royaleTilesPerPlayer(size, royalePlayers),
+    minStartDistance: ROYALE_START_DISTANCE[size],
   });
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults('normal', 4));
   const [radius, setRadius] = useState<number>(symmetricRadius('normal', 2));
