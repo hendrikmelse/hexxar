@@ -11,6 +11,7 @@ import { ARCHETYPE_IDS } from './archetypes/index.js';
 import { CHOKE_MAX_WIDTH } from './analyze.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
 import { components, depthFromCoast } from './grid.js';
+import { topologyIssues, topologyOk } from './topology.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
 import { territories } from './fairness.js';
 
@@ -53,6 +54,29 @@ describe('blueprint coordinates', () => {
       const b = hexToPoint(n);
       expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeCloseTo(1);
     }
+  });
+});
+
+describe('topology', () => {
+  const path = (n: number) => Array.from({ length: n - 1 }, (_, i) => ({ from: i, to: i + 1 }));
+
+  it('flags snakes and long tails, but not dead ends that hang off a junction', () => {
+    // A path is all tail.
+    expect(topologyIssues(4, path(4)).tails).toEqual([0, 3]);
+    // A star: every dead end is one corridor from the hub.
+    const star = [1, 2, 3, 4].map((to) => ({ from: 0, to }));
+    expect(topologyOk(5, star)).toBe(true);
+    // A cycle has no dead ends; a dead end off it is fine; a second chamber on that dead end is not.
+    const cycle = [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 0 },
+    ];
+    expect(topologyOk(3, cycle)).toBe(true);
+    expect(topologyOk(4, [...cycle, { from: 2, to: 3 }])).toBe(true);
+    expect(topologyIssues(5, [...cycle, { from: 2, to: 3 }, { from: 3, to: 4 }]).tails).toEqual([
+      4,
+    ]);
   });
 });
 
@@ -162,6 +186,40 @@ describe('royale layouts', () => {
   it('can be told which archetype to draw', () => {
     for (const archetype of ARCHETYPE_IDS) {
       expect(layout(5, 3, archetype).report.archetype).toBe(archetype);
+    }
+  });
+
+  it('has no tail or peninsula longer than one corridor', () => {
+    for (const size of MAP_SIZES) {
+      for (const players of [3, 6, 12]) {
+        for (const seed of [1, 2, 3, 4]) {
+          const sizeParams = {
+            ...params,
+            tilesPerPlayer: royaleTilesPerPlayer(size, players),
+            minStartDistance: ROYALE_START_DISTANCE[size],
+          };
+          const { report } = generateRoyaleLayout({ players, seed, params: sizeParams });
+          const { chambers, corridors } = report.blueprint;
+          expect(topologyIssues(chambers.length, corridors).tails).toEqual([]);
+        }
+      }
+    }
+  }, 60000);
+
+  it('is well connected on normal and large boards with many players', () => {
+    for (const size of ['normal', 'large'] as const) {
+      let loops = 0;
+      const seedCount = 8;
+      for (let seed = 1; seed <= seedCount; seed++) {
+        const sizeParams = {
+          ...params,
+          tilesPerPlayer: royaleTilesPerPlayer(size, 8),
+          minStartDistance: ROYALE_START_DISTANCE[size],
+        };
+        loops += generateRoyaleLayout({ players: 8, seed, params: sizeParams }).report.metrics
+          .loops;
+      }
+      expect(loops / seedCount).toBeGreaterThanOrEqual(2.5);
     }
   });
 

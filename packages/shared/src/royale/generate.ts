@@ -7,10 +7,11 @@ import { translate, pointToHex, hexToPoint, type Blueprint } from './blueprint.j
 import { depthFromCoast, type Land } from './grid.js';
 import { measureFairness, territories, type Fairness } from './fairness.js';
 import { createNoise } from './noise.js';
+import { topologyOk } from './topology.js';
 import { centroidShift, cleanup, rasterize } from './rasterize.js';
 
 /** Why a candidate board was thrown away. */
-export type Rejection = 'cramped' | 'area' | 'spawns' | 'chokes' | 'blobby' | 'unfair';
+export type Rejection = 'cramped' | 'area' | 'spawns' | 'chokes' | 'blobby' | 'unfair' | 'topology';
 
 export interface RoyaleReport {
   readonly archetype: ArchetypeId;
@@ -112,6 +113,7 @@ function drawCandidate(
     scale *= Math.min(1.4, Math.max(0.7, ratio ** 0.6));
   }
   if (!drawn) return 'cramped';
+  if (!topologyOk(drawn.blueprint.chambers.length, drawn.blueprint.corridors)) return 'topology';
   if (Math.abs(drawn.land.size / target - 1) > AREA_LIMIT) return 'area';
 
   // Put the middle of the board on the origin.

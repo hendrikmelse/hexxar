@@ -8,6 +8,7 @@ import {
   type Corridor,
   type Point,
 } from '../blueprint.js';
+import { topologyIssues, topologyOk } from '../topology.js';
 import type { ArchetypeInput } from './types.js';
 
 /**
@@ -154,7 +155,7 @@ const blocked = (chambers: readonly Chamber[], a: number, b: number): boolean =>
  * Join the chambers: a minimum spanning tree so everything is reachable, then a few extra short
  * passages that make loops. Corridors are picked at random widths and bowed a little.
  */
-function connect(chambers: readonly Chamber[], rng: Rng): Corridor[] {
+function connect(chambers: readonly Chamber[], exits: number, rng: Rng): Corridor[] {
   const corridors: Corridor[] = [];
   const linked = new Set<number>([0]);
   const pairs = new Set<string>();
@@ -203,11 +204,77 @@ function connect(chambers: readonly Chamber[], rng: Rng): Corridor[] {
   extras.sort((a, b) => a[2] - b[2] || rng.next() - 0.5);
   const loops = Math.round(chambers.length * 0.3);
   for (const [from, to] of extras.slice(0, loops)) add(from, to);
-  return evenOutSpawns(chambers, corridors, add, pairs, rng);
+  repairTopology(chambers, corridors, add, pairs);
+  evenOutSpawns(chambers, corridors, add, pairs, exits);
+  repairTopology(chambers, corridors, add, pairs);
+  const width = SPAWN_EXIT_WIDTHS[rng.int(SPAWN_EXIT_WIDTHS.length)]!;
+  return corridors.map((c) =>
+    chambers[c.from]!.spawn || chambers[c.to]!.spawn ? { ...c, width } : c,
+  );
 }
 
-/** How many ways out every spawn chamber has, where the layout allows it. */
-const SPAWN_EXITS = 2;
+/**
+ * The chamber closest to `from` among `candidates` that it is not already joined to, preferring
+ * ones the straight line to does not run through another chamber (a last resort if none is clear).
+ */
+function nearestUnlinked(
+  chambers: readonly Chamber[],
+  from: number,
+  candidates: readonly number[],
+  pairs: ReadonlySet<string>,
+): number {
+  let best = -1;
+  let bestScore = Infinity;
+  for (const to of candidates) {
+    if (to === from || pairs.has(`${Math.min(from, to)}-${Math.max(from, to)}`)) continue;
+    const length = distance(chambers[from]!.center, chambers[to]!.center);
+    const score = length + (blocked(chambers, from, to) ? 1000 : 0);
+    if (score < bestScore) {
+      best = to;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/**
+ * Make sure no tail or peninsula is longer than one corridor, by joining the end of each long
+ * tail to the nearest chamber it is not already joined to, which closes it into a loop.
+ */
+function repairTopology(
+  chambers: readonly Chamber[],
+  corridors: Corridor[],
+  add: (from: number, to: number) => void,
+  pairs: ReadonlySet<string>,
+): void {
+  const all = chambers.map((_, i) => i);
+  for (let step = 0; step < 4 * chambers.length; step++) {
+    const { tails } = topologyIssues(chambers.length, corridors);
+    let best: [number, number] | null = null;
+    let bestScore = Infinity;
+    for (const from of tails) {
+      const to = nearestUnlinked(chambers, from, all, pairs);
+      if (to < 0) continue;
+      const score =
+        distance(chambers[from]!.center, chambers[to]!.center) +
+        (blocked(chambers, from, to) ? 1000 : 0);
+      if (score < bestScore) {
+        best = [from, to];
+        bestScore = score;
+      }
+    }
+    if (!best) return;
+    add(best[0], best[1]);
+  }
+}
+
+/**
+ * How many ways out every spawn chamber has, where the layout allows it. Three makes the board
+ * well connected (several loops); two gives little more than one big ring. Boards with few
+ * players or close cities are too small to fit a third corridor per bowl.
+ */
+const spawnExits = (players: number, startDistance: number): number =>
+  players >= 5 && startDistance >= 4 ? 3 : 2;
 /** Widths of the passages leaving a spawn chamber (the same for every player on a board). */
 const SPAWN_EXIT_WIDTHS = [2, 3] as const;
 
@@ -238,30 +305,29 @@ function evenOutSpawns(
   corridors: Corridor[],
   add: (from: number, to: number) => void,
   pairs: Set<string>,
-  rng: Rng,
-): Corridor[] {
+  exits: number,
+): void {
   const touching = (spawn: number): number[] =>
     corridors.flatMap((c, i) => (c.from === spawn || c.to === spawn ? [i] : []));
   const lengthOf = (c: Corridor): number =>
     distance(chambers[c.from]!.center, chambers[c.to]!.center);
   chambers.forEach((chamber, spawn) => {
     if (!chamber.spawn) return;
-    while (touching(spawn).length > SPAWN_EXITS) {
+    while (touching(spawn).length > exits) {
       const longest = touching(spawn).sort(
         (a, b) => lengthOf(corridors[b]!) - lengthOf(corridors[a]!),
       );
-      const drop = longest.find((i) =>
-        joined(
-          chambers.length,
-          corridors.filter((_, k) => k !== i),
-        ),
-      );
+      // Only a corridor that keeps everything joined and leaves no long tail.
+      const drop = longest.find((i) => {
+        const rest = corridors.filter((_, k) => k !== i);
+        return joined(chambers.length, rest) && topologyOk(chambers.length, rest);
+      });
       if (drop === undefined) break;
       const { from, to } = corridors[drop]!;
       pairs.delete(`${Math.min(from, to)}-${Math.max(from, to)}`);
       corridors.splice(drop, 1);
     }
-    while (touching(spawn).length < SPAWN_EXITS) {
+    while (touching(spawn).length < exits) {
       let nearest = -1;
       let nearestLength = Infinity;
       chambers.forEach((other, j) => {
@@ -281,10 +347,6 @@ function evenOutSpawns(
       add(spawn, nearest);
     }
   });
-  const width = SPAWN_EXIT_WIDTHS[rng.int(SPAWN_EXIT_WIDTHS.length)]!;
-  return corridors.map((c) =>
-    chambers[c.from]!.spawn || chambers[c.to]!.spawn ? { ...c, width } : c,
-  );
 }
 
 /**
@@ -302,5 +364,5 @@ export function buildScattered({
   const chambers: Chamber[] = [...spawns];
   const neutrals = Math.max(1, Math.round(players * 0.5) + 1);
   placeNeutrals(chambers, neutrals, scale, 2.2 + 0.15 * scale, startDistance, rng);
-  return { chambers, corridors: connect(chambers, rng) };
+  return { chambers, corridors: connect(chambers, spawnExits(players, startDistance), rng) };
 }
