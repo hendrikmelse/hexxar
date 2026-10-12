@@ -436,6 +436,31 @@
   gap: 12px;
 }
 
+/* A private game's code, in a small sunken box between the surrender button and the tally */
+#hud .room-code {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--well);
+  box-shadow: var(--well-shadow);
+  color: var(--muted);
+}
+
+#hud .room-code small {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#hud .room-code strong {
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  color: #eef5ff;
+}
+
 #hud .spectator-tally {
   color: #8a93a8;
   font-size: 13px;
@@ -487,6 +512,8 @@
 
 #hud .camera {
   position: fixed;
+  /* Above the reference button beside it, whose corner the tooltips from here run over */
+  z-index: 22;
   right: 14px;
   bottom: 18px;
   display: flex;
@@ -530,12 +557,51 @@
     0 4px 8px rgba(0, 0, 0, 0.4);
 }
 
-/* A tooltip that slides out to the left of the button on hover or keyboard focus */
-#hud .camera button::after {
-  content: attr(data-tip);
+/*
+ * The app's tooltip: an element with the class `hint` and a `data-tip` shows the text in a dark
+ * panel, with a small arrow pointing back at the element, on hover or keyboard focus.
+ * `data-tip-pos` says where: `left` (the default), `below` (lined up with the element's right
+ * edge) or `below-center`. With no `data-tip`, no tooltip.
+ * The panel is the element's ::after and the arrow its ::before.
+ */
+.hint {
+  position: relative;
+  z-index: 0;
+}
+
+/*
+ * A hovered button gets a filter, which makes it a layer of its own: its tooltip could not rise
+ * above a button after it. Lifting the hovered one puts its tooltip above its neighbors. The
+ * lift is let go of only after the tooltip has faded out (a delayed step, not a fade), or the
+ * tooltip would drop behind the next button while it was still disappearing.
+ */
+.hint:hover,
+.hint:focus-visible {
+  z-index: 5;
+}
+
+#ui button.hint,
+#hud button.hint {
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease,
+    filter 0.12s ease,
+    z-index 0s linear 0.2s;
+}
+
+.hint::after,
+.hint::before {
   position: absolute;
-  right: calc(100% + 12px);
-  top: 50%;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.14s,
+    transform 0.14s;
+}
+
+.hint::after {
+  content: attr(data-tip);
   padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -548,29 +614,121 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.2;
+  text-shadow: none;
   white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transform: translate(6px, -50%);
-  transition:
-    opacity 0.14s,
-    transform 0.14s;
 }
 
-#hud .camera button:hover::after,
-#hud .camera button:focus-visible::after {
+/*
+ * The arrow: a small square turned on its corner, over the panel's edge so the panel's border
+ * does not show beneath it. Its fill matches the panel's gradient at the edge it sits on.
+ */
+.hint::before {
+  content: '';
+  z-index: 51;
+  width: 10px;
+  height: 10px;
+  background: #181d2c;
+  border: 0 solid rgba(255, 255, 255, 0.12);
+}
+
+.hint:not([data-tip])::after,
+.hint:not([data-tip])::before {
+  display: none;
+}
+
+.hint:hover::after,
+.hint:hover::before,
+.hint:focus-visible::after,
+.hint:focus-visible::before {
   opacity: 1;
-  transform: translate(0, -50%);
   transition-delay: 0.25s;
 }
 
-#hud .camera button:active::after {
+.hint:active::after,
+.hint:active::before {
   opacity: 0;
 }
 
+/* To the left of the element (the default) */
+.hint::after {
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translate(6px, -50%);
+}
+
+.hint::before {
+  right: calc(100% + 7px);
+  top: 50%;
+  border-width: 1px 1px 0 0;
+  transform: translate(6px, -50%) rotate(45deg);
+}
+
+.hint:hover::after,
+.hint:focus-visible::after {
+  transform: translate(0, -50%);
+}
+
+.hint:hover::before,
+.hint:focus-visible::before {
+  transform: translate(0, -50%) rotate(45deg);
+}
+
+/* Below, lined up with the right edge, the arrow under the middle of the element */
+.hint[data-tip-pos='below']::after {
+  right: 0;
+  top: calc(100% + 10px);
+  transform: translateY(-6px);
+}
+
+.hint[data-tip-pos='below']::before {
+  right: calc(50% - 5px);
+  top: calc(100% + 5px);
+  background: #1d2231;
+  border-width: 1px 0 0 1px;
+  transform: translateY(-6px) rotate(45deg);
+}
+
+/* Below, centered on the element */
+.hint[data-tip-pos='below-center']::after {
+  left: 50%;
+  right: auto;
+  top: calc(100% + 10px);
+  transform: translate(-50%, -6px);
+}
+
+.hint[data-tip-pos='below-center']::before {
+  left: 50%;
+  right: auto;
+  top: calc(100% + 5px);
+  background: #1d2231;
+  border-width: 1px 0 0 1px;
+  transform: translate(-50%, -6px) rotate(45deg);
+}
+
+.hint[data-tip-pos='below']:hover::after,
+.hint[data-tip-pos='below']:focus-visible::after {
+  transform: none;
+}
+
+.hint[data-tip-pos='below']:hover::before,
+.hint[data-tip-pos='below']:focus-visible::before,
+.hint[data-tip-pos='below-center']:hover::before,
+.hint[data-tip-pos='below-center']:focus-visible::before {
+  transform: rotate(45deg);
+}
+
+.hint[data-tip-pos='below-center']:hover::before,
+.hint[data-tip-pos='below-center']:focus-visible::before {
+  transform: translate(-50%, 0) rotate(45deg);
+}
+
+.hint[data-tip-pos='below-center']:hover::after,
+.hint[data-tip-pos='below-center']:focus-visible::after {
+  transform: translate(-50%, 0);
+}
+
 /* The "show the whole board" icon is drawn with CSS: a hexagon outline */
-#hud .camera button.icon::before {
-  content: '';
+#hud .camera button.icon i {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -661,10 +819,23 @@
  * A button just left of "show the whole board" (the last of the camera column) that grows up and to
  * the left into the sheet. The toggle stays in the corner it started in.
  */
-#hud .reference {
+#hud .reference-anchor {
   position: fixed;
   right: 64px;
   bottom: 18px;
+  width: 42px;
+  height: 42px;
+}
+
+#hud .reference-anchor.open {
+  /* Over the tutorial's guide card, which comes later in the page and would cover it otherwise */
+  z-index: 20;
+}
+
+#hud .reference {
+  position: absolute;
+  right: 0;
+  bottom: 0;
   width: 42px;
   height: 42px;
   box-sizing: border-box;
@@ -684,17 +855,16 @@
 }
 
 #hud .reference.open {
-  /* Over the tutorial's guide card, which comes later in the page and would cover it otherwise */
-  z-index: 20;
   width: min(600px, calc(100vw - 100px));
   border-radius: 14px;
   background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
 }
 
+/* The button sits over the sheet, in the corner it grew from (outside the sheet's clipping) */
 #hud .reference-toggle {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  right: 1px;
+  bottom: 1px;
   width: 40px;
   height: 40px;
   padding: 0;
@@ -708,16 +878,16 @@
   cursor: pointer;
 }
 
-#hud .reference:not(.open) .reference-toggle:hover {
+#hud .reference-anchor:not(.open) .reference-toggle:hover {
   filter: brightness(1.3);
 }
 
-#hud .reference.open .reference-toggle {
+#hud .reference-anchor.open .reference-toggle {
   font-size: 20px;
   color: #8a93a8;
 }
 
-#hud .reference.open .reference-toggle:hover {
+#hud .reference-anchor.open .reference-toggle:hover {
   color: #ffffff;
 }
 

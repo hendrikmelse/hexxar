@@ -1,7 +1,8 @@
 import { SOUNDS, SOUND_BY_ID } from './sounds.js';
 
 /** Overall loudness, 0 to 1. */
-let masterVolume = 0.3;
+/** How loud everything is: sounds are balanced against each other, and this sets them all. */
+const MASTER_VOLUME = 0.3;
 
 const MUTED_KEY = 'hexxar.muted';
 let muted = readMuted();
@@ -23,7 +24,7 @@ export function isMuted(): boolean {
 export function setMuted(value: boolean): void {
   if (muted === value) return;
   muted = value;
-  if (master) master.gain.value = muted ? 0 : masterVolume;
+  if (master) master.gain.value = muted ? 0 : MASTER_VOLUME;
   try {
     localStorage.setItem(MUTED_KEY, muted ? '1' : '0');
   } catch {
@@ -52,7 +53,7 @@ function audioContext(): AudioContext | null {
   try {
     context = new AudioContext();
     master = context.createGain();
-    master.gain.value = muted ? 0 : masterVolume;
+    master.gain.value = muted ? 0 : MASTER_VOLUME;
     master.connect(context.destination);
     // Browsers keep audio silent until the player has done something on the page.
     const wake = (): void => {
@@ -65,11 +66,6 @@ function audioContext(): AudioContext | null {
     context = null;
   }
   return context;
-}
-
-export function setMasterVolume(volume: number): void {
-  masterVolume = Math.max(0, Math.min(1, volume));
-  if (master) master.gain.value = muted ? 0 : masterVolume;
 }
 
 /** Does this sound have a file yet? */

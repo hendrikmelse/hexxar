@@ -215,11 +215,7 @@ export function Tutorial({ actions, view }: { actions: Actions; view: TutorialVi
                     <i />
                   </span>
                 )}
-                <button
-                  className={view.failure ? 'ready' : ''}
-                  onClick={actions.tutorialReset}
-                  title="Start this page over"
-                >
+                <button className={view.failure ? 'ready' : ''} onClick={actions.tutorialReset}>
                   Reset
                 </button>
               </span>

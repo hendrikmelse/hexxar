@@ -148,8 +148,7 @@ describe('the lessons', () => {
       h.finishStep(); // the city makes a troop
       const ring = hexNeighbors(at(1, 1));
       h.order(at(1, 1), ring[0]!);
-      h.order(ring[0]!, ring[1]!);
-      h.order(ring[1]!, ring[2]!);
+      for (let i = 1; i < 6; i++) h.order(ring[i - 1]!, ring[i]!);
       h.finishStep();
       h.runner.next();
       h.runner.next();
@@ -299,6 +298,19 @@ describe('the lessons', () => {
     h.runner.back(); // the last page of lesson one again
     expect(h.game.tiles[hexKey(at(2, 1))]).toMatchObject({ owner: YOU, troops: 12 });
     expect(h.game.tiles[hexKey(at(3, 1))]?.owner ?? null).toBe(null);
+  });
+
+  it('points out what the player found once the task is done', () => {
+    const h = harness();
+    h.runner.start(3); // fog of war
+    expect(h.highlighted).toEqual([]);
+    h.order(at(1, 2), at(2, 2));
+    h.order(at(2, 2), at(3, 2));
+    h.order(at(3, 2), at(4, 2));
+    h.order(at(4, 2), at(5, 2));
+    for (let i = 0; i < 400 && !h.view.done; i++) h.advance(100);
+    expect(h.view.done).toBe(true);
+    expect(h.highlighted).toEqual([at(6, 3)]);
   });
 
   it('stops the clock once a task is done', () => {

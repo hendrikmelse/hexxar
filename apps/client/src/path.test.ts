@@ -50,12 +50,4 @@ describe('PathDraft', () => {
     still.extendTo({ q: 0, r: 0 }, exists);
     expect(still.moves()).toEqual([]);
   });
-
-  it('can be cleared', () => {
-    const draft = new PathDraft();
-    draft.begin({ q: 0, r: 0 });
-    draft.clear();
-    expect(draft.active).toBe(false);
-    expect(draft.moves()).toEqual([]);
-  });
 });

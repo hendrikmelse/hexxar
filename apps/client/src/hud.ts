@@ -49,6 +49,8 @@ export class Hud {
   private readonly defeatedHeading = el('li', 'defeated-heading');
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
+  /** The code of a private game, in a small box beside the surrender button. */
+  private readonly roomCode = el('span', 'room-code');
   /** How many people are watching this game, in small print beside the surrender button. */
   private readonly tally = el('span', 'spectator-tally');
   /** A short remark in a bubble above the surrender button. */
@@ -57,6 +59,8 @@ export class Hud {
   private readonly reference = el('div', 'reference');
   private readonly referenceBody = el('div', 'reference-body');
   private readonly referenceButton: HTMLButtonElement;
+  /** Holds the sheet and its button: the button's tooltip must not be cut off by the sheet's edge. */
+  private readonly referenceAnchor = el('div', 'reference-anchor');
   private game: GameView | null = null;
   private lastTick = -1;
   /** How long the planning period was when we first saw it, for drawing the countdown ring. */
@@ -113,13 +117,16 @@ export class Hud {
     );
 
     // The reference sheet: a button just left of "show the whole board" that grows into the sheet.
-    this.referenceButton = el('button', 'reference-toggle');
+    this.referenceButton = el('button', 'reference-toggle hint');
     this.referenceButton.textContent = '?';
-    this.referenceButton.title = 'Reference';
+    // The tooltip belongs to the question mark only: it is taken away while the sheet is open.
+    this.referenceButton.dataset.tip = 'Reference';
+    this.referenceButton.dataset.tipPos = 'left';
     this.referenceButton.setAttribute('aria-label', 'Reference');
     this.referenceButton.setAttribute('aria-expanded', 'false');
     this.referenceButton.addEventListener('click', () => this.toggleReference());
-    this.reference.append(this.referenceBody, this.referenceButton);
+    this.reference.append(this.referenceBody);
+    this.referenceAnchor.append(this.reference, this.referenceButton);
     // Pressing anywhere outside the sheet puts it away (without getting in the way of what was
     // pressed: this only listens).
     document.addEventListener(
@@ -127,7 +134,7 @@ export class Hud {
       (event) => {
         if (
           this.reference.classList.contains('open') &&
-          !this.reference.contains(event.target as Node)
+          !this.referenceAnchor.contains(event.target as Node)
         ) {
           this.toggleReference();
         }
@@ -143,9 +150,10 @@ export class Hud {
     this.remark.hidden = true;
     this.remark.setAttribute('role', 'status');
     this.tally.hidden = true;
+    this.roomCode.hidden = true;
     const bottom = el('div', 'bottom-left');
-    bottom.append(this.surrender, this.tally);
-    root.append(left, top, bottom, this.remark, camera, this.reference);
+    bottom.append(this.surrender, this.roomCode, this.tally);
+    root.append(left, top, bottom, this.remark, camera, this.referenceAnchor);
     const frame = (): void => {
       this.updateTimer();
       requestAnimationFrame(frame);
@@ -156,7 +164,10 @@ export class Hud {
   private toggleReference(): void {
     const open = !this.reference.classList.contains('open');
     this.reference.classList.toggle('open', open);
+    this.referenceAnchor.classList.toggle('open', open);
     this.referenceButton.textContent = open ? '×' : '?';
+    if (open) delete this.referenceButton.dataset.tip;
+    else this.referenceButton.dataset.tip = 'Reference';
     // Closing it makes the back sound, opening it the usual click (read when the button is pressed).
     if (open) this.referenceButton.dataset.sound = 'ui.back';
     else delete this.referenceButton.dataset.sound;
@@ -348,6 +359,18 @@ export class Hud {
     this.actions.surrender();
   }
 
+  /** Show a private game's code (none: no box). */
+  setRoomCode(code: string | null): void {
+    this.roomCode.hidden = code === null;
+    this.roomCode.replaceChildren();
+    if (code === null) return;
+    const label = el('small', '');
+    label.textContent = 'Code';
+    const value = el('strong', '');
+    value.textContent = code;
+    this.roomCode.append(label, value);
+  }
+
   /** Show how many people are watching (nothing, when no one is). */
   setSpectators(count: number): void {
     this.tally.hidden = count === 0;
@@ -479,7 +502,6 @@ function createRow(): Row {
   const label = el('span', '');
   name.append(label);
   const troops = el('span', 'stat troops');
-  troops.title = 'Mobile troops';
   item.append(el('span', 'swatch'), name, troops);
   return { item, label, troops, last: 0 };
 }
@@ -490,9 +512,12 @@ function cameraButton(
   onClick: () => void,
   icon = '',
 ): HTMLButtonElement {
-  const button = el('button', icon ? `icon ${icon}` : '');
+  const button = el('button', icon ? `hint icon ${icon}` : 'hint');
   button.textContent = text;
   button.dataset.tip = label;
+  button.dataset.tipPos = 'left';
+  // The icon is a real element, so the button's pseudo-elements are free for its tooltip.
+  if (icon) button.append(el('i', ''));
   button.setAttribute('aria-label', label);
   button.addEventListener('click', onClick);
   return button;

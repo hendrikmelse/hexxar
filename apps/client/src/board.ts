@@ -32,7 +32,7 @@ export const PLAYER_COLORS = [
 ];
 
 /** The sea: land floats on it, and lakes are the holes in the board. */
-export const WATER = 0x0e1c27;
+const WATER = 0x0e1c27;
 /** What owned tiles are tinted from, so owner colors look the same wherever they are. */
 const OWNED_BASE = 0x14161c;
 /** Unclaimed land: green fields, packed earth around a village, grey flagstones for a city. */
@@ -75,6 +75,15 @@ const FLOAT_MS = 1000;
 const OTHERS_VOLUME = 0.7;
 const NEUTRAL_TROOPS = 0xa3abb8;
 const RING_FINISH_MS = 750;
+/**
+ * The ring's animations never run longer than this share of a tick. With a fast tick they would
+ * otherwise still be playing when the next one arrives, and (for a ring that has just filled) hold
+ * back the segments that fill after it.
+ */
+const RING_TICK_SHARE = 0.75;
+/** The length of a tick in the match being shown, for `ringMs`. */
+let ringTickMs = Infinity;
+const ringMs = (base: number): number => Math.min(base, ringTickMs * RING_TICK_SHARE);
 /** A segment leaving the ring: it pops out, then the rest slide round to fill its place. */
 const RING_SHRINK_MS = 700;
 const RING_SHRINK_POP_END = 0.4;
@@ -161,6 +170,8 @@ interface Flight {
   readonly landAt: number;
   /** Set when it meets an army coming the other way: what is left of this one afterwards. */
   readonly clash?: { readonly survivors: number };
+  /** The sound it makes on landing, decided when it set off (see `planSounds`); none for most. */
+  readonly sound: { readonly id: string; readonly volume?: number } | null;
   /** Set when it attacks a tile someone holds: whether the attack takes the tile. */
   readonly battle?: {
     readonly won: boolean;
@@ -232,6 +243,8 @@ export class Board {
   private vision: Map<string, Vision> | null = null;
   private readonly ringAnims = new Map<TileView, RingAnim>();
   private readonly floaters = new Set<{ text: Text; at: Point; started: number }>();
+  /** For tiles armies are still walking onto: who will hold them once those armies have landed. */
+  private readonly ownerAfterMoves = new Map<string, string | null>();
   /** Troop labels that are popping, and when each started. */
   private readonly pops = new Map<Text, number>();
   private readonly queueLayer = new Graphics();
@@ -310,8 +323,10 @@ export class Board {
    * Rebuild everything from the full game view. A board appearing where there was none (a new
    * match) is fitted to the screen; a refresh of the same match keeps the player's view.
    */
-  /** When (performance.now) an army last reached its tile and the tile changed to match. */
-  lastLandAt = 0;
+  /** Are clouds still fading away (as the fog lifts when a player is out, or the match is over)? */
+  get cloudsFading(): boolean {
+    return this.clouds.fadingOut;
+  }
 
   /** How many armies are still on their way to a tile that will change when they get there. */
   get pendingLandings(): number {
@@ -603,7 +618,20 @@ export class Board {
    * onto keep their old look until the army arrives, then change (and pop if they grew).
    */
   playMoves(moves: readonly ExecutedMove[], game: GameView): void {
-    if (!game.config || prefersReducedMotion()) return;
+    if (!game.config) return;
+    // Nothing is walking: what tiles are drawn with is all there is to go on.
+    if (this.flights.size === 0) this.ownerAfterMoves.clear();
+    const sounds = this.planSounds(moves, game);
+    if (prefersReducedMotion()) {
+      // Nothing walks, but the fights still make their sounds, right away.
+      for (const move of moves) {
+        if (move.troops <= 0) continue;
+        if (move.player === game.playerId) playSound('army.depart');
+        const sound = sounds.get(move);
+        if (sound) playSound(sound.id, sound.volume === undefined ? {} : { volume: sound.volume });
+      }
+      return;
+    }
     const duration = Math.min(MOVE_MS, game.config.tickMs * 0.6);
     // A clash needs more time: the armies walk to the middle, fight, and the winner walks on.
     const clashDuration = Math.min(MOVE_MS * 1.7, game.config.tickMs * 0.9);
@@ -672,6 +700,7 @@ export class Board {
         player: move.player,
         target,
         game,
+        sound: sounds.get(move) ?? null,
         // The loser's tile (the winner's start) is settled once the fight is over.
         landAt: move.clash ? (winner ? 0.85 : CLASH_END) : battle ? BATTLE_LAND_AT : LAND_AT,
         ...(move.clash ? { clash: move.clash } : {}),
@@ -725,24 +754,70 @@ export class Board {
   }
 
   /**
-   * The sound of an army arriving: a tile taken, an attack failing, a tile lost or held. Fights
-   * that are not yours but that you can see (or any, if you are watching) make the same sounds,
-   * a little quieter.
+   * Decide, for the armies that set off this tick, which sound each makes when it arrives: a tile
+   * taken, an attack failing, a tile lost or held. Fights that are not yours but that you can see
+   * (or any, if you are watching) make the same sounds, a little quieter.
+   *
+   * It is settled here, from the state after the tick, not as each army lands: by then the tile
+   * may already show the result of an army that landed a moment before it (or of a later tick,
+   * when ticks are short), and the sound for the armies after the first would come out wrong or
+   * not at all. Armies meeting on one tile also share their sound where one is enough: the tile
+   * taken, or lost or held, sounds once however many armies were in it.
    */
-  private landingSound(flight: Flight, oldOwner: string | null, newOwner: string | null): void {
-    const me = flight.game.playerId;
-    if (flight.clash) return;
-    if (me !== null && flight.player === me) {
-      if (flight.battle && !flight.battle.won) playSound('tile.captureFailed');
-      else if (newOwner === me && oldOwner !== me) playSound('tile.capture');
-    } else if (me !== null && oldOwner === me) {
-      playSound(newOwner === me ? 'tile.defended' : 'tile.lost');
-    } else {
-      const quiet = { volume: OTHERS_VOLUME };
-      if (flight.battle && !flight.battle.won) playSound('tile.captureFailed', quiet);
-      else if (newOwner === flight.player && oldOwner !== flight.player) {
-        playSound('tile.capture', quiet);
+  private planSounds(
+    moves: readonly ExecutedMove[],
+    game: GameView,
+  ): Map<ExecutedMove, { id: string; volume?: number }> {
+    const plan = new Map<ExecutedMove, { id: string; volume?: number }>();
+    const me = game.playerId;
+    const quiet = { volume: OTHERS_VOLUME };
+    const taken = new Set<string>();
+    const defended = new Set<string>();
+    const after = new Map<string, string | null>();
+    for (const move of moves) {
+      // Armies meeting head on fight halfway and are not given a landing sound.
+      if (move.troops <= 0 || move.clash) continue;
+      const target = hexKey(move.to);
+      const view = this.views.get(target);
+      // Who held the tile before this tick: what an earlier tick's armies, still walking, will
+      // leave it with if there are any; otherwise what it is drawn with.
+      const before = this.ownerAfterMoves.has(target)
+        ? this.ownerAfterMoves.get(target)!
+        : (view?.owner ?? null);
+      const finalOwner = game.tiles[target]?.owner ?? null;
+      after.set(target, finalOwner);
+      const defenders = view && view.label.text !== '' ? Number(view.label.text) : 0;
+      const failed = before !== move.player && defenders > 0 && finalOwner !== move.player;
+      const takes = finalOwner === move.player && before !== move.player;
+      if (me !== null && move.player === me) {
+        if (failed) plan.set(move, { id: 'tile.captureFailed' });
+        else if (takes && !taken.has(target)) {
+          taken.add(target);
+          plan.set(move, { id: 'tile.capture' });
+        }
+      } else if (me !== null && before === me) {
+        if (!defended.has(target)) {
+          defended.add(target);
+          plan.set(move, { id: finalOwner === me ? 'tile.defended' : 'tile.lost' });
+        }
+      } else if (failed) {
+        plan.set(move, { id: 'tile.captureFailed', ...quiet });
+      } else if (takes && !taken.has(target)) {
+        taken.add(target);
+        plan.set(move, { id: 'tile.capture', ...quiet });
       }
+    }
+    for (const [target, owner] of after) this.ownerAfterMoves.set(target, owner);
+    return plan;
+  }
+
+  /** Play the sound an army was given when it set off, now that it has arrived. */
+  private landingSound(flight: Flight): void {
+    if (flight.sound) {
+      playSound(
+        flight.sound.id,
+        flight.sound.volume === undefined ? {} : { volume: flight.sound.volume },
+      );
     }
   }
 
@@ -759,12 +834,10 @@ export class Board {
       // The tile changes a moment before the army gets there, so there is no wait at the end.
       if (!flight.landed && t >= flight.landAt) {
         flight.landed = true;
-        this.lastLandAt = performance.now();
-        const oldOwner = this.views.get(flight.target)?.owner ?? null;
         this.held.delete(flight.target);
         const tile = flight.game.tiles[flight.target];
         if (tile && !this.held.has(flight.target)) this.updateTiles([tile], flight.game);
-        this.landingSound(flight, oldOwner, flight.game.tiles[flight.target]?.owner ?? null);
+        this.landingSound(flight);
         // Arriving can open up new ground to see.
         this.refreshVision(flight.game);
       }
@@ -832,6 +905,7 @@ export class Board {
       this.flights.delete(flight);
       flight.token.destroy({ children: true });
     }
+    if (this.flights.size === 0) this.ownerAfterMoves.clear();
   }
 
   /** The flash where two armies meet: a ring spreading out, and sparks flying off. */
@@ -860,6 +934,7 @@ export class Board {
   private clearFlights(): void {
     for (const flight of this.flights) flight.token.destroy({ children: true });
     this.flights.clear();
+    this.ownerAfterMoves.clear();
     for (const floater of this.floaters) floater.text.destroy();
     this.floaters.clear();
     this.held.clear();
@@ -920,6 +995,7 @@ export class Board {
     // Neutral tiles are drawn a pixel smaller, so they sit further apart than a connected group.
     const corners = hexCorners(center, owner === null ? TILE_INSET + 1 : TILE_INSET);
     shape.poly(corners).fill(fill);
+    if (owner !== null) this.connectFarms(shape, tile, corners, fill, game);
     // Outline only the edges on the border of a group of same-owner tiles. The line is drawn just
     // inside the true hex boundary (the whole stroke on this tile's side), so where two groups
     // touch, each keeps its own line instead of one covering the other.
@@ -966,12 +1042,13 @@ export class Board {
     const art = tileArtColors(fill, iconColor, owner, tile.type);
     if (tile.type === 'farmland') {
       drawFarmland(shape, center, art);
+      if (owner !== null) this.drawGateposts(shape, tile, corners, art.border, game);
     } else if (tile.type === 'village') {
-      shape.poly(hexCorners(center, WALL_INSET)).stroke({ width: 1.5, color: art.border });
+      this.drawWall(shape, tile, corners, hexCorners(center, WALL_INSET), art.border, game);
       drawVillage(shape, center, art, fill);
     } else {
       const inner = hexCorners(center, WALL_INSET);
-      shape.poly(inner).stroke({ width: 1.5, color: art.border });
+      this.drawWall(shape, tile, corners, inner, art.border, game);
       // Each interior corner is filled with a wedge of a circle: the whole 120 degree angle.
       for (let i = 0; i < inner.length; i += 2) {
         const x = inner[i]!;
@@ -998,6 +1075,143 @@ export class Board {
     if (tile.owner !== null && tile.troops > previousTroops) this.pop(view.label);
   }
 
+  /**
+   * The edges where a farm and the village or city beside it, both held by the same player, are
+   * joined. A neighbor an army is still walking onto counts as it is drawn (the owner it had).
+   */
+  private bridgeEdges(tile: Tile, game: GameView): number[] {
+    const edges: number[] = [];
+    if (tile.owner === null) return edges;
+    for (let i = 0; i < 6; i++) {
+      const [dq, dr] = EDGE_NEIGHBORS[i]!;
+      const key = hexKey({ q: tile.q + dq, r: tile.r + dr });
+      if (this.levelOf(key) === 'hidden') continue;
+      const neighbor = game.tiles[key];
+      if (!neighbor) continue;
+      // A neighbor an army is still walking onto is shown as it was until the army arrives, so it
+      // still has its half of the bridge: judge it by the owner it is drawn with, or one half of
+      // the bridge would vanish while the other stayed (and the wall close on one side only).
+      const shown = this.held.has(key) ? this.views.get(key)?.owner : neighbor.owner;
+      if (shown !== tile.owner) continue;
+      if ((tile.type === 'farmland') === (neighbor.type === 'farmland')) continue;
+      edges.push(i);
+    }
+    return edges;
+  }
+
+  /**
+   * The bridge between a farm and its village or city: the middle third of the gap between them
+   * is filled with the tile color. Each of the two tiles draws its own half, reaching a hair past
+   * the true boundary so they overlap.
+   */
+  private connectFarms(
+    shape: Graphics,
+    tile: Tile,
+    corners: readonly number[],
+    fill: number,
+    game: GameView,
+  ): void {
+    for (const i of this.bridgeEdges(tile, game)) {
+      const gate = gateAt(corners, i);
+      const { mid, tx, ty } = gate;
+      // The bridge fills the opening between the posts, stopping where they begin: the second of
+      // the two tiles to be drawn would otherwise paint over half of the first one's posts.
+      const half = gate.half - POST_WIDTH / 2;
+      // Edge i faces 60 * i degrees; the bridge goes out that way across the gap.
+      const reach = TILE_INSET + 0.4;
+      const ox = Math.cos((Math.PI / 3) * i) * reach;
+      const oy = Math.sin((Math.PI / 3) * i) * reach;
+      const x1 = mid.x - tx * half;
+      const y1 = mid.y - ty * half;
+      const x2 = mid.x + tx * half;
+      const y2 = mid.y + ty * half;
+      shape.poly([x1, y1, x2, y2, x2 + ox, y2 + oy, x1 + ox, y1 + oy]).fill(fill);
+    }
+  }
+
+  /**
+   * A village's or city's inner wall, with an open gate toward each farm joined to it: the wall
+   * stops short of the bridge and two low posts run out along its sides to the farm's boundary.
+   */
+  private drawWall(
+    shape: Graphics,
+    tile: Tile,
+    corners: readonly number[],
+    inner: readonly number[],
+    border: number,
+    game: GameView,
+  ): void {
+    const gates = this.bridgeEdges(tile, game);
+    if (gates.length === 0) {
+      shape.poly([...inner]).stroke({ width: 1.5, color: border });
+      return;
+    }
+    const line = (x1: number, y1: number, x2: number, y2: number): void => {
+      shape
+        .moveTo(x1, y1)
+        .lineTo(x2, y2)
+        .stroke({ width: 1.5, color: border, cap: 'round', join: 'round' });
+    };
+    const post = (x1: number, y1: number, x2: number, y2: number): void => {
+      shape
+        .moveTo(x1, y1)
+        .lineTo(x2, y2)
+        .stroke({ width: POST_WIDTH, color: border, cap: 'round', join: 'round' });
+    };
+    for (let i = 0; i < 6; i++) {
+      const j = (i + 1) % 6;
+      const ax = inner[2 * i]!;
+      const ay = inner[2 * i + 1]!;
+      const bx = inner[2 * j]!;
+      const by = inner[2 * j + 1]!;
+      if (!gates.includes(i)) {
+        line(ax, ay, bx, by);
+        continue;
+      }
+      const { mid, tx, ty, half } = gateAt(corners, i);
+      const nx = Math.cos((Math.PI / 3) * i);
+      const ny = Math.sin((Math.PI / 3) * i);
+      // The middle of the wall's edge, straight in from the middle of the tile's edge.
+      const mx = mid.x - nx * GATE_DEPTH;
+      const my = mid.y - ny * GATE_DEPTH;
+      const lx = mx - tx * half;
+      const ly = my - ty * half;
+      const rx = mx + tx * half;
+      const ry = my + ty * half;
+      line(ax, ay, lx, ly);
+      line(rx, ry, bx, by);
+      // The posts either side of the opening, out to the bridge and across it, straight out.
+      const out = GATE_DEPTH + TILE_INSET + 0.4;
+      post(lx, ly, lx + nx * out, ly + ny * out);
+      post(rx, ry, rx + nx * out, ry + ny * out);
+    }
+  }
+
+  /** The farm's side of each gate: the posts carry on a little way in from its boundary. */
+  private drawGateposts(
+    shape: Graphics,
+    tile: Tile,
+    corners: readonly number[],
+    border: number,
+    game: GameView,
+  ): void {
+    for (const i of this.bridgeEdges(tile, game)) {
+      const gate = gateAt(corners, i);
+      const { mid, tx, ty } = gate;
+      const nx = Math.cos((Math.PI / 3) * i);
+      const ny = Math.sin((Math.PI / 3) * i);
+      for (const side of [-1, 1]) {
+        shape
+          .moveTo(mid.x + tx * gate.half * side, mid.y + ty * gate.half * side)
+          .lineTo(
+            mid.x - nx * GATE_DEPTH + tx * gate.half * side,
+            mid.y - ny * GATE_DEPTH + ty * gate.half * side,
+          )
+          .stroke({ width: POST_WIDTH, color: border, cap: 'round' });
+      }
+    }
+  }
+
   /** No troop count and no generation ring: what a tile shows when it is not seen up close. */
   private hideDetails(view: TileView): void {
     view.label.text = '';
@@ -1022,6 +1236,7 @@ export class Board {
     existed: boolean,
     previousTroops: number,
   ): void {
+    ringTickMs = game.config?.tickMs ?? Infinity;
     const spec = ringSpec(tile, center, owner, game);
     if (!spec) {
       this.ringAnims.delete(view);
@@ -1085,12 +1300,13 @@ export class Board {
     if (this.ringAnims.size === 0) return;
     const now = performance.now();
     for (const [view, anim] of this.ringAnims) {
-      const duration =
+      const duration = ringMs(
         anim.kind === 'pop'
           ? RING_POP_MS
           : anim.kind === 'shrink' || anim.kind === 'grow'
             ? RING_SHRINK_MS
-            : RING_FINISH_MS;
+            : RING_FINISH_MS,
+      );
       const t = (now - anim.start) / duration;
       if (t >= 1) {
         this.ringAnims.delete(view);
@@ -1501,7 +1717,7 @@ function newlyFilled(
   now: number,
   limit: number,
 ): (index: number) => SegmentLook | undefined {
-  const bump = popCurve(Math.min(1, (now - anim.start) / RING_POP_MS), POP_PEAK);
+  const bump = popCurve(Math.min(1, (now - anim.start) / ringMs(RING_POP_MS)), POP_PEAK);
   return (i) =>
     i >= anim.spec.filled && i < anim.final.filled && i < limit
       ? { thick: 1 + 0.5 * bump, longer: bump }
@@ -1570,6 +1786,32 @@ function drawRing(
     const mod = look?.(i);
     arc(i, mod ?? {}, color, mod?.alpha ?? alpha);
   }
+}
+
+/** How far a village or city's inner wall sits in from the edge of its tile, straight in. */
+const GATE_DEPTH = (WALL_INSET - TILE_INSET) * Math.cos(Math.PI / 6);
+/** How wide a gate opens, as a share of the tile's edge. */
+const GATE_WIDTH = 0.27;
+/** The posts are a little finer than the wall they stand beside. */
+const POST_WIDTH = 1.05;
+
+/**
+ * Where a gate opens on edge `i` of a tile whose (inset) corners are given: the middle of the
+ * edge, the unit direction along it, and half the width of the opening (a third of the edge).
+ */
+function gateAt(corners: readonly number[], i: number) {
+  const j = (i + 1) % 6;
+  const ax = corners[2 * i]!;
+  const ay = corners[2 * i + 1]!;
+  const bx = corners[2 * j]!;
+  const by = corners[2 * j + 1]!;
+  const length = Math.hypot(bx - ax, by - ay);
+  return {
+    mid: { x: (ax + bx) / 2, y: (ay + by) / 2 },
+    tx: (bx - ax) / length,
+    ty: (by - ay) / length,
+    half: (length * GATE_WIDTH) / 2,
+  };
 }
 
 /** The same for a pair of tiles whichever way round they are given. */

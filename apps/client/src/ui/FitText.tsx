@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 
 /**
  * One line of text that shrinks, from `max` down to `min` pixels, to fit the width it is given.
- * If it still does not fit at `min`, it is cut off with "..." and the full text shows on hover.
+ * If it still does not fit at `min`, it is cut off with "...".
  * The element needs a width limit from its parent (a flex item with `min-width: 0` will do).
  */
 export function FitText({
@@ -38,7 +38,7 @@ export function FitText({
   }, [text, max, min]);
 
   return (
-    <span ref={ref} className={className} title={text}>
+    <span ref={ref} className={className}>
       {text}
     </span>
   );

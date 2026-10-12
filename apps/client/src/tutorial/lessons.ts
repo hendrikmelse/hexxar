@@ -45,6 +45,8 @@ interface Step {
   readonly carry?: boolean;
   /** Tiles to point out with an outline. */
   readonly tiles?: readonly Hex[];
+  /** Tiles to point out once the step's task is done (such as the thing the player was looking for). */
+  readonly doneTiles?: readonly Hex[];
   /** Tiles whose generation ring to point out with a yellow outline. */
   readonly rings?: readonly Hex[];
   /** Show the player what to do: a pointer dragging across these tiles, over and over. */
@@ -156,22 +158,24 @@ const generation: Lesson = {
   players: [YOU],
   names: NAMES,
   map: FIELD,
-  // The ring is two segments short of full, so the second tick makes a troop.
-  setup: (state) => withTiles(state, [{ at: fieldCity, set: { troops: 8, progress: 6 } }]),
+  // The ring is two segments short of full, so the second tick makes a troop. The city has an
+  // army big enough to walk out round all six farms on the next page (each step costs two troops).
+  setup: (state) => withTiles(state, [{ at: fieldCity, set: { troops: 19, progress: 6 } }]),
   steps: [
     {
-      text: 'Every tile holds an army, shown by its number. Some tiles make new troops. The ring shown on your city tile fills by one segment each tick. When it fills up, the city generates one troop.\n\nThe ring has two segments empty. Press the button below to start the clock, and **watch as a new troop is generated.**',
+      text: 'Every tile holds an army, shown by its number. Some tiles make new troops. The ring shown on your city tile fills by one segment each tick. When it fills up, the city generates one troop.\n\nPress the button below to start the clock, and **watch as a new troop is generated.**',
       startButton: 'Start the clock',
       rings: [fieldCity],
-      done: (ctx) => ctx.tile(fieldCity).troops > 8,
+      done: (ctx) => ctx.tile(fieldCity).troops > 19,
     },
     {
-      text: '**Every farm you own next to a city shortens its cycle by a tick**. Cities with no adjacent farms generate one troop every **8 ticks**, but will generate a troop every **2 ticks** when fully surrounded. **Capture three farms adjacent to your city** and watch as segments disappear from the ring.',
+      text: '**Every farm you own next to a city shortens its cycle by a tick**. Cities with no adjacent farms generate one troop every **8 ticks**, but will generate a troop every **2 ticks** when fully surrounded. **Capture all six farms adjacent to your city** and watch as segments disappear from the ring.',
       clock: 'running',
       // Where the page before leaves you: the city has made its troop.
-      setup: (state) => withTiles(state, [{ at: fieldCity, set: { troops: 9, progress: 0 } }]),
-      drag: [fieldCity, fieldRing[0]!, fieldRing[1]!, fieldRing[2]!],
-      done: (ctx) => fieldRing.filter((hex) => ctx.owns(hex)).length >= 3,
+      setup: (state) => withTiles(state, [{ at: fieldCity, set: { troops: 20, progress: 0 } }]),
+      // The six farms round the city, each touching the next: one drag takes them all.
+      drag: [fieldCity, ...fieldRing],
+      done: (ctx) => fieldRing.every((hex) => ctx.owns(hex)),
     },
     {
       text: '**Villages** make troops too, but more slowly than cities: every **12 ticks** with no adjacent farms, and every **6 ticks** when fully surrounded. Farmland does not produce any troops on its own.',
@@ -303,6 +307,7 @@ const fog: Lesson = {
     {
       text: "In a real game, you cannot see the whole map. **Tiles adjacent** to your own are **fully visible**. Tiles **two steps away** show their **owner and type, but not the troop count**. Everything else is hidden in the fog.\n\nThe rival's city is out there somewhere. **Explore until you find it.**",
       clock: 'running',
+      doneTiles: [hiddenCity],
       done: (ctx) => {
         const level = visionFor(ctx.game)?.get(hexKey(hiddenCity));
         return level === 'far' || level === 'full';

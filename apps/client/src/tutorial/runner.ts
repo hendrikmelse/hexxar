@@ -232,6 +232,7 @@ export class TutorialRunner {
       // The player goes on when they are ready: nothing moves them along.
       this.done = true;
       match.setRunning(false);
+      if (step.doneTiles) this.env.highlight(step.doneTiles, step.rings ?? []);
       this.env.pointer([]);
       this.publish();
     }

@@ -221,9 +221,7 @@ function tellNewHost(room: RoomView, previous: RoomView): void {
   appStore.set({ info: { message }, infoSeq: appStore.get().infoSeq + 1 });
 }
 
-/** How long after the tile changes color the defeat, game over or victory card comes up. */
-const CARD_DELAY_MS = 500;
-/** Checks every so often whether it is time for that card. */
+/** Checks every frame or so whether it is time for that card. */
 let cardWatch: ReturnType<typeof setInterval> | null = null;
 
 function stopWatchingForCard(): void {
@@ -250,22 +248,21 @@ function playResultSound(): void {
 }
 
 /**
- * The match has ended for this player (beaten, or the whole match is over). Bring up the card a
- * fixed moment after the tile that decided it changes color: once every army set off by this tick
- * has landed, plus `CARD_DELAY_MS`. (Never later than a few seconds after the news.)
+ * The match has ended for this player (beaten, or the whole match is over). Bring up the card the
+ * moment the fog has finished lifting (the clouds fading away), whatever armies are still on
+ * the move. With no fog there is nothing to wait for. (Never later than a few seconds after the
+ * news.)
  */
 function awaitCard(): void {
   if (cardWatch) return;
   const started = performance.now();
   cardWatch = setInterval(() => {
-    const now = performance.now();
-    const settled =
-      board.pendingLandings === 0 && now - Math.max(board.lastLandAt, started) >= CARD_DELAY_MS;
-    if (!settled && now - started < 6000) return;
+    if (board.cloudsFading && performance.now() - started < 6000) return;
     stopWatchingForCard();
     playResultSound();
     appStore.set({ cardReady: true });
-  }, 50);
+    // Checked about every frame, so the card is there the moment the last cloud is gone.
+  }, 16);
 }
 
 /** Forget the match: back in the menu, or in a lobby for the next one. */
@@ -483,6 +480,7 @@ appStore.subscribe(updateVisibility);
 appStore.subscribe(() => {
   const { room, tutorial } = appStore.get();
   hud.setSpectators(tutorial ? 0 : (room?.spectators.length ?? 0));
+  hud.setRoomCode(!tutorial && room?.visibility === 'private' ? room.code : null);
 });
 updateVisibility();
 hud.render(game);

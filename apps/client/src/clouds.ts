@@ -128,6 +128,11 @@ export class Clouds {
     this.banks.set(key, bank);
   }
 
+  /** Is any cloud still fading away? */
+  get fadingOut(): boolean {
+    return this.leaving.size > 0;
+  }
+
   /** Start over: no cloud anywhere, and none leaving. */
   clear(): void {
     for (const bank of [...this.banks.values(), ...this.leaving]) this.destroy(bank);

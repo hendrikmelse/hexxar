@@ -21,10 +21,10 @@ export function FullscreenToggle() {
   };
   return (
     <button
-      className="sound-toggle fullscreen-toggle"
+      className="sound-toggle fullscreen-toggle hint"
       aria-label={label}
-      title={label}
-      data-sound="none"
+      data-tip={label}
+      data-tip-pos="below-center"
       onClick={toggle}
     >
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">

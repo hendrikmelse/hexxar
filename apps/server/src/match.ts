@@ -12,21 +12,13 @@ import {
 /** Anti-abuse limit, not a game rule: the game itself has no queue size limit. */
 export const MAX_QUEUE_LENGTH = 1000;
 
-export interface TickLogEntry {
-  readonly tick: number;
-  readonly orders: Readonly<Record<PlayerId, Order>>;
-}
-
 /**
- * One running game: the state, every player's queue, and a log of the orders
- * resolved each tick. Together with the initial state and config, the log is a
- * complete replay. A match has no timers; whoever owns it calls `step()`.
+ * One running game: the state and every player's queue. A match has no timers; whoever owns it
+ * calls `step()`.
  */
 export class Match {
   private _state: GameState;
   private readonly queues = new Map<PlayerId, Order[]>();
-  /** Orders resolved on each tick so far, for replays. */
-  readonly log: TickLogEntry[] = [];
 
   constructor(
     readonly id: string,
@@ -70,7 +62,6 @@ export class Match {
     }
     const moves = executedMoves(previous, orders, this.config);
     this._state = resolveTick(previous, orders, this.config);
-    this.log.push({ tick: this._state.tick, orders });
     return { previous, state: this._state, moves };
   }
 

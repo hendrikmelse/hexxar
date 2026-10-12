@@ -8,8 +8,12 @@ import { MapsPage } from './MapsPage.js';
 import { Loading } from './Loading.js';
 import { Lobby } from './Lobby.js';
 import { Menu } from './Menu.js';
+import { Footer, PRIVACY_PATH } from './Footer.js';
+import { Privacy } from './Privacy.js';
 import { Out } from './Out.js';
 import { Results } from './Results.js';
+import { Feedback } from './Feedback.js';
+import { FeedbackToggle } from './FeedbackToggle.js';
 import { FullscreenToggle } from './FullscreenToggle.js';
 import { SoundToggle } from './SoundToggle.js';
 import { SoundPage } from './SoundPage.js';
@@ -138,11 +142,20 @@ export function App({ actions }: { actions: Actions }) {
     <>
       <Screen actions={actions} />
       <Toast />
+      <FeedbackToggle />
       <FullscreenToggle />
       <SoundToggle />
     </>
   );
 }
+
+/** A menu page, with the quiet row of links under it. (Not the match, nor the cards over it.) */
+const withFooter = (page: ReactNode) => (
+  <>
+    {page}
+    <Footer />
+  </>
+);
 
 function Screen({ actions }: { actions: Actions }) {
   const app = useApp();
@@ -150,18 +163,23 @@ function Screen({ actions }: { actions: Actions }) {
   if (new URLSearchParams(location.search).has('sounds')) return <SoundPage />;
   // The dev map previewer, at /?maps.
   if (new URLSearchParams(location.search).has('maps')) return <MapsPage />;
+  // The feedback page, opened from the button in the corner, takes the whole screen (over the
+  // privacy policy too: Back goes to whichever page it was opened from).
+  if (app.feedbackOpen) return withFooter(<Feedback />);
+  // The privacy policy is a page of its own, at /privacy.
+  if (app.path.replace(/\/+$/, '') === PRIVACY_PATH) return withFooter(<Privacy />);
   if (app.tutorial) return <Tutorial actions={actions} view={app.tutorial} />;
   if (!app.connected) {
     // Once we have been connected, a dropped connection is a reconnect.
-    return <Connecting reconnecting={app.userId !== null} />;
+    return withFooter(<Connecting reconnecting={app.userId !== null} />);
   }
-  if (app.denied) return <Gate actions={actions} />;
+  if (app.denied) return withFooter(<Gate actions={actions} />);
   // Wait for the server's welcome (or its refusal) before showing the menu.
-  if (app.userId === null) return <Connecting reconnecting={false} />;
+  if (app.userId === null) return withFooter(<Connecting reconnecting={false} />);
   const room = app.room;
-  if (!room) return <Menu actions={actions} />;
-  if (room.state === 'lobby') return <Lobby actions={actions} />;
-  if (room.state === 'running' && app.launching) return <Loading actions={actions} />;
+  if (!room) return withFooter(<Menu actions={actions} />);
+  if (room.state === 'lobby') return withFooter(<Lobby actions={actions} />);
+  if (room.state === 'running' && app.launching) return withFooter(<Loading actions={actions} />);
   // The end-of-match cards wait for their moment (see `cardReady`).
   if (room.state === 'finished') return app.cardReady ? <Results actions={actions} /> : null;
   if (room.spectating) return <Out actions={actions} />;

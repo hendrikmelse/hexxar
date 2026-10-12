@@ -23,7 +23,7 @@ Players command armies by placing orders into a **queue**. Orders don't execute 
 - **Lobbies:** quick play, private games by code or link, a vote to start a Battle Royale early, and reconnects with auto-surrender after two minutes away. See [`docs/lobby.md`](docs/lobby.md).
 - **Tutorial:** the title screen's **Play tutorial** button opens a short interactive tutorial (five short lessons: ticks and orders, production, battles and defensive bonuses, fog, and the interface). It runs in the browser against a local match. See [`docs/tutorial.md`](docs/tutorial.md).
 - **Fog of war:** you see your own tiles and the ring around them in full, the next ring as owner and type only, and clouds beyond that. The server only ever sends clients the output of `visibleState`, so hidden information never reaches them. The scoreboard (production pie and list) is not fogged. See [`docs/fog.md`](docs/fog.md).
-- **Replays:** the sim is deterministic, so a match is fully described by its seed, players and per-tick orders. The server already keeps that log; storing it is not built yet.
+- **Replays:** the sim is deterministic, so a match is fully described by its seed, players and per-tick orders. Recording and storing it is not built yet.
 
 ## Stack
 
@@ -69,19 +69,25 @@ Open `http://localhost:5173` in two browser tabs (each tab is its own guest) and
 
 Environment variables, or a `.env` file in the repository root (see `.env.example`):
 
-| Variable             | Default | Meaning                                                                             |
-| -------------------- | ------- | ----------------------------------------------------------------------------------- |
-| `BETA_CODE`          | (empty) | Access code visitors must enter before they can play. Empty means open to everyone. |
-| `PORT`               | 8080    | Port for the page, health check and WebSocket                                       |
-| `STATIC_DIR`         | (unset) | Folder with the built client to serve (the Docker image sets it)                    |
-| `PREP_MS`            | 6500    | From a match being created to its first tick: 1.5s loading screen + 5s of planning  |
-| `EARLY_START_MS`     | 60000   | How long a public Battle Royale waits for more players once it has 3                |
-| `JOIN_WAIT_MS`       | 10000   | A join tops that wait up to at least this                                           |
-| `FULL_WAIT_MS`       | 5000    | How long a public room waits after filling up, before the match starts              |
-| `VOTE_START_MS`      | 5000    | The wait after a successful vote to start early                                     |
-| `AFK_MS`             | 120000  | How long a disconnected player has before surrendering                              |
-| `FINISHED_LINGER_MS` | 600000  | How long a finished game's room stays open                                          |
-| `STATS_MS`           | 2000    | How often the menu's online counts are refreshed                                    |
+| Variable             | Default                          | Meaning                                                                             |
+| -------------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| `BETA_CODE`          | (empty)                          | Access code visitors must enter before they can play. Empty means open to everyone. |
+| `PORT`               | 8080                             | Port for the page, health check and WebSocket                                       |
+| `STATIC_DIR`         | (unset)                          | Folder with the built client to serve (the Docker image sets it)                    |
+| `PREP_MS`            | 6500                             | From a match being created to its first tick: 1.5s loading screen + 5s of planning  |
+| `EARLY_START_MS`     | 60000                            | How long a public Battle Royale waits for more players once it has 3                |
+| `JOIN_WAIT_MS`       | 10000                            | A join tops that wait up to at least this                                           |
+| `FULL_WAIT_MS`       | 5000                             | How long a public room waits after filling up, before the match starts              |
+| `VOTE_START_MS`      | 5000                             | The wait after a successful vote to start early                                     |
+| `AFK_MS`             | 120000                           | How long a disconnected player has before surrendering                              |
+| `FINISHED_LINGER_MS` | 600000                           | How long a finished game's room stays open                                          |
+| `STATS_MS`           | 2000                             | How often the menu's online counts are refreshed                                    |
+| `RESEND_API_KEY`     | (unset)                          | Resend API key for the feedback page. Without it (or `FEEDBACK_TO`) feedback is off |
+| `FEEDBACK_TO`        | (unset)                          | The email address feedback and bug reports are sent to                              |
+| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on them: an address on a domain verified in Resend                 |
+| `RESEND_API_URL`     | (Resend's)                       | Where to send the email: only for trying it out against a stand-in                  |
+
+**Feedback and bug reports:** the speech-bubble button in the top right opens a page that posts to `POST /api/feedback`, and the server emails it through [Resend](https://resend.com). Set `RESEND_API_KEY` and `FEEDBACK_TO` to turn it on. Each address can send 5 a hour.
 
 `VITE_SERVER_URL` points the client at a different WebSocket server (used by tests and screenshots).
 

@@ -13,8 +13,10 @@
   "dependencies": {
     "@hexxar/shared": "workspace:*",
     "pixi.js": "^8.22.0",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "simple-icons": "^16.35.0"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

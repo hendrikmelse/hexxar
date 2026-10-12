@@ -144,12 +144,6 @@ export class LocalMatch {
     this.options.onMessage(this.snapshot());
   }
 
-  /** Change tiles in place (a lesson setting the scene), then show the result. */
-  edit(change: (state: GameState) => GameState): void {
-    this.state = change(this.state);
-    this.options.onMessage(this.snapshot());
-  }
-
   dispose(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;

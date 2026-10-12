@@ -8,6 +8,10 @@ const NAME_KEY = 'hexxar.name';
 /** What the menu, lobby and results screens need to know. The match itself lives in `GameView`. */
 export interface AppState {
   connected: boolean;
+  /** Which page of the site is showing (the address's path): the game itself, or `/privacy`. */
+  path: string;
+  /** The feedback and bug report page is open (over whatever else is on screen). */
+  feedbackOpen: boolean;
   /** Set when the server wants a (new) beta access code before letting us in. */
   denied: 'code required' | 'wrong code' | null;
   userId: string | null;
@@ -82,6 +86,8 @@ class Store {
     eliminated: false,
     cardReady: false,
     spectating: false,
+    feedbackOpen: false,
+    path: location.pathname,
   };
   private readonly listeners = new Set<() => void>();
 
@@ -99,6 +105,19 @@ class Store {
 }
 
 export const appStore = new Store();
+
+/**
+ * Go to another page of the site without reloading it, so a game or lobby you are in stays as it
+ * is (and the browser's back button comes back to where you were).
+ */
+export function navigate(path: string): void {
+  // Going to a page puts the feedback page away, so the page asked for is the one that shows.
+  if (location.pathname === path) return appStore.set({ feedbackOpen: false });
+  history.pushState(null, '', path);
+  appStore.set({ path, feedbackOpen: false });
+}
+
+window.addEventListener('popstate', () => appStore.set({ path: location.pathname }));
 
 export function useApp(): AppState {
   return useSyncExternalStore(appStore.subscribe, appStore.get);

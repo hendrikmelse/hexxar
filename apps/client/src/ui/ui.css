@@ -106,6 +106,7 @@
 }
 
 #ui input,
+#ui textarea,
 #ui select {
   padding: 9px 10px;
   border: 1px solid #343a4b;
@@ -714,6 +715,17 @@
   line-height: 1.2;
 }
 
+/* A touch shorter: the quick play buttons lose a little padding, the private games row more */
+#ui button.primary.mode {
+  min-height: 84px;
+  padding: 14px 12px;
+}
+
+#ui button.mode:not(.primary) {
+  min-height: 0;
+  padding: 12px;
+}
+
 #ui button.mode strong {
   font-size: 18px;
   font-weight: 700;
@@ -733,10 +745,9 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  min-height: 92px;
-  padding: 10px;
+  padding: 8px;
   background: #0f1117;
   border-radius: 10px;
   box-shadow:
@@ -745,13 +756,14 @@
 }
 
 #ui .join-tile input {
+  padding: 7px 10px;
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 
 #ui .join-tile button {
-  padding: 8px 10px;
+  padding: 6px 10px;
   font-size: 15px;
 }
 
@@ -1642,8 +1654,8 @@
 #ui .tutorial-top {
   position: absolute;
   top: 14px;
-  /* Leaves room for the sound and fullscreen buttons in the corner */
-  right: 110px;
+  /* Leaves room for the sound, fullscreen and feedback buttons in the corner */
+  right: 156px;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -2338,7 +2350,9 @@
 
 /* The private game's lobby, with its settings, a little tighter from top to bottom */
 #ui .card.lobby.compact {
-  padding: 16px 22px 18px;
+  /* More room under the buttons than the quick play lobbies need: there the line sits beside the
+     Leave button, here the Start button runs across the middle, so the line gets a row of its own */
+  padding: 16px 22px 36px;
   gap: 9px;
 }
 
@@ -2389,4 +2403,353 @@
   font-weight: 800;
   line-height: 0;
   vertical-align: middle;
+}
+
+/* "Enjoying Hexxar? Support it." at the bottom of the title screen and quick play lobbies */
+#ui .support-line {
+  /* Pulled down toward the bottom edge of the card, which has its own padding below */
+  margin: 2px 0 -14px;
+  text-align: center;
+  font-size: 12px;
+  color: #6f7890;
+}
+
+#ui button.support-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #9cc3ff;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+#ui button.support-link:hover:not(:disabled) {
+  background: none;
+  filter: none;
+  color: #ffffff;
+}
+
+/* The support card: a dim backdrop over the screen, with the card in the middle */
+#ui .support-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 10, 16, 0.66);
+  pointer-events: auto;
+}
+
+#ui .support-card {
+  max-width: 340px;
+  align-items: stretch;
+}
+
+#ui .support-card h2 {
+  margin: 0;
+  text-align: center;
+  font-size: 20px;
+  color: #eef5ff;
+}
+
+#ui .support-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#ui .support-row {
+  display: flex;
+  gap: 8px;
+}
+
+#ui .support-row .support-pay {
+  flex: 1;
+}
+
+/* The small square button that shows the QR code */
+#ui button.support-qr-button {
+  flex: none;
+  width: 52px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+#ui button.support-qr-button.on {
+  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
+}
+
+/* One panel that both QR codes open in: always the same size, so nothing around it moves */
+#ui .support-qr {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 260px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #0f1117;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45) inset,
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#ui .support-qr .qr {
+  width: 200px;
+  height: 200px;
+  border-radius: 6px;
+}
+
+/* A logo straight on the dark background (a wrapper only to lay it out) */
+#ui .logo-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#ui .support-qr-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #8a93a8;
+}
+
+#ui .support-qr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 180px;
+  text-align: center;
+  font-size: 13px;
+  color: #6f7890;
+}
+
+#ui .support-pay {
+  /* Both rows the same height, whichever logo is taller */
+  height: 52px;
+  padding-top: 0;
+  padding-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/*
+ * In a quick play lobby it is laid over the empty padding at the bottom of the card, centered, the
+ * same distance from the bottom edge as on the title screen. Out of the card's flow, so the card
+ * is no taller for it.
+ */
+#ui .card.lobby {
+  position: relative;
+}
+
+#ui .card.lobby > .support-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  margin: 0;
+}
+
+/* The feedback button: a speech bubble, left of the fullscreen button */
+#ui .feedback-toggle {
+  right: 106px;
+}
+
+#ui .feedback-toggle.on {
+  color: #ffffff;
+}
+
+/* The feedback and bug report page */
+#ui .feedback-page {
+  max-width: 520px;
+}
+
+#ui .feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#ui .feedback-form textarea,
+#ui .feedback-form input[type='email'] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#ui .feedback-form textarea {
+  resize: vertical;
+  min-height: 120px;
+  font: inherit;
+}
+
+#ui .feedback-count {
+  align-self: flex-end;
+  font-size: 11px;
+  color: #6f7890;
+}
+
+#ui .feedback-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #8a93a8;
+}
+
+#ui .feedback-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+#ui .feedback-error {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(255, 150, 120, 0.12);
+  color: #ffc4b0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#ui .feedback-thanks {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  color: #eef5ff;
+}
+
+/* The quiet row of links at the bottom of every menu page */
+#ui .screen {
+  /* Room under the page's content for the row, which is laid over the bottom of the screen */
+  padding-bottom: 44px;
+}
+
+#ui .site-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 10px;
+  padding: 0 16px 12px;
+  font-size: 12px;
+  color: #4f566a;
+  pointer-events: none;
+}
+
+#ui .site-footer a {
+  color: #5d6578;
+  text-decoration: none;
+  pointer-events: auto;
+}
+
+#ui .site-footer a:hover {
+  color: #9aa3b8;
+  text-decoration: underline;
+}
+
+/* The privacy policy: a normal card, tall but not taller than the screen, with only the text scrolling */
+#ui .privacy-page {
+  max-width: 600px;
+  gap: 8px;
+  max-height: calc(100vh - 150px);
+  line-height: 1.55;
+  color: #c9d0de;
+  font-size: 15px;
+}
+
+/*
+ * The text sits in a sunken panel, like the other wells. The scrolling part is an inner box kept
+ * clear of the panel's edge all round, so its scrollbar never runs into the rounded corners.
+ */
+#ui .privacy-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin-top: 6px;
+  border: 1px solid #343a4b;
+  border-radius: 10px;
+  background: #12151c;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui .privacy-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 12px 8px 12px 0;
+  padding: 2px 12px 2px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a4156 transparent;
+}
+
+#ui .privacy-page .buttons {
+  padding-top: 6px;
+}
+
+#ui .privacy-page h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #eef5ff;
+}
+
+#ui .privacy-page h2 {
+  margin: 14px 0 0;
+  font-size: 16px;
+  color: #eef5ff;
+}
+
+#ui .privacy-page p,
+#ui .privacy-page ul {
+  margin: 0;
+}
+
+#ui .privacy-page ul {
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#ui .privacy-page a {
+  color: #9cc3ff;
+}
+
+#ui .privacy-updated {
+  font-size: 13px;
+  color: #8a93a8;
+}
+
+#ui .privacy-summary {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #1c2130;
+  color: #eef5ff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
 }

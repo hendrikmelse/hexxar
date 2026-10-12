@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 import { Logo } from './Logo.js';
+import { SupportLink } from './Support.js';
 
 export function Menu({ actions }: { actions: Actions }) {
   const app = useApp();
@@ -67,6 +68,8 @@ export function Menu({ actions }: { actions: Actions }) {
             </form>
           </div>
         </section>
+
+        <SupportLink />
       </div>
     </div>
   );

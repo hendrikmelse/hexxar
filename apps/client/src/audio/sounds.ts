@@ -29,7 +29,7 @@ export const SOUND_GROUPS = [
   'Players and results',
   'Tutorial',
 ] as const;
-export type SoundGroup = (typeof SOUND_GROUPS)[number];
+type SoundGroup = (typeof SOUND_GROUPS)[number];
 
 /**
  * Which file each sound uses (and where it came from). Fill in `file` (a name in

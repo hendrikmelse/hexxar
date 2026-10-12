@@ -296,27 +296,29 @@ export class Room {
   returnToRoom(session: Session): string | null {
     const member = this.memberOf(session);
     if (!member || member.left || !member.reviewing) return 'there is no game to go back to';
-    // A spectator back from the result carries on watching if the next game is already on.
-    if (member.spectator && this.state === 'running') {
+    // The next game is already on: carry on watching it.
+    if (this.state === 'running') {
+      member.spectator = true;
+      member.watching = true;
       member.reviewing = false;
       this.broadcastRoom();
       this.sendSnapshot(member);
       return null;
     }
-    if (
-      this.state === 'running' ||
-      (!member.spectator && this.activeMembers().length >= this.capacity)
-    ) {
-      const started = this.state === 'running';
-      this.members.splice(this.members.indexOf(member), 1);
-      this.detach(session);
-      if (this.members.length === 0) this.close();
-      return started ? 'the next game has already started' : 'that game is full';
-    }
     if (this.state === 'finished') this.resetToLobby();
+    // A room that filled up in the meantime takes you back as a spectator.
+    if (!member.spectator && this.activeMembers().length >= this.capacity) {
+      member.spectator = true;
+      member.watching = true;
+    }
     member.reviewing = false;
     member.playerId = null;
-    if (!member.spectator && this.memberOf(this.host)?.reviewing !== false) this.host = session;
+    // The host stays the host while they read the result: the role passes on only once they have
+    // gone (back to the menu, or the tab closed).
+    const hostMember = this.memberOf(this.host);
+    if (!hostMember || hostMember.left) {
+      this.host = (member.spectator ? this.activeMembers()[0]?.session : undefined) ?? session;
+    }
     this.broadcastRoom();
     return null;
   }

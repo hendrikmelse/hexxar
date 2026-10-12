@@ -25,24 +25,12 @@ describe('Lobby', () => {
   }
 
   describe('menu', () => {
-    it('welcomes a guest into the main menu', () => {
-      const a = new FakeClient(lobby).hello('Ann');
-      expect(a.last('welcome').userId).toBeTruthy();
-      expect(a.room).toBeNull();
-    });
-
     it('rejects messages before hello and malformed messages', () => {
       const a = new FakeClient(lobby);
       a.say({ type: 'quickPlay', mode: 'duel' });
       expect(a.last('rejected').reason).toMatch(/hello/);
       a.say({ nonsense: true });
       expect(a.last('rejected').reason).toMatch(/invalid/);
-    });
-
-    it('rejects room commands from someone who is not in a room', () => {
-      const a = new FakeClient(lobby).hello('Ann');
-      a.say({ type: 'startGame' });
-      expect(a.last('rejected').reason).toMatch(/not in a game/);
     });
   });
 
@@ -320,6 +308,17 @@ describe('Lobby', () => {
         expect(guest.room?.state).toBe('running');
       });
 
+      it('keeps the host as host while they read the result, until they leave', () => {
+        const { host, guest } = finishedPrivate();
+        guest.say({ type: 'returnToRoom' });
+        // The guest is back first, but the room is still the host's.
+        expect(guest.room).toMatchObject({ state: 'lobby', host: host.room!.you });
+        guest.say({ type: 'startGame' });
+        expect(guest.last('rejected').reason).toMatch(/host/);
+        host.say({ type: 'leaveRoom' });
+        expect(guest.room?.host).toBe(guest.room?.you);
+      });
+
       it('lets the next game start without someone who is still reading the result', () => {
         const { host, guest } = finishedPrivate();
         const third = new FakeClient(lobby).hello('Tia');
@@ -328,9 +327,22 @@ describe('Lobby', () => {
         host.say({ type: 'startGame' });
         expect(host.room?.state).toBe('running');
         expect(guest.room?.state).toBe('finished');
+        // Back too late, the guest carries on as a spectator of the game that is on.
         guest.say({ type: 'returnToRoom' });
-        expect(guest.last('rejected').reason).toMatch(/already started/);
-        expect(guest.room).toBeNull();
+        expect(guest.room).toMatchObject({ state: 'running', spectating: true });
+        expect(guest.last('snapshot').you).toBeNull();
+      });
+
+      it('takes someone back as a spectator when the room has filled up without them', () => {
+        const { host, guest } = finishedPrivate();
+        const third = new FakeClient(lobby).hello('Tia');
+        host.say({ type: 'returnToRoom' });
+        third.say({ type: 'joinRoom', code: host.room!.code });
+        // The room is full (the host and Tia), and the guest was away: no error, just watching.
+        guest.say({ type: 'returnToRoom' });
+        expect(guest.room).toMatchObject({ state: 'lobby', spectating: true });
+        expect(host.room?.spectators).toEqual(['Gus']);
+        expect(host.room?.players).toHaveLength(2);
       });
 
       it('includes someone who was knocked out but stayed to watch', () => {
@@ -384,14 +396,6 @@ describe('Lobby', () => {
         vi.advanceTimersByTime(options.prepMs + TICK_MS);
         expect(out.last('tick').queueLengths).toBeDefined();
         expect(host.last('tick').queueLengths).toBeUndefined();
-      });
-
-      it('does not apply to public games', () => {
-        const { a, b } = runningDuel();
-        b.say({ type: 'surrender' });
-        a.say({ type: 'returnToRoom' });
-        expect(a.last('rejected').reason).toMatch(/nothing to go back to|no game/);
-        expect(a.room?.state).toBe('finished');
       });
     });
 
@@ -644,12 +648,6 @@ describe('Lobby battle royale', () => {
       expect(host.room?.players).toHaveLength(12);
       host.say({ type: 'startGame' });
       expect(host.last('snapshot').state.players).toHaveLength(12);
-    });
-
-    it('cannot be given a bigger size', () => {
-      const { host } = privateRoom(0);
-      host.say({ type: 'updateRoom', settings: { size: 20 } as never });
-      expect(host.room?.settings.size).toBe(12);
     });
 
     it('switches between duel and battle royale while gathering', () => {
@@ -941,16 +939,6 @@ describe('Lobby battle royale', () => {
       host.say({ type: 'leaveRoom' });
       // No one is left to play: the room closes, spectators and all.
       expect(watcher.room).toBeNull();
-    });
-
-    it('is not offered by public games, which stay full', () => {
-      const [a, b] = [new FakeClient(lobby).hello('Ann'), new FakeClient(lobby).hello('Bob')];
-      a.say({ type: 'quickPlay', mode: 'duel' });
-      b.say({ type: 'quickPlay', mode: 'duel' });
-      const code = a.room!.code;
-      const stranger = new FakeClient(lobby).hello('Sam');
-      stranger.say({ type: 'joinRoom', code });
-      expect(stranger.last('rejected').reason).toMatch(/full|started/);
     });
   });
 

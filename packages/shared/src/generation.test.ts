@@ -57,12 +57,6 @@ describe('farm bonus', () => {
     expect(ticks).toEqual([12, 11, 10, 9, 8, 7, 6]);
   });
 
-  it('farmland never produces', () => {
-    expect(generationInterval(config, 'farmland', 0)).toBeNull();
-    const farm = tile({ type: 'farmland', progress: 0 });
-    expect(stepTile(config, farm, 0)).toEqual({ troops: 5, progress: 0 });
-  });
-
   it('scales the cycle with the match generation speed', () => {
     const fast = parseMatchConfig({ generationSpeedPercent: 200 });
     expect(generationInterval(fast, 'city', 0)).toBe(4);

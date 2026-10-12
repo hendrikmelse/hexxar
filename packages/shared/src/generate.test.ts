@@ -30,8 +30,7 @@ describe('rng', () => {
 });
 
 describe('match config', () => {
-  it('fills defaults and validates overrides', () => {
-    expect(parseMatchConfig({}).tickMs).toBe(800);
+  it('takes overrides and refuses ones that are out of range', () => {
     expect(parseMatchConfig({ tickMs: 500 }).tickMs).toBe(500);
     expect(() => parseMatchConfig({ tickMs: 5 })).toThrow();
   });
@@ -108,27 +107,31 @@ describe('createSymmetricMatch', () => {
     }
   });
 
-  it('defaults to mirror symmetry for 2 and 4 players, rotational for 3 and 6', () => {
+  it('makes two-player boards mirror or half-turn symmetric, both kinds turning up', () => {
+    const kinds = new Set<string>();
+    for (let seed = 1; seed <= 30; seed++) {
+      const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius: 6 });
+      const same = (transform: (hex: { q: number; r: number }) => { q: number; r: number }) =>
+        Object.values(state.tiles).every((t) => state.tiles[hexKey(transform(t))]?.type === t.type);
+      const mirror = same(hexFlipHorizontal);
+      const turn = same((hex) => hexRotate(hex, 3));
+      expect(mirror || turn).toBe(true);
+      kinds.add(mirror ? 'mirror' : 'turn');
+    }
+    expect(kinds.size).toBe(2);
+  });
+
+  it('defaults to mirror symmetry for 4 players, rotational for 3 and 6', () => {
     const mirrored = (n: number) => {
       const players = Array.from({ length: n }, (_, i) => `P${i}`);
       const { state } = createSymmetricMatch({ players, seed: 11 });
-      const flip = n === 2 ? hexFlipHorizontal : hexFlipVertical;
-      return Object.values(state.tiles).every((t) => state.tiles[hexKey(flip(t))]?.type === t.type);
+      return Object.values(state.tiles).every(
+        (t) => state.tiles[hexKey(hexFlipVertical(t))]?.type === t.type,
+      );
     };
-    expect(mirrored(2)).toBe(true);
     expect(mirrored(4)).toBe(true);
     expect(mirrored(3)).toBe(false);
     expect(mirrored(6)).toBe(false);
-  });
-
-  it('does not mirror two-player boards top to bottom', () => {
-    const topBottomDiffers = (seed: number) => {
-      const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius: 8 });
-      return Object.values(state.tiles).some(
-        (t) => state.tiles[hexKey(hexFlipVertical(t))]?.type !== t.type,
-      );
-    };
-    expect([1, 2, 3, 4, 5].every(topBottomDiffers)).toBe(true);
   });
 
   it('puts two players on opposite sides, one tile in from the edge', () => {

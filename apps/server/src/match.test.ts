@@ -62,17 +62,6 @@ describe('Match', () => {
     expect(match.enqueue('A', move(0, 1))).toMatch(/full/);
   });
 
-  it('logs the orders resolved each tick so the match can be replayed', () => {
-    const match = newMatch();
-    match.enqueue('A', move(0, 1));
-    match.step();
-    match.step();
-    expect(match.log).toEqual([
-      { tick: 1, orders: { A: move(0, 1) } },
-      { tick: 2, orders: {} },
-    ]);
-  });
-
   it('ends when one player surrenders', () => {
     const match = newMatch();
     match.surrender('B');

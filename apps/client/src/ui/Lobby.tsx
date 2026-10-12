@@ -11,6 +11,7 @@ import { playSound } from '../audio/audio.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 import { FitText } from './FitText.js';
+import { SupportLink } from './Support.js';
 import { useFlip } from './useFlip.js';
 
 const MIN_STARTING_TROOPS = 5;
@@ -176,6 +177,9 @@ export function Lobby({ actions }: { actions: Actions }) {
             </Tip>
           )}
         </div>
+
+        {/* Laid over the card's bottom padding, as far from the edge as on the title screen. */}
+        <SupportLink />
       </div>
     </div>
   );
@@ -469,7 +473,7 @@ function Settings({
 }
 
 /** A bar of options, one of which is selected; click another to switch. */
-function Segmented<T extends string | number>({
+export function Segmented<T extends string | number>({
   label,
   value,
   options,

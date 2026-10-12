@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
+import { createFeedbackSender } from './feedback.js';
 import { createHttpHandler } from './http.js';
 import { Lobby } from './lobby.js';
 
@@ -20,7 +21,21 @@ const lobby = new Lobby({
 
 // One port serves the built client (when STATIC_DIR is set), a health check, and the game's
 // WebSocket at /ws.
-const handleHttp = createHttpHandler(process.env.STATIC_DIR);
+// Feedback is emailed through Resend, when it is set up (see the README).
+const feedbackKey = process.env.RESEND_API_KEY;
+const feedbackTo = process.env.FEEDBACK_TO;
+if (!feedbackKey || !feedbackTo)
+  console.warn('RESEND_API_KEY or FEEDBACK_TO is not set: feedback is off');
+const sendFeedback =
+  feedbackKey && feedbackTo
+    ? createFeedbackSender({
+        apiKey: feedbackKey,
+        to: feedbackTo,
+        from: process.env.FEEDBACK_FROM ?? 'Hexxar <onboarding@resend.dev>',
+        ...(process.env.RESEND_API_URL ? { endpoint: process.env.RESEND_API_URL } : {}),
+      })
+    : undefined;
+const handleHttp = createHttpHandler(process.env.STATIC_DIR, sendFeedback);
 const http = createServer((req, res) => void handleHttp(req, res));
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 16 * 1024 });
 
