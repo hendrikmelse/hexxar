@@ -565,7 +565,16 @@ export class Board {
           ny += toward.y - center.y;
         }
         const length = Math.hypot(nx, ny) || 1;
-        cover = { kind: 'far', away: { x: -nx / length, y: -ny / length } };
+        // Bridge to each neighbor that is partly covered too, drawn by one of the two tiles.
+        const links: Point[] = [];
+        for (const [dq, dr] of EDGE_NEIGHBORS) {
+          const next = { q: tile.q + dq, r: tile.r + dr };
+          if (this.levelOf(hexKey(next)) !== 'far' || !game.tiles[hexKey(next)]) continue;
+          if (!drawsMerge(tile, next)) continue;
+          const there = hexToPixel(next);
+          links.push({ x: there.x - center.x, y: there.y - center.y });
+        }
+        cover = { kind: 'far', away: { x: -nx / length, y: -ny / length }, links };
       }
       this.clouds.cover(key, tile.q, tile.r, center, cover, instant);
     }

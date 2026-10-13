@@ -10,7 +10,12 @@ export type Cover =
       /** Set when this tile is the heart of a big cloud: the way toward the middle of its hidden neighbors. */
       swell: Point | null;
     }
-  | { kind: 'far'; away: Point };
+  | {
+      kind: 'far';
+      away: Point;
+      /** For each partly covered neighbor this tile draws a bridge of cloud to: the way to that tile. */
+      links: readonly Point[];
+    };
 
 /**
  * Do the clouds over two adjacent hidden tiles merge into one bigger cloud? Settled by the pair of
@@ -157,7 +162,7 @@ export class Clouds {
   private signatureOf(cover: Cover): string {
     return cover.kind === 'hidden'
       ? `hidden:${cover.joins.map((j) => `${j.x.toFixed(1)},${j.y.toFixed(1)}`).join(';')}:${cover.swell ? `${cover.swell.x.toFixed(1)},${cover.swell.y.toFixed(1)}` : ''}`
-      : `far:${cover.away.x.toFixed(2)},${cover.away.y.toFixed(2)}`;
+      : `far:${cover.away.x.toFixed(2)},${cover.away.y.toFixed(2)}:${cover.links.map((l) => `${l.x.toFixed(1)},${l.y.toFixed(1)}`).join(';')}`;
   }
 
   private build(q: number, r: number, center: Point, cover: Cover, signature: string): Bank {
@@ -244,6 +249,18 @@ export class Clouds {
           i + 1,
         );
       }
+      // Puffs across to each partly covered neighbor, so a line of them reads as one band of
+      // cloud along the edge of what is seen, not a row of dots.
+      cover.links.forEach((way, j) => {
+        for (const [k, t] of [0.3, 0.5, 0.7].entries()) {
+          add(
+            cx + way.x * t,
+            cy + way.y * t,
+            0.28 + noise(q, r, j * 3 + k + 120) * 0.06,
+            40 + j * 3 + k,
+          );
+        }
+      });
     }
     return { puffs, signature, alpha: 1, target: 1 };
   }
