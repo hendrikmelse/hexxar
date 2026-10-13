@@ -5,12 +5,11 @@ import { pointToHex, type Blueprint } from '../royale/blueprint.js';
 import { components, landNeighborCount, type Land } from '../royale/grid.js';
 import { createNoise, type Noise } from '../royale/noise.js';
 import { rasterize } from '../royale/rasterize.js';
-import { topologyOk } from '../royale/topology.js';
 import { buildDuelBlueprint } from './blueprint.js';
 import { hexImage, type DuelSymmetry } from './symmetry.js';
 
 /** Why a board that was drawn was thrown away. */
-export type DuelRejection = 'blueprint' | 'split' | 'area' | 'symmetry' | 'topology' | 'starts';
+export type DuelRejection = 'blueprint' | 'split' | 'area' | 'symmetry' | 'starts';
 
 export interface DuelReport {
   readonly symmetry: DuelSymmetry;
@@ -166,7 +165,6 @@ function drawBoard(
   const [first, second] = starts;
   const twin = imageOfHex(first);
   if (twin.q !== second.q || twin.r !== second.r) return 'starts';
-  if (!topologyOk(blueprint.chambers.length, blueprint.corridors)) return 'topology';
   for (const hex of land.values()) if (!land.has(hexKey(imageOfHex(hex)))) return 'symmetry';
   // The starts have all six neighbors (the rasterizer keeps the ring).
   for (const start of starts) {

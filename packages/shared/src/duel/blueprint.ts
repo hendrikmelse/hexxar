@@ -8,8 +8,7 @@ import {
   type Corridor,
   type Point,
 } from '../royale/blueprint.js';
-import { blocked, distance, pickWidth } from '../royale/archetypes/common.js';
-import { topologyIssues } from '../royale/topology.js';
+import { blocked, distance } from '../royale/archetypes/common.js';
 import { hexImage, pointImage, type DuelSymmetry } from './symmetry.js';
 
 /** How big the blobs are: a little bigger on bigger boards. */
@@ -19,8 +18,34 @@ const extraBlobs = (size: number): number => Math.max(1, Math.round(size / 2.2))
 /** Chance that an extra blob sits on the line (or point) of symmetry, and so has no twin. */
 const ON_AXIS_CHANCE = 0.4;
 /** The least open ground between two blobs, so the corridor between them reads as one. */
-const GAP = 1.5;
+const GAP = 2.2;
 const PLACE_TRIES = 200;
+/** Corridor widths in hexes, and how often each is picked: mostly narrow, so they read as passages. */
+const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number])[] = [
+  [1, 5],
+  [2, 3],
+  [3, 1],
+];
+/**
+ * How many corridors cross from one half of the board to the other, besides the one that has to
+ * when no blob is on the line or point of symmetry, and how often. Each comes with its twin.
+ */
+const CROSSOVERS: readonly (readonly [count: number, weight: number])[] = [
+  [0, 4],
+  [1, 3],
+  [2, 2],
+  [3, 1],
+];
+
+const pickWeighted = (rng: Rng, options: readonly (readonly [number, number])[]): number => {
+  const total = options.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = rng.next() * total;
+  for (const [value, weight] of options) {
+    roll -= weight;
+    if (roll < 0) return value;
+  }
+  return options[0]![0];
+};
 
 export interface DuelBlueprintInput {
   readonly symmetry: DuelSymmetry;
@@ -129,7 +154,7 @@ export function buildDuelBlueprint({
   };
   const addEdge = (a: number, b: number): void => {
     const length = distance(chambers[a]!.center, chambers[b]!.center);
-    const width = pickWidth(rng);
+    const width = pickWeighted(rng, CORRIDOR_WIDTHS);
     // An edge that is its own twin has to run straight, or it would not be symmetric.
     const alone = keyOf(a, b) === twinKey(a, b);
     const bend = alone ? 0 : (rng.next() - 0.5) * 0.3 * length;
@@ -198,48 +223,31 @@ export function buildDuelBlueprint({
   for (const { a, b } of loops.slice(0, Math.round(half.length * 0.35))) choose(a, b);
   for (const { a, b } of chosen) if (!linked.has(keyOf(a, b))) addEdge(a, b);
 
-  // Both halves are joined through the blobs on the line or point, if there are any. If not, one
-  // corridor has to cross over.
-  if (components() !== 1) {
-    const across: { a: number; b: number; weight: number }[] = [];
-    for (const a of half) {
-      for (let b = 0; b < chambers.length; b++) {
-        if (twin[a] !== a && twin[b] !== b && sideOf(b) !== keepSide) {
-          across.push({ a, b, weight: shaken(a, b) });
-        }
+  // Corridors from one half to the other, nearest first. If the halves are not already joined
+  // through a blob on the line or point, one has to cross over; after that, a random number more
+  // do (none is the most likely), each with its twin.
+  const across: { a: number; b: number; weight: number }[] = [];
+  for (const a of half) {
+    for (let b = 0; b < chambers.length; b++) {
+      if (twin[a] !== a && twin[b] !== b && sideOf(b) !== keepSide) {
+        across.push({ a, b, weight: shaken(a, b) });
       }
     }
-    across.sort((x, y) => x.weight - y.weight);
-    for (const allowBlocked of [false, true]) {
-      for (const { a, b } of across) {
-        if (components() === 1) break;
-        if (!allowBlocked && blocked(chambers, a, b)) continue;
-        if (!linked.has(keyOf(a, b))) addEdge(a, b);
-      }
-    }
-    if (components() !== 1) return null;
   }
-
-  // No tail or peninsula longer than one corridor: close each into a loop, twins together.
-  const all = chambers.map((_, i) => i);
-  for (let step = 0; step < 4 * chambers.length; step++) {
-    const { tails } = topologyIssues(chambers.length, corridors);
-    let best: [number, number] | null = null;
-    let bestScore = Infinity;
-    for (const from of tails) {
-      for (const to of all) {
-        if (to === from || linked.has(keyOf(from, to))) continue;
-        const score =
-          distance(chambers[from]!.center, chambers[to]!.center) +
-          (blocked(chambers, from, to) ? 1000 : 0);
-        if (score < bestScore) {
-          best = [from, to];
-          bestScore = score;
-        }
-      }
+  across.sort((x, y) => x.weight - y.weight);
+  let extraCrossovers = pickWeighted(rng, CROSSOVERS);
+  for (const allowBlocked of [false, true]) {
+    for (const { a, b } of across) {
+      const needed = components() !== 1;
+      if (!needed && extraCrossovers === 0) break;
+      // Only the one that has to cross over may run through another blob.
+      if (allowBlocked && !needed) break;
+      if (!allowBlocked && blocked(chambers, a, b)) continue;
+      if (linked.has(keyOf(a, b))) continue;
+      addEdge(a, b);
+      if (!needed) extraCrossovers--;
     }
-    if (!best) break;
-    addEdge(best[0], best[1]);
   }
+  if (components() !== 1) return null;
   return { chambers, corridors };
 }
