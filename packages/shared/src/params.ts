@@ -74,27 +74,34 @@ export const MAP_SIZES = ['small', 'normal', 'large'] as const;
 export type MapSize = (typeof MAP_SIZES)[number];
 
 /**
- * About how many tiles each player gets on a fair board (a duel, or three players) at each map
- * size. Normal is what quick play uses.
+ * About how many tiles each player gets on a duel board at each map size. Normal is what quick
+ * play uses.
  */
-export const FAIR_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
+export const DUEL_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
   small: 18,
   normal: 50,
   large: 80,
 };
 
+/** The same for a board for three players, who get a little less each than in a duel. */
+export const TRIO_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
+  small: 15,
+  normal: 40,
+  large: 70,
+};
+
 /** About how many tiles a duel board has at each map size (two players' shares). */
 export const DUEL_TILES: Readonly<Record<MapSize, number>> = {
-  small: 2 * FAIR_TILES_PER_PLAYER.small,
-  normal: 2 * FAIR_TILES_PER_PLAYER.normal,
-  large: 2 * FAIR_TILES_PER_PLAYER.large,
+  small: 2 * DUEL_TILES_PER_PLAYER.small,
+  normal: 2 * DUEL_TILES_PER_PLAYER.normal,
+  large: 2 * DUEL_TILES_PER_PLAYER.large,
 };
 
 /** About how many tiles a board for three players has at each map size (three players' shares). */
 export const TRIO_TILES: Readonly<Record<MapSize, number>> = {
-  small: 3 * FAIR_TILES_PER_PLAYER.small,
-  normal: 3 * FAIR_TILES_PER_PLAYER.normal,
-  large: 3 * FAIR_TILES_PER_PLAYER.large,
+  small: 3 * TRIO_TILES_PER_PLAYER.small,
+  normal: 3 * TRIO_TILES_PER_PLAYER.normal,
+  large: 3 * TRIO_TILES_PER_PLAYER.large,
 };
 
 /**

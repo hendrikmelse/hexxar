@@ -390,7 +390,7 @@ describe('createTrioMatch', () => {
   });
 
   describe('terrain rules', () => {
-    const boards = [DUEL_TILES.normal * 1.5, TRIO_TILES.large].flatMap((tiles) =>
+    const boards = [TRIO_TILES.normal, TRIO_TILES.large].flatMap((tiles) =>
       Array.from({ length: 20 }, (_, i) => {
         // Fully packed with villages, so the "nowhere legal is left" check means something.
         const { state } = createTrioMatch({
