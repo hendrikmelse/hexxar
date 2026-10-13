@@ -2270,10 +2270,9 @@
   gap: 12px 20px;
 }
 
-#ui .maps-choice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+/* The option bars are the private room's, and span the panel the way they do there, so every option is the same width */
+#ui .maps-controls .field.stack {
+  flex: 1 0 100%;
 }
 
 #ui .maps-players {
@@ -2281,6 +2280,7 @@
   align-items: center;
   gap: 10px;
   color: #c9d0de;
+  flex: 1 0 100%;
 }
 
 #ui .maps-params {

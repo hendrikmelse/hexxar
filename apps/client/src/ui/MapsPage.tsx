@@ -27,6 +27,7 @@ import {
 import { emptyGame, type GameView } from '../game.js';
 import { HEX_SIZE } from '../layout.js';
 import { preview } from '../preview.js';
+import { Segmented } from './Lobby.js';
 
 const randomSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
 
@@ -430,91 +431,71 @@ export function MapsPage() {
         </header>
 
         <div className="maps-controls">
-          <div className="maps-choice">
-            {(['duel', 'ffa'] as const).map((value) => (
-              <button
-                key={value}
-                className={mode === value ? 'primary' : ''}
-                data-sound="none"
-                onClick={() => setMode(value)}
-              >
-                {value === 'duel' ? 'Duel' : 'Battle royale'}
-              </button>
-            ))}
-          </div>
-          <div className="maps-choice">
-            {MAP_SIZES.map((value) => (
-              <button
-                key={value}
-                className={mapSize === value ? 'primary' : ''}
-                data-sound="none"
-                onClick={() => chooseSize(value)}
-              >
-                {value[0]!.toUpperCase() + value.slice(1)}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Game mode"
+            value={mode}
+            options={[
+              { value: 'duel', label: 'Duel' },
+              { value: 'ffa', label: 'Battle Royale' },
+            ]}
+            onChange={setMode}
+          />
+          <Segmented
+            label="Map size"
+            value={mapSize}
+            options={MAP_SIZES.map((value) => ({
+              value,
+              label: value[0]!.toUpperCase() + value.slice(1),
+            }))}
+            onChange={chooseSize}
+          />
           {mode === 'duel' ? (
             <>
-              <div className="maps-choice">
-                {(['random', 'mirror', 'rotational'] as const).map((value) => (
-                  <button
-                    key={value}
-                    className={duelSymmetry === value ? 'primary' : ''}
-                    data-sound="none"
-                    onClick={() => setDuelSymmetry(value)}
-                  >
-                    {value[0]!.toUpperCase() + value.slice(1)}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label="Symmetry"
+                value={duelSymmetry}
+                options={[
+                  { value: 'random', label: 'Random' },
+                  { value: 'mirror', label: 'Mirror' },
+                  { value: 'rotational', label: 'Half turn' },
+                ]}
+                onChange={setDuelSymmetry}
+              />
               {duelSymmetry !== 'rotational' && (
-                <div className="maps-choice" title="Which line a mirror board is mirrored across">
-                  {(
-                    [
-                      ['random', 'Any line'],
-                      ['points', 'Through tile points'],
-                      ['edges', 'Through tile edges'],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={duelAxis === value ? 'primary' : ''}
-                      data-sound="none"
-                      onClick={() => setDuelAxis(value)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  label="Mirror line"
+                  value={duelAxis}
+                  options={[
+                    { value: 'random', label: 'Either' },
+                    { value: 'points', label: 'Tile points' },
+                    { value: 'edges', label: 'Tile edges' },
+                  ]}
+                  onChange={setDuelAxis}
+                />
               )}
             </>
           ) : (
-            <label className="maps-players">
-              Players: {players}
-              <input
-                type="range"
-                min={FFA_MIN_PLAYERS}
-                max={FFA_MAX_PLAYERS}
-                value={players}
-                onChange={(event) => chooseRoyalePlayers(Number(event.target.value))}
-              />
-            </label>
-          )}
-          {mode === 'ffa' && (
-            <label className="maps-players">
-              Archetype{' '}
-              <select
+            <>
+              <label className="maps-players">
+                Players: {players}
+                <input
+                  type="range"
+                  min={FFA_MIN_PLAYERS}
+                  max={FFA_MAX_PLAYERS}
+                  value={players}
+                  onChange={(event) => chooseRoyalePlayers(Number(event.target.value))}
+                />
+              </label>
+              <Segmented
+                label="Archetype"
                 value={archetype}
-                onChange={(event) => setArchetype(event.target.value as ArchetypeId | 'random')}
-              >
-                {(['random', ...ARCHETYPE_IDS] as const).map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={(['random', ...ARCHETYPE_IDS] as const).map((id) => ({
+                  value: id,
+                  label: id[0]!.toUpperCase() + id.slice(1),
+                }))}
+                onChange={setArchetype}
+              />
+            </>
           )}
           <button className="primary" data-sound="none" onClick={() => setSeed(randomSeed())}>
             Generate new map
