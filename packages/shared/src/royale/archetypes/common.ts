@@ -13,8 +13,12 @@ export const crowding = (players: number): number => Math.min(1, Math.max(0, (pl
  * boards (see `crowding`) get bigger bowls, so the land is bowls and short bridges, not thin spindles.
  */
 export const spawnRadius = (startDistance: number, crowded = 0): number =>
-  Math.min(2, Math.max(1.2, startDistance * 0.4)) + CROWDED_RADIUS * crowded;
-/** How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one. */
+  Math.min(2, Math.max(1.2, startDistance * 0.4)) +
+  CROWDED_RADIUS * crowded * Math.min(1, Math.max(0, (startDistance - 3) / 2));
+/**
+ * How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one,
+ * on large boards (start distance 5); normal boards get half of it, and small boards none.
+ */
 const CROWDED_RADIUS = 0.4;
 /** How much further apart (in tiles) the bowls of a fully crowded board are than those of an empty one. */
 const CROWDED_SPACING = 0.6;
@@ -40,7 +44,11 @@ export const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number]
 export function pickWidth(rng: Rng, crowded = 0): number {
   const weights = CORRIDOR_WIDTHS.map(([width, weight]): [number, number] => [
     width,
-    width === 1 ? weight + 2 * crowded : width >= 3 ? weight - crowded : weight,
+    width === 1
+      ? weight + 3 * crowded
+      : width >= 3
+        ? Math.max(0.2, weight - 1.5 * crowded)
+        : weight,
   ]);
   const total = weights.reduce((sum, [, weight]) => sum + weight, 0);
   let roll = rng.next() * total;

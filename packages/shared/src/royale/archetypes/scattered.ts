@@ -133,6 +133,9 @@ function placeNeutrals(
   }
 }
 
+/** How much smaller the share of extra passages is on a fully crowded board (0.3 of the chambers otherwise). */
+const LOOPS_LESS_WHEN_CROWDED = 0.15;
+
 /**
  * Join the chambers: a minimum spanning tree so everything is reachable, then a few extra short
  * passages that make loops. Corridors are picked at random widths and bowed a little.
@@ -184,7 +187,8 @@ function connect(chambers: readonly Chamber[], crowded: number, rng: Rng): Corri
     }
   }
   extras.sort((a, b) => a[2] - b[2] || rng.next() - 0.5);
-  const loops = Math.round(chambers.length * 0.3);
+  // Crowded boards get fewer extra passages, so they are less of a tangle.
+  const loops = Math.round(chambers.length * (0.3 - LOOPS_LESS_WHEN_CROWDED * crowded));
   for (const [from, to] of extras.slice(0, loops)) add(from, to);
   repairTopology(chambers, corridors, add, pairs);
   return corridors;
