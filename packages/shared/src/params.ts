@@ -74,13 +74,27 @@ export const MAP_SIZES = ['small', 'normal', 'large'] as const;
 export type MapSize = (typeof MAP_SIZES)[number];
 
 /**
- * About how many tiles a duel board has at each map size: roughly 18, 50 and 80 tiles for each
- * player. Normal is what quick play uses.
+ * About how many tiles each player gets on a fair board (a duel, or three players) at each map
+ * size. Normal is what quick play uses.
  */
+export const FAIR_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
+  small: 18,
+  normal: 50,
+  large: 80,
+};
+
+/** About how many tiles a duel board has at each map size (two players' shares). */
 export const DUEL_TILES: Readonly<Record<MapSize, number>> = {
-  small: 36,
-  normal: 100,
-  large: 160,
+  small: 2 * FAIR_TILES_PER_PLAYER.small,
+  normal: 2 * FAIR_TILES_PER_PLAYER.normal,
+  large: 2 * FAIR_TILES_PER_PLAYER.large,
+};
+
+/** About how many tiles a board for three players has at each map size (three players' shares). */
+export const TRIO_TILES: Readonly<Record<MapSize, number>> = {
+  small: 3 * FAIR_TILES_PER_PLAYER.small,
+  normal: 3 * FAIR_TILES_PER_PLAYER.normal,
+  large: 3 * FAIR_TILES_PER_PLAYER.large,
 };
 
 /**

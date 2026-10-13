@@ -9,49 +9,26 @@ import {
   type Point,
 } from '../royale/blueprint.js';
 import { blocked, distance } from '../royale/archetypes/common.js';
+import {
+  between,
+  blobRadius,
+  CORRIDOR_WIDTHS,
+  CROSSOVERS,
+  GAP,
+  ON_AXIS_CHANCE,
+  pickWeighted,
+  PLACE_TRIES,
+} from './common.js';
 import { hexImage, mirrorFrame, pointImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
-/** How big the blobs are: a little bigger on bigger boards. */
-export const blobRadius = (size: number): number => Math.min(2.4, 1.2 + 0.1 * size);
 /** How many extra blobs (not counting the starting ones and their twins) a board of this size gets. */
 const extraBlobs = (size: number): number => Math.max(1, Math.round(size / 2.2));
-/** Chance that an extra blob sits on the line (or point) of symmetry, and so has no twin. */
-const ON_AXIS_CHANCE = 0.4;
-/** The least open ground between two blobs, so the corridor between them reads as one. */
-const GAP = 2.2;
-const PLACE_TRIES = 200;
-/** Corridor widths in hexes, and how often each is picked: mostly narrow, so they read as passages. */
-const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number])[] = [
-  [1, 5],
-  [2, 3],
-  [3, 1],
-];
 /**
  * Chance that blobs on the line of symmetry of a mirror board may be joined to each other. Such a
  * corridor runs dead straight down the middle, so it is allowed on only some boards; on the others
  * those blobs join the board through blobs off the line.
  */
 const SPINE_CHANCE = 0.3;
-/**
- * How many corridors cross from one half of the board to the other, besides the one that has to
- * when no blob is on the line or point of symmetry, and how often. Each comes with its twin.
- */
-const CROSSOVERS: readonly (readonly [count: number, weight: number])[] = [
-  [0, 4],
-  [1, 3],
-  [2, 2],
-  [3, 1],
-];
-
-const pickWeighted = (rng: Rng, options: readonly (readonly [number, number])[]): number => {
-  const total = options.reduce((sum, [, weight]) => sum + weight, 0);
-  let roll = rng.next() * total;
-  for (const [value, weight] of options) {
-    roll -= weight;
-    if (roll < 0) return value;
-  }
-  return options[0]![0];
-};
 
 export interface DuelBlueprintInput {
   readonly symmetry: DuelSymmetry;
@@ -68,8 +45,6 @@ export interface DuelBlueprintInput {
   /** The two starting cities are at least this many tiles apart. */
   readonly minCityDistance: number;
 }
-
-const between = (rng: Rng, low: number, high: number): number => low + rng.next() * (high - low);
 
 /**
  * A symmetric layout of blobs and corridors: one starting blob (and, across the board, its twin),

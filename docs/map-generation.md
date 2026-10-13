@@ -1,6 +1,6 @@
 # Map generation
 
-`packages/shared/src/generate.ts` builds boards in two flavors. `createDuelMatch` makes the fair two-player boards (games use it for duels); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
+`packages/shared/src/generate.ts` builds boards in three flavors. `createDuelMatch` makes the fair two-player boards (games use it for duels); `createTrioMatch` makes the fair boards for three players (nothing in a room uses it yet); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
 
 ## Duel boards
 
@@ -16,6 +16,19 @@ The board is split into **orbits**: a tile and its twin (a tile on the line or p
 - **Drawing:** the blueprint is drawn onto hexes with noise (the same as battle royales: see below). Noise is not symmetric, so the land is what was drawn together with its image, then tidied with rules that look at the board as it was before each step, so the result stays exactly symmetric. Only the piece with the starts is kept. The city and the ring of land round it in each start blob are never removed.
 - **Area:** blob sizes and counts come from the board's size, so only the distance between blobs changes as the layout is stretched to the right area. The land is then grown or shrunk by a fraction of a tile everywhere until the tile count is within 3% of the target (boards more than 8% off are thrown away and drawn again; the first try nearly always passes).
 - **No fallback:** if no board can be made in 200 attempts, generation throws (it did not happen in testing), and the room tries another seed.
+
+## Three-player boards
+
+`createTrioMatch` makes a fair board for three players, in `packages/shared/src/duel/` next to the duel code, which it shares most of its drawing with. It is **exactly symmetric under turns of 120 and 240 degrees** about the middle of the board, so each player sees the same board from their side. There is no mirror version: a mirror cannot treat three players alike.
+
+- **Size:** `tiles` is about how many tiles the board has (`TRIO_TILES`: 54, 150 and 240 at small, normal and large), which is the same share for each player as in a duel (18, 50 and 80). Duel boards and three-player boards both take their sizes from `FAIR_TILES_PER_PLAYER`.
+- **Blobs:** one starting blob with two twins, a third of a turn round from one another, and **sets of three** extra blobs, one in each third (one set on normal boards, two on large, as far as they fit; small boards have no room for a set, so they have the three starts and perhaps the middle blob). A blob can also sit at the middle (on 40% of boards, decided first, with the starts put far enough out to leave it room); it has no twins. Blob sizes, the gap between blobs and the corridor widths are the same as for duels.
+- **Corridors** are made for one third of the board and turned twice onto the others, the way a duel's are made for one half and mirrored. One blob from each set (and the middle blob) are joined by a spanning tree and a few loops, with the lengths shaken up a little; the rest is copies.
+- **Crossovers** are corridors from a blob in one third to a twin of a blob in the next. If there is no middle blob, one has to cross over to join the thirds; a middle blob that has a corridor to a blob in one third has one to each of the others, so it can be the only link. After that a random number more cross over (none 40%, one 30%, two 20%, three 10%).
+- **The starts are never joined by a corridor of their own**, unless they are the only blobs (small boards without a middle blob, which are then a triangle of three corridors).
+- **No tail rule:** as with duels, tails and peninsulas can be any length.
+- **Drawing, area and symmetry** are exactly as for duels: the drawn land together with its two images, tidied by rules that look at the whole board before each step, then the layout is stretched and the land grown or shrunk a little until the tile count is within 3% of the target. Boards are not turned afterwards.
+- **Terrain:** a tile and its two twins are an orbit and always get the same type, so extra cities and villages come in threes and the starting cities are twins.
 
 ## Tile types
 
@@ -58,7 +71,7 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
 Villages use the same placement as duel boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
 
-The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint`, which also gets back to a particular board. For duels it also takes `symmetry`, `axis`, `tiles` and `turns`.
+The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint`, which also gets back to a particular board. For duels it also takes `symmetry`, `axis`, `tiles` and `turns`; `mode=trio` shows the three-player boards (with `tiles`).
 
 ## Settings
 

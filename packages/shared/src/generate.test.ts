@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { hexDistance, hexKey, hexNeighbors, type Hex } from './hex.js';
-import { createDuelMatch, createFreeForAllMatch } from './generate.js';
+import { hexDistance, hexKey, hexNeighbors, hexRotate, type Hex } from './hex.js';
+import { createDuelMatch, createFreeForAllMatch, createTrioMatch } from './generate.js';
 import { hexImage, pointImage, type DuelAxis, type DuelSymmetry } from './duel/index.js';
 import { TILE_TYPES } from './tiles.js';
-import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES } from './params.js';
+import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES, TRIO_TILES } from './params.js';
 import { createRng } from './rng.js';
 import { parseMatchConfig } from './config.js';
 
@@ -304,6 +304,150 @@ describe('terrain rules', () => {
             }) || orbit.slice(i + 1).some((other) => hexDistance(hex, other) === 1),
         );
         expect(blocked).toBe(true);
+      }
+    });
+  });
+});
+
+const three = ['A', 'B', 'C'];
+const turned = (hex: Hex, steps: number): Hex => hexRotate(hex, steps);
+
+describe('createTrioMatch', () => {
+  it('is deterministic for a seed', () => {
+    const options = { players: three, seed: 7 };
+    expect(createTrioMatch(options).state).toEqual(createTrioMatch(options).state);
+    expect(createTrioMatch(options).state.tiles).not.toEqual(
+      createTrioMatch({ players: three, seed: 8 }).state.tiles,
+    );
+  });
+
+  it('is exactly symmetric under turns of 120 and 240 degrees', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 15; seed++) {
+        const { state } = createTrioMatch({ players: three, seed, tiles: TRIO_TILES[size] });
+        for (const tile of Object.values(state.tiles)) {
+          for (const steps of [2, 4]) {
+            const twin = state.tiles[hexKey(turned(tile, steps))];
+            expect(twin).toBeDefined();
+            expect(twin!.type).toBe(tile.type);
+            // Neutral tiles match in garrison too; the starting cities are checked below.
+            if (tile.owner === null && twin!.owner === null) expect(twin!.troops).toBe(tile.troops);
+          }
+        }
+      }
+    }
+  });
+
+  it('gives each player one starting city, and the three are twins a third of a turn apart', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { state, config } = createTrioMatch({ players: three, seed });
+      const [a, b, c] = three.map((p) => Object.values(state.tiles).filter((t) => t.owner === p));
+      for (const owned of [a, b, c]) {
+        expect(owned).toHaveLength(1);
+        expect(owned![0]).toMatchObject({ type: 'city', troops: config.startingTroops });
+      }
+      expect(hexKey(turned(a![0]!, 2))).toBe(hexKey(b![0]!));
+      expect(hexKey(turned(a![0]!, 4))).toBe(hexKey(c![0]!));
+    }
+  });
+
+  it('starts neutral tiles at their base garrison', () => {
+    const { state } = createTrioMatch({ players: three, seed: 3 });
+    for (const t of Object.values(state.tiles)) {
+      if (t.owner === null) expect(t.troops).toBe(TILE_TYPES[t.type].baseGarrison);
+    }
+  });
+
+  it('has about the number of tiles asked for', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const tiles = Object.keys(
+          createTrioMatch({ players: three, seed, tiles: TRIO_TILES[size] }).state.tiles,
+        ).length;
+        expect(tiles / TRIO_TILES[size]).toBeGreaterThan(0.9);
+        expect(tiles / TRIO_TILES[size]).toBeLessThan(1.1);
+      }
+    }
+  });
+
+  it('has more blobs on bigger boards', () => {
+    const average = (size: keyof typeof TRIO_TILES): number => {
+      let blobs = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        blobs += createTrioMatch({ players: three, seed, tiles: TRIO_TILES[size] }).trio.blueprint
+          .chambers.length;
+      }
+      return blobs / 20;
+    };
+    expect(average('normal')).toBeGreaterThan(average('small'));
+    expect(average('large')).toBeGreaterThan(average('normal'));
+  });
+
+  it('rejects anything but three different players', () => {
+    expect(() => createTrioMatch({ players: ['A', 'B'], seed: 1 })).toThrow();
+    expect(() => createTrioMatch({ players: ['A', 'B', 'C', 'D'], seed: 1 })).toThrow();
+    expect(() => createTrioMatch({ players: ['A', 'A', 'B'], seed: 1 })).toThrow();
+  });
+
+  describe('terrain rules', () => {
+    const boards = [DUEL_TILES.normal * 1.5, TRIO_TILES.large].flatMap((tiles) =>
+      Array.from({ length: 20 }, (_, i) => {
+        // Fully packed with villages, so the "nowhere legal is left" check means something.
+        const { state } = createTrioMatch({
+          players: three,
+          seed: i + 1,
+          tiles,
+          params: { villageChance: 100 },
+        });
+        const all = Object.values(state.tiles);
+        return {
+          tiles: all,
+          byKey: state.tiles,
+          cities: all.filter((t) => t.type === 'city'),
+          villages: all.filter((t) => t.type === 'village'),
+        };
+      }),
+    );
+
+    it('never puts cities too close together, or on the edge of the board', () => {
+      for (const { cities, byKey } of boards) {
+        for (const a of cities) {
+          for (const nb of hexNeighbors(a)) expect(byKey[hexKey(nb)]).toBeDefined();
+          for (const b of cities) {
+            if (a !== b) {
+              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+                DEFAULT_GENERATION_PARAMS.minCityDistance,
+              );
+            }
+          }
+        }
+      }
+    });
+
+    it('never lets villages touch each other or a city', () => {
+      for (const { villages, byKey } of boards) {
+        for (const v of villages) {
+          for (const n of hexNeighbors(v)) {
+            const type = byKey[hexKey(n)]?.type;
+            expect(type === 'village' || type === 'city').toBe(false);
+          }
+        }
+      }
+    });
+
+    it('places villages until nowhere legal is left', () => {
+      for (const { tiles, byKey } of boards) {
+        for (const tile of tiles.filter((t) => t.type === 'farmland')) {
+          const orbit: Hex[] = [tile, turned(tile, 2), turned(tile, 4)];
+          const blocked = orbit.some(
+            (hex, i) =>
+              hexNeighbors(hex).some((n) => {
+                const type = byKey[hexKey(n)]?.type;
+                return type === 'village' || type === 'city';
+              }) || orbit.slice(i + 1).some((other) => hexDistance(hex, other) === 1),
+          );
+          expect(blocked).toBe(true);
+        }
       }
     });
   });

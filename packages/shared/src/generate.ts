@@ -1,13 +1,16 @@
 import { parseMatchConfig, tileRules, type MatchConfig } from './config.js';
 import { hexDistance, hexKey, hexNeighbors, hexagonalBoard, type Hex } from './hex.js';
 import { createRng, type Rng } from './rng.js';
-import { DUEL_TILES, withDefaults, type GenerationParams } from './params.js';
+import { DUEL_TILES, TRIO_TILES, withDefaults, type GenerationParams } from './params.js';
 import {
   generateDuelLayout,
   hexImage,
+  generateTrioLayout,
+  trioHexImages,
   type DuelAxis,
   type DuelReport,
   type DuelSymmetry,
+  type TrioReport,
 } from './duel/index.js';
 import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
 import type { GameState, PlayerId, Tile } from './state.js';
@@ -189,22 +192,98 @@ export function createDuelMatch(options: DuelMatchOptions): {
     targetTiles: tiles,
     params,
   });
-  const image = hexImage(symmetry, duel.report.axis, duel.report.turns);
-  const startOwners = new Map<string, PlayerId>();
-  duel.starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
-  // Every twin of a start tile is a starting city.
-  const cityOrbit = new Set(duel.starts.map(hexKey));
+  return {
+    config,
+    duel: duel.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: duel.hexes,
+      starts: duel.starts,
+      images: [hexImage(symmetry, duel.report.axis, duel.report.turns)],
+      config,
+      params,
+    }),
+  };
+}
 
-  // Group the board into orbits: a tile and its twin (or a tile on the line or point of symmetry,
-  // alone). Every tile in an orbit gets the same type, which is what keeps the board fair.
-  const ordered = duel.hexes;
+export interface TrioMatchOptions {
+  /** Exactly three players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal size for three players. */
+  readonly tiles?: number;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
+/**
+ * A fair board for three players: made of blobs (see `duel/`), and exactly symmetric under turns
+ * of 120 degrees (there is no mirror version, which would not treat three players alike). Every
+ * tile has two twins of the same type, one a third of a turn round and one two thirds, and the three
+ * players start on twin cities, so each sees the same board from their side.
+ */
+export function createTrioMatch(options: TrioMatchOptions): {
+  state: GameState;
+  config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  trio: TrioReport;
+} {
+  const { players, seed, tiles = TRIO_TILES.normal } = options;
+  if (players.length !== 3) throw new Error('a three-player board is for exactly 3 players');
+  if (new Set(players).size !== 3) throw new Error('player ids must be unique');
+  if (tiles < 30) throw new Error('a three-player board needs at least 30 tiles');
+  const config = parseMatchConfig(options.config);
+  const params = withDefaults(options.params);
+  const trio = generateTrioLayout({ seed, targetTiles: tiles, params });
+  return {
+    config,
+    trio: trio.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: trio.hexes,
+      starts: trio.starts,
+      images: trioHexImages,
+      config,
+      params,
+    }),
+  };
+}
+
+/**
+ * The match state for a symmetric board. The tiles are grouped into orbits (a tile and its twins,
+ * or a tile alone if it is its own twin) and every tile in an orbit gets the same type, which is
+ * what keeps the board fair. The starting cities are all twins of one another.
+ */
+function symmetricState(input: {
+  players: readonly PlayerId[];
+  seed: number;
+  hexes: readonly Hex[];
+  starts: readonly Hex[];
+  /** Where each tile goes under every symmetry except doing nothing. */
+  images: readonly ((hex: Hex) => Hex)[];
+  config: MatchConfig;
+  params: GenerationParams;
+}): GameState {
+  const { players, seed, hexes: ordered, starts, images, config, params } = input;
+  const startOwners = new Map<string, PlayerId>();
+  starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
+  // Every twin of a start tile is a starting city.
+  const cityOrbit = new Set(starts.map(hexKey));
+
   const present = new Set(ordered.map(hexKey));
   const orbits: Hex[][] = [];
   const grouped = new Set<string>();
   for (const hex of ordered) {
     if (grouped.has(hexKey(hex))) continue;
-    const twin = image(hex);
-    const orbit = hexKey(twin) === hexKey(hex) ? [hex] : [hex, twin];
+    const orbit: Hex[] = [hex];
+    for (const image of images) {
+      const twin = image(hex);
+      if (!orbit.some((member) => hexKey(member) === hexKey(twin))) orbit.push(twin);
+    }
     for (const member of orbit) grouped.add(hexKey(member));
     if (orbit.every((member) => present.has(hexKey(member)))) orbits.push(orbit);
   }
@@ -221,15 +300,11 @@ export function createDuelMatch(options: DuelMatchOptions): {
     rng: createRng(seed),
   });
   return {
-    config,
-    duel: duel.report,
-    state: {
-      tick: 0,
-      players: [...players],
-      eliminated: [],
-      winner: null,
-      tiles: buildTiles(ordered, types, startOwners, config),
-    },
+    tick: 0,
+    players: [...players],
+    eliminated: [],
+    winner: null,
+    tiles: buildTiles(ordered, types, startOwners, config),
   };
 }
 

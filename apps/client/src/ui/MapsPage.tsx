@@ -4,6 +4,8 @@ import {
   ARCHETYPE_IDS,
   DEFAULT_GENERATION_PARAMS,
   DUEL_TILES,
+  TRIO_TILES,
+  createTrioMatch,
   FFA_MAX_PLAYERS,
   FFA_MIN_PLAYERS,
   MAP_SIZES,
@@ -20,6 +22,7 @@ import {
   type DuelAxis,
   type DuelReport,
   type DuelSymmetry,
+  type TrioReport,
   type RoomMode,
   type RoyaleReport,
   type Blueprint,
@@ -73,13 +76,22 @@ function blueprintOverlay(blueprint: Blueprint | null): ((graphics: Graphics) =>
   };
 }
 
+/** What the previewer can make: the game's two modes, and the board for three players. */
+type PreviewMode = RoomMode | 'trio';
+
 /** A board, and for battle royales how it was made. Or the reason it could not be made. */
 type Generated =
-  { state: GameState; report: RoyaleReport | null; duel: DuelReport | null } | string;
+  | {
+      state: GameState;
+      report: RoyaleReport | null;
+      duel: DuelReport | null;
+      trio: TrioReport | null;
+    }
+  | string;
 
 /** Make a board the way a room would for these settings. */
 function generate(
-  mode: RoomMode,
+  mode: PreviewMode,
   tiles: number,
   players: number,
   seed: number,
@@ -93,7 +105,11 @@ function generate(
   try {
     if (mode === 'ffa') {
       const { state, report } = createFreeForAllMatch({ players: ids, seed, params, archetype });
-      return { state, report, duel: null };
+      return { state, report, duel: null, trio: null };
+    }
+    if (mode === 'trio') {
+      const { state, trio } = createTrioMatch({ players: ids, seed, tiles, params });
+      return { state, report: null, duel: null, trio };
     }
     const { state, duel } = createDuelMatch({
       players: ids,
@@ -104,7 +120,7 @@ function generate(
       turns,
       params,
     });
-    return { state, report: null, duel };
+    return { state, report: null, duel, trio: null };
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -277,7 +293,9 @@ export function MapsPage() {
     const value = query.get(name);
     return value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
   };
-  const [mode, setMode] = useState<RoomMode>(query.get('mode') === 'ffa' ? 'ffa' : 'duel');
+  const [mode, setMode] = useState<PreviewMode>(
+    query.get('mode') === 'ffa' ? 'ffa' : query.get('mode') === 'trio' ? 'trio' : 'duel',
+  );
   const [mapSize, setMapSize] = useState<MapSize>(
     MAP_SIZES.find((size) => size === query.get('size')) ?? 'normal',
   );
@@ -315,13 +333,20 @@ export function MapsPage() {
     minStartDistance: ROYALE_START_DISTANCE[size],
   });
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
-  const [tiles, setTiles] = useState<number>(queryNumber('tiles') ?? DUEL_TILES[mapSize]);
+  /** About how many tiles a fair board has at a map size: two players' shares, or three players'. */
+  const tilesFor = (forMode: PreviewMode, size: MapSize): number =>
+    forMode === 'trio' ? TRIO_TILES[size] : DUEL_TILES[size];
+  const [tiles, setTiles] = useState<number>(queryNumber('tiles') ?? tilesFor(mode, mapSize));
 
-  const defaultTiles = DUEL_TILES[mapSize];
+  const defaultTiles = tilesFor(mode, mapSize);
+  const chooseMode = (next: PreviewMode): void => {
+    setMode(next);
+    setTiles(tilesFor(next, mapSize));
+  };
   const chooseSize = (size: MapSize): void => {
     setMapSize(size);
     setParams(sizeDefaults(size, players));
-    setTiles(DUEL_TILES[size]);
+    setTiles(tilesFor(mode, size));
   };
   const chooseRoyalePlayers = (count: number): void => {
     setPlayers(count);
@@ -335,9 +360,9 @@ export function MapsPage() {
   for (const key of Object.keys(params) as (keyof GenerationParams)[]) {
     if (params[key] !== baseline[key]) changes[key] = params[key];
   }
-  if (mode === 'duel' && tiles !== defaultTiles) changes.tiles = tiles;
+  if (mode !== 'ffa' && tiles !== defaultTiles) changes.tiles = tiles;
 
-  const count = mode === 'duel' ? 2 : players;
+  const count = mode === 'duel' ? 2 : mode === 'trio' ? 3 : players;
   const result = useMemo(
     () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
     [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
@@ -407,7 +432,8 @@ export function MapsPage() {
   const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
   const report = typeof result === 'string' ? null : result.report;
   const duel = typeof result === 'string' ? null : result.duel;
-  const blueprint = report?.blueprint ?? duel?.blueprint ?? null;
+  const trio = typeof result === 'string' ? null : result.trio;
+  const blueprint = report?.blueprint ?? duel?.blueprint ?? trio?.blueprint ?? null;
 
   // The board itself is the game's own, drawn by `main.ts`: hand it each new board, then the overlays.
   const game = useMemo(
@@ -436,9 +462,10 @@ export function MapsPage() {
             value={mode}
             options={[
               { value: 'duel', label: 'Duel' },
+              { value: 'trio', label: 'Three players' },
               { value: 'ffa', label: 'Battle Royale' },
             ]}
-            onChange={setMode}
+            onChange={chooseMode}
           />
           <Segmented
             label="Map size"
@@ -449,7 +476,7 @@ export function MapsPage() {
             }))}
             onChange={chooseSize}
           />
-          {mode === 'duel' ? (
+          {mode === 'trio' ? null : mode === 'duel' ? (
             <>
               <Segmented
                 label="Symmetry"
@@ -514,9 +541,9 @@ export function MapsPage() {
           <summary>
             Generation parameters{Object.keys(changes).length > 0 ? ' (changed)' : ''}
           </summary>
-          {mode === 'duel' && (
+          {mode !== 'ffa' && (
             <div className="maps-group">
-              <h4>Duel board</h4>
+              <h4>{mode === 'trio' ? 'Three-player board' : 'Duel board'}</h4>
               <div className="maps-fields">
                 <NumberField
                   label="tiles"
@@ -574,6 +601,8 @@ export function MapsPage() {
 
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
+          {trio &&
+            ` · turns of 120°, ${trio.attempts} ${trio.attempts === 1 ? 'attempt' : 'attempts'} · ${trio.blueprint.chambers.length} blobs`}
           {duel &&
             ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis}, turned ${duel.turns * 60}°)` : ''}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
               ` · ${duel.blueprint.chambers.length} blobs`}

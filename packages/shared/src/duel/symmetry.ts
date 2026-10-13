@@ -71,3 +71,14 @@ export const mirrorFrame = (axis: DuelAxis): { along: Point; across: Point } =>
   axis === 'points'
     ? { along: { x: 0, y: 1 }, across: { x: 1, y: 0 } }
     : { along: { x: 0.5, y: HALF_SQRT3 }, across: { x: HALF_SQRT3, y: -0.5 } };
+
+/**
+ * The symmetry of a board for three players: turning by 120 and by 240 degrees about the middle
+ * (the other two thirds of a full turn). The board maps onto itself under both, so the three
+ * players each see the same board from where they start. There is no mirror version, since a mirror
+ * would not treat three players alike.
+ */
+export const trioHexImages: readonly ((hex: Hex) => Hex)[] = [
+  (hex) => hexRotate(hex, 2),
+  (hex) => hexRotate(hex, 4),
+];

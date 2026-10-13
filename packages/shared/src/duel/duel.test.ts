@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES } from '../params.js';
-import { generateDuelLayout } from './layout.js';
+import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES, TRIO_TILES } from '../params.js';
+import { generateDuelLayout, generateTrioLayout } from './layout.js';
 import { pointImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 // Each test draws hundreds of whole boards.
@@ -114,5 +114,96 @@ describe('duel layouts', () => {
       throughMiddle++;
     }
     expect(throughMiddle).toBeGreaterThan(0);
+  });
+});
+
+const trio = (seed: number, tiles: number) =>
+  generateTrioLayout({ seed, targetTiles: tiles, params: DEFAULT_GENERATION_PARAMS });
+
+/** Which third of a three-player blueprint a chamber is in, or -1 for the blob in the middle. */
+const thirdOf = (
+  index: number,
+  chambers: readonly { center: { x: number; y: number } }[],
+): number => {
+  const middle = chambers.findIndex((c) => c.center.x === 0 && c.center.y === 0);
+  if (index === middle) return -1;
+  // Chambers come in threes (a blob, then its twins), after the middle blob if there is one.
+  const base = middle >= 0 ? 4 : 3;
+  return index < 3 ? index : (index - base) % 3;
+};
+
+describe('three-player layouts', () => {
+  it('never join two starts by a corridor of their own, unless the starts are the only blobs', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 60; seed++) {
+        const { chambers, corridors } = trio(seed, TRIO_TILES[size]).report.blueprint;
+        expect(chambers.slice(0, 3).every((c) => c.spawn)).toBe(true);
+        expect(chambers.slice(3).some((c) => c.spawn)).toBe(false);
+        const amongStarts = corridors.filter((c) => c.from < 3 && c.to < 3);
+        if (chambers.length === 3) {
+          // Nothing else to go through: the starts form a triangle.
+          expect(amongStarts).toHaveLength(3);
+        } else {
+          expect(amongStarts).toHaveLength(0);
+        }
+      }
+    }
+  });
+
+  it('only let the smallest boards be nothing but the three starts', () => {
+    const only = (size: keyof typeof TRIO_TILES): number => {
+      let count = 0;
+      for (let seed = 1; seed <= 60; seed++) {
+        if (trio(seed, TRIO_TILES[size]).report.blueprint.chambers.length === 3) count++;
+      }
+      return count;
+    };
+    expect(only('small')).toBeGreaterThan(0);
+    expect(only('normal')).toBe(0);
+    expect(only('large')).toBe(0);
+  });
+
+  it('can join the thirds through the blob in the middle alone', () => {
+    let withMiddle = 0;
+    let throughMiddle = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const { chambers, corridors } = trio(seed, TRIO_TILES.normal).report.blueprint;
+      const middle = chambers.findIndex((c) => c.center.x === 0 && c.center.y === 0);
+      if (middle < 0) continue;
+      withMiddle++;
+      const crossing = corridors.filter((c) => {
+        const [a, b] = [thirdOf(c.from, chambers), thirdOf(c.to, chambers)];
+        return a >= 0 && b >= 0 && a !== b;
+      });
+      if (crossing.length > 0) continue;
+      // Nothing crosses directly, and the board is in one piece (it was made): the middle blob has
+      // a corridor to a blob in each of the three thirds.
+      const reached = new Set(
+        corridors.flatMap((c) =>
+          c.from === middle
+            ? [thirdOf(c.to, chambers)]
+            : c.to === middle
+              ? [thirdOf(c.from, chambers)]
+              : [],
+        ),
+      );
+      expect([...reached].sort()).toEqual([0, 1, 2]);
+      throughMiddle++;
+    }
+    // About 40% of boards have a middle blob; on those, crossing over is the likelier case but not certain.
+    expect(withMiddle).toBeGreaterThan(40);
+    expect(throughMiddle).toBeGreaterThan(0);
+  });
+
+  it('turn every corridor into three, one in each third', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const { chambers, corridors } = trio(seed, TRIO_TILES.large).report.blueprint;
+      expect(corridors.length % 3).toBe(0);
+      // Corridors turn into corridors of the same width.
+      const key = (a: number, b: number) => `${Math.min(a, b)}-${Math.max(a, b)}`;
+      const widths = new Map(corridors.map((c) => [key(c.from, c.to), c.width]));
+      expect(widths.size).toBe(corridors.length);
+      expect(chambers.length).toBeGreaterThan(3);
+    }
   });
 });

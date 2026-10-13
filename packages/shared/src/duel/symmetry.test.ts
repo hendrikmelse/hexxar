@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { hexagonalBoard, hexKey, hexNeighbors, type Hex } from '../hex.js';
 import { hexToPoint } from '../royale/blueprint.js';
-import { hexImage, mirrorFrame, pointImage, type DuelAxis } from './symmetry.js';
+import {
+  hexImage,
+  mirrorFrame,
+  pointImage,
+  rotatePoint,
+  trioHexImages,
+  type DuelAxis,
+} from './symmetry.js';
 
 const board = hexagonalBoard(8);
 
@@ -92,5 +99,25 @@ describe('duel symmetries', () => {
         (p) => Math.abs(p.x - cornerDirection.x) < 1e-9 && Math.abs(p.y - cornerDirection.y) < 1e-9,
       ),
     ).toBe(false);
+  });
+});
+
+describe('three-player symmetry', () => {
+  it('is turns of 120 and 240 degrees: three turns of 120 make no turn, and points agree with hexes', () => {
+    const [third, twoThirds] = trioHexImages as [(h: Hex) => Hex, (h: Hex) => Hex];
+    for (const hex of board) {
+      expect(hexKey(third(third(third(hex))))).toBe(hexKey(hex));
+      expect(hexKey(third(third(hex)))).toBe(hexKey(twoThirds(hex)));
+      expect(hexKey(third(twoThirds(hex)))).toBe(hexKey(hex));
+      for (const [image, steps] of [
+        [third, 2],
+        [twoThirds, 4],
+      ] as const) {
+        const expected = rotatePoint(hexToPoint(hex), steps);
+        const actual = hexToPoint(image(hex));
+        expect(actual.x).toBeCloseTo(expected.x, 9);
+        expect(actual.y).toBeCloseTo(expected.y, 9);
+      }
+    }
   });
 });

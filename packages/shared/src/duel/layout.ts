@@ -1,12 +1,19 @@
 import { hexKey, hexNeighbors, hexRotate, type Hex } from '../hex.js';
 import type { GenerationParams } from '../params.js';
-import { createRng } from '../rng.js';
+import { createRng, type Rng } from '../rng.js';
 import { pointToHex, type Blueprint } from '../royale/blueprint.js';
 import { components, landNeighborCount, type Land } from '../royale/grid.js';
 import { createNoise, type Noise } from '../royale/noise.js';
 import { rasterize } from '../royale/rasterize.js';
 import { buildDuelBlueprint } from './blueprint.js';
-import { hexImage, rotatePoint, type DuelAxis, type DuelSymmetry } from './symmetry.js';
+import {
+  hexImage,
+  rotatePoint,
+  trioHexImages,
+  type DuelAxis,
+  type DuelSymmetry,
+} from './symmetry.js';
+import { buildTrioBlueprint } from './trio.js';
 
 /** Why a board that was drawn was thrown away. */
 export type DuelRejection = 'blueprint' | 'split' | 'area' | 'symmetry' | 'starts';
@@ -35,6 +42,22 @@ export interface DuelLayout {
   /** The two starting hexes: each is the other's image under the symmetry. */
   readonly starts: [Hex, Hex];
   readonly report: DuelReport;
+}
+
+/** How a board for three players was made. */
+export interface TrioReport {
+  readonly attempts: number;
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface TrioLayout {
+  readonly hexes: Hex[];
+  /** The three starting hexes: each is the one before it turned by 120 degrees. */
+  readonly starts: [Hex, Hex, Hex];
+  readonly report: TrioReport;
 }
 
 const MAX_ATTEMPTS = 200;
@@ -68,25 +91,34 @@ function tidy(land: Land, protectedKeys: ReadonlySet<string>): void {
   }
 }
 
+/**
+ * The symmetry of a board: how the other parts of it map onto the first. A duel board has one other
+ * part (a mirror or a half turn), a board for three has two (turns of 120 and 240 degrees). The
+ * starting blobs are the first chambers of a blueprint, in the same order: the first, then its
+ * image under each of these.
+ */
+type Images = readonly ((hex: Hex) => Hex)[];
+
+/** Lay out a blueprint of the given size, stretched out to the given scale. */
+type Build = (input: { size: number; scale: number; rng: Rng }) => Blueprint | null;
+
 interface Rendered {
   readonly land: Land;
-  readonly starts: [Hex, Hex];
+  readonly starts: Hex[];
 }
 
 /**
  * Draw a blueprint onto hexes, symmetrically: the land is what the noisy drawing gives and its
- * image under the symmetry, tidied, and only the piece with the starts is kept. `null` if the
+ * images under the symmetry, tidied, and only the piece with the starts is kept. `null` if the
  * starts are not in one piece.
  */
 function render(
   blueprint: Blueprint,
-  symmetry: DuelSymmetry,
-  axis: DuelAxis,
+  images: Images,
   noise: Noise,
   params: GenerationParams,
   offset: number,
 ): Rendered | null {
-  const imageOfHex = hexImage(symmetry, axis);
   const raster = rasterize(blueprint, {
     noise,
     coastRoughness: params.coastRoughness,
@@ -94,33 +126,31 @@ function render(
     warpStrength: params.warpStrength,
     offset,
   });
-  // The noise is not symmetric, so the land is the drawn land together with its image.
+  // The noise is not symmetric, so the land is the drawn land together with its images.
   const land: Land = new Map(raster.land);
   for (const hex of raster.land.values()) {
-    const image = imageOfHex(hex);
-    land.set(hexKey(image), image);
+    for (const image of images) {
+      const moved = image(hex);
+      land.set(hexKey(moved), moved);
+    }
   }
   tidy(land, raster.protectedKeys);
 
-  const starts: [Hex, Hex] = [
-    pointToHex(blueprint.chambers[0]!.center),
-    pointToHex(blueprint.chambers[1]!.center),
-  ];
-  const piece = components(land).find((keys) => keys.includes(hexKey(starts[0])));
-  if (!piece || !piece.includes(hexKey(starts[1]))) return null;
+  const starts = blueprint.chambers.slice(0, images.length + 1).map((c) => pointToHex(c.center));
+  const piece = components(land).find((keys) => keys.includes(hexKey(starts[0]!)));
+  if (!piece || starts.some((start) => !piece.includes(hexKey(start)))) return null;
   const keep = new Set(piece);
   for (const key of [...land.keys()]) if (!keep.has(key)) land.delete(key);
   return { land, starts };
 }
 
 function drawBoard(
-  symmetry: DuelSymmetry,
-  axis: DuelAxis,
+  images: Images,
+  build: Build,
   targetTiles: number,
   params: GenerationParams,
   seed: number,
-): { land: Land; blueprint: Blueprint; starts: [Hex, Hex] } | DuelRejection {
-  const imageOfHex = hexImage(symmetry, axis);
+): { land: Land; blueprint: Blueprint; starts: Hex[] } | DuelRejection {
   const rng = createRng(seed);
   const noise = createNoise(rng.int(0x7fffffff));
   const layoutSeed = rng.int(0x7fffffff);
@@ -133,20 +163,13 @@ function drawBoard(
   let drawn: { blueprint: Blueprint; rendered: Rendered } | null = null;
   let failure: DuelRejection = 'blueprint';
   for (let i = 0; i < SCALE_ITERATIONS; i++) {
-    const blueprint = buildDuelBlueprint({
-      symmetry,
-      axis,
-      size,
-      scale,
-      rng: createRng(layoutSeed),
-      minCityDistance: params.minCityDistance,
-    });
+    const blueprint = build({ size, scale, rng: createRng(layoutSeed) });
     if (!blueprint) {
       failure = 'blueprint';
       scale *= 1.1;
       continue;
     }
-    const rendered = render(blueprint, symmetry, axis, noise, params, 0);
+    const rendered = render(blueprint, images, noise, params, 0);
     if (!rendered) {
       failure = 'split';
       scale *= 1.1;
@@ -165,7 +188,7 @@ function drawBoard(
   let high = OFFSET_LIMIT;
   for (let step = 0; step < OFFSET_STEPS && off(best) > AREA_TOLERANCE; step++) {
     const middle = (low + high) / 2;
-    const rendered = render(blueprint, symmetry, axis, noise, params, middle);
+    const rendered = render(blueprint, images, noise, params, middle);
     if (!rendered || rendered.land.size < targetTiles) low = middle;
     else high = middle;
     if (rendered && off(rendered) < off(best)) best = rendered;
@@ -173,15 +196,50 @@ function drawBoard(
   if (off(best) > AREA_LIMIT) return 'area';
 
   const { land, starts } = best;
-  const [first, second] = starts;
-  const twin = imageOfHex(first);
-  if (twin.q !== second.q || twin.r !== second.r) return 'starts';
-  for (const hex of land.values()) if (!land.has(hexKey(imageOfHex(hex)))) return 'symmetry';
+  // Each start is the first one moved by the symmetry, so the players' surroundings match.
+  for (const [n, image] of images.entries()) {
+    const expected = image(starts[0]!);
+    if (expected.q !== starts[n + 1]!.q || expected.r !== starts[n + 1]!.r) return 'starts';
+  }
+  for (const hex of land.values()) {
+    for (const image of images) if (!land.has(hexKey(image(hex)))) return 'symmetry';
+  }
   // The starts have all six neighbors (the rasterizer keeps the ring).
   for (const start of starts) {
     if (hexNeighbors(start).some((n) => !land.has(hexKey(n)))) return 'starts';
   }
   return { land, blueprint, starts };
+}
+
+/** Draw boards until one passes every check. Throws if none does. */
+function findBoard(
+  images: Images,
+  build: Build,
+  targetTiles: number,
+  params: GenerationParams,
+  seed: number,
+  what: string,
+): {
+  board: { land: Land; blueprint: Blueprint; starts: Hex[] };
+  attempts: number;
+  rejections: Partial<Record<DuelRejection, number>>;
+} {
+  const rejections: Partial<Record<DuelRejection, number>> = {};
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const board = drawBoard(
+      images,
+      build,
+      targetTiles,
+      params,
+      (seed + Math.imul(attempt, 0x9e3779b1)) >>> 0,
+    );
+    if (typeof board === 'string') {
+      rejections[board] = (rejections[board] ?? 0) + 1;
+      continue;
+    }
+    return { board, attempts: attempt, rejections };
+  }
+  throw new Error(`could not make a ${what} board of about ${targetTiles} tiles`);
 }
 
 /**
@@ -213,40 +271,75 @@ export function generateDuelLayout(input: {
     symmetry === 'rotational'
       ? 'points'
       : (input.axis ?? (createRng(seed ^ 0x6a09).next() < 0.5 ? 'points' : 'edges'));
-  const rejections: Partial<Record<DuelRejection, number>> = {};
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const board = drawBoard(
-      symmetry,
-      axis,
-      targetTiles,
-      params,
-      (seed + Math.imul(attempt, 0x9e3779b1)) >>> 0,
-    );
-    if (typeof board === 'string') {
-      rejections[board] = (rejections[board] ?? 0) + 1;
-      continue;
-    }
-    const turn = (hex: Hex): Hex => hexRotate(hex, turns);
-    return {
-      hexes: [...board.land.values()].map(turn).sort((a, b) => a.q - b.q || a.r - b.r),
-      starts: [turn(board.starts[0]), turn(board.starts[1])],
-      report: {
+  const { board, attempts, rejections } = findBoard(
+    [hexImage(symmetry, axis)],
+    ({ size, scale, rng }) =>
+      buildDuelBlueprint({
         symmetry,
         axis,
-        turns,
-        attempts: attempt,
-        rejections,
-        blueprint: {
-          chambers: board.blueprint.chambers.map((c) => ({
-            ...c,
-            center: rotatePoint(c.center, turns),
-          })),
-          corridors: board.blueprint.corridors,
-        },
-        tiles: board.land.size,
-        targetTiles,
+        size,
+        scale,
+        rng,
+        minCityDistance: params.minCityDistance,
+      }),
+    targetTiles,
+    params,
+    seed,
+    `${symmetry} duel`,
+  );
+  const turn = (hex: Hex): Hex => hexRotate(hex, turns);
+  return {
+    hexes: [...board.land.values()].map(turn).sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: [turn(board.starts[0]!), turn(board.starts[1]!)],
+    report: {
+      symmetry,
+      axis,
+      turns,
+      attempts,
+      rejections,
+      blueprint: {
+        chambers: board.blueprint.chambers.map((c) => ({
+          ...c,
+          center: rotatePoint(c.center, turns),
+        })),
+        corridors: board.blueprint.corridors,
       },
-    };
-  }
-  throw new Error(`could not make a ${symmetry} duel board of about ${targetTiles} tiles`);
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}
+
+/**
+ * A fully symmetric board for three players, made of blobs the way a duel board is, but
+ * symmetric under turns of 120 degrees: one starting blob with two twins, sets of three extra blobs,
+ * and perhaps a blob in the middle, joined by corridors. The same seed always gives the same board.
+ */
+export function generateTrioLayout(input: {
+  seed: number;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  params: GenerationParams;
+}): TrioLayout {
+  const { seed, targetTiles, params } = input;
+  const { board, attempts, rejections } = findBoard(
+    trioHexImages,
+    ({ size, scale, rng }) =>
+      buildTrioBlueprint({ size, scale, rng, minCityDistance: params.minCityDistance }),
+    targetTiles,
+    params,
+    seed,
+    'three-player',
+  );
+  return {
+    hexes: [...board.land.values()].sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: [board.starts[0]!, board.starts[1]!, board.starts[2]!],
+    report: {
+      attempts,
+      rejections,
+      blueprint: board.blueprint,
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
 }
