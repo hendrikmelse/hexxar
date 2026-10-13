@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_GENERATION_PARAMS, DUEL_TILES } from '../params.js';
+import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES } from '../params.js';
 import { generateDuelLayout } from './layout.js';
 import type { DuelSymmetry } from './symmetry.js';
 
@@ -10,6 +10,22 @@ const board = (symmetry: DuelSymmetry, seed: number, tiles: number) =>
   generateDuelLayout({ seed, symmetry, targetTiles: tiles, params: DEFAULT_GENERATION_PARAMS });
 
 describe('duel layouts', () => {
+  it('never has a corridor straight from one start to the other, and needs another blob to join them', () => {
+    for (const symmetry of ['mirror', 'rotational'] as const) {
+      for (const size of MAP_SIZES) {
+        for (let seed = 1; seed <= 60; seed++) {
+          const { chambers, corridors } = board(symmetry, seed, DUEL_TILES[size]).report.blueprint;
+          expect(chambers[0]!.spawn && chambers[1]!.spawn).toBe(true);
+          for (const c of corridors) {
+            expect(c.from + c.to === 1 && c.from * c.to === 0).toBe(false);
+          }
+          // With no direct corridor, the starts are joined through at least one more blob.
+          expect(chambers.length).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+  });
+
   it('only sometimes joins blobs on the centerline of a mirror board to each other', () => {
     let boards = 0;
     let spines = 0;

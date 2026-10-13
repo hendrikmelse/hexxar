@@ -205,11 +205,15 @@ export function buildDuelBlueprint({
   const shaken = (a: number, b: number): number =>
     distance(chambers[a]!.center, chambers[b]!.center) * between(rng, 0.8, 1.3);
   const spine = rng.next() < SPINE_CHANCE;
+  // The two starts (chambers 0 and 1) are never joined by a corridor of their own: they are only
+  // ever joined through other blobs, though the land may happen to run together.
+  const startsKey = keyOf(0, 1);
   const pairs: { a: number; b: number; weight: number }[] = [];
   for (const [n, a] of half.entries()) {
     for (const b of half.slice(n + 1)) {
       // Two blobs on the line: the corridor between them would run straight down it.
       if (!spine && twin[a] === a && twin[b] === b) continue;
+      if (keyOf(a, b) === startsKey) continue;
       pairs.push({ a, b, weight: shaken(a, b) });
     }
   }
@@ -252,6 +256,8 @@ export function buildDuelBlueprint({
   const across: { a: number; b: number; weight: number }[] = [];
   for (const a of half) {
     for (let b = 0; b < chambers.length; b++) {
+      // Never straight from one start to the other (that corridor is its own twin).
+      if (keyOf(a, b) === startsKey) continue;
       if (twin[a] !== a && twin[b] !== b && sideOf(b) !== keepSide) {
         across.push({ a, b, weight: shaken(a, b) });
       }
