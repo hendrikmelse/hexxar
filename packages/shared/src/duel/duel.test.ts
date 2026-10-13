@@ -17,7 +17,7 @@ const board = (symmetry: DuelSymmetry, seed: number, tiles: number, axis?: DuelA
 
 /** The blobs on the line of a mirror board (they have no twin). */
 const onLine = (layout: ReturnType<typeof board>): number[] => {
-  const image = pointImage('mirror', layout.report.axis);
+  const image = pointImage('mirror', layout.report.axis, layout.report.turns);
   return layout.report.blueprint.chambers.flatMap((c, i) => {
     const twin = image(c.center);
     return Math.abs(twin.x - c.center.x) < 1e-9 && Math.abs(twin.y - c.center.y) < 1e-9 ? [i] : [];

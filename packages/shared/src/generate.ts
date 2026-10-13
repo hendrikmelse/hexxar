@@ -152,6 +152,8 @@ export interface DuelMatchOptions {
   readonly symmetry?: DuelSymmetry;
   /** Which line a mirror board is mirrored across; by default one of the two, picked by the seed. */
   readonly axis?: DuelAxis;
+  /** How far a mirror board is turned, in steps of 60 degrees (0 to 5); by default random. */
+  readonly turns?: number;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
@@ -183,10 +185,11 @@ export function createDuelMatch(options: DuelMatchOptions): {
     seed,
     symmetry,
     axis: options.axis,
+    turns: options.turns,
     targetTiles: tiles,
     params,
   });
-  const image = hexImage(symmetry, duel.report.axis);
+  const image = hexImage(symmetry, duel.report.axis, duel.report.turns);
   const startOwners = new Map<string, PlayerId>();
   duel.starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
   // Every twin of a start tile is a starting city.

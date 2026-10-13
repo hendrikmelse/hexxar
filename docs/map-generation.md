@@ -4,7 +4,7 @@
 
 ## Duel boards
 
-A duel board is **exactly symmetric**, in one of two ways, picked by the seed (or by the `symmetry` option): a **mirror**, or a **half turn** (180 degrees about the middle). A mirror board is mirrored across one of two lines, picked by the seed (half each, or by the `axis` option): a vertical line through the middle of the board, which runs through tile corners (the line goes through the "points" of the center tile), or a line turned 30 degrees from that, which runs through the middles of tile edges. Both are exact on hexes: the second is a flip followed by a 120 degree turn. The code is in `packages/shared/src/duel/`.
+A duel board is **exactly symmetric**, in one of two ways, picked by the seed (or by the `symmetry` option): a **mirror**, or a **half turn** (180 degrees about the middle). A mirror board is mirrored across one of two lines, picked by the seed (half each, or by the `axis` option): a vertical line through the middle of the board, which runs through tile corners (the line goes through the "points" of the center tile), or a line turned 30 degrees from that, which runs through the middles of tile edges. Both are exact on hexes: the second is a flip followed by a 120 degree turn. After a mirror board is made, the whole board is **turned by a random multiple of 60 degrees** (six choices, one of them no turn), so the line can lie any of the six ways a hex mirror line can: vertical, or one of the two diagonals for the first kind, and sideways or one of the two diagonals for the second. The `turns` option sets it. Half-turn boards are not turned, since a half turn looks the same however the board is turned. The code is in `packages/shared/src/duel/`.
 
 The board is split into **orbits**: a tile and its twin (a tile on the line or point of symmetry is alone). Every tile in an orbit gets the same type, so each player sees the same surroundings, mirrored or turned. The two players start on twin cities.
 
@@ -58,7 +58,7 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
 Villages use the same placement as duel boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
 
-The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint or tint the board by territory over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint&territories`, which also gets back to a particular board.
+The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint`, which also gets back to a particular board. For duels it also takes `symmetry`, `axis`, `tiles` and `turns`.
 
 ## Settings
 

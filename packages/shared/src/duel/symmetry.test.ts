@@ -5,6 +5,33 @@ import { hexImage, mirrorFrame, pointImage, type DuelAxis } from './symmetry.js'
 
 const board = hexagonalBoard(8);
 
+describe('turned mirror boards', () => {
+  it('give the six hex mirror lines between them, and agree on hexes and on points', () => {
+    const maps = new Set<string>();
+    for (const axis of ['points', 'edges'] as const) {
+      for (let turns = 0; turns < 6; turns++) {
+        const ofHex = hexImage('mirror', axis, turns);
+        const ofPoint = pointImage('mirror', axis, turns);
+        for (const hex of board) {
+          const expected = ofPoint(hexToPoint(hex));
+          const actual = hexToPoint(ofHex(hex));
+          expect(actual.x).toBeCloseTo(expected.x, 9);
+          expect(actual.y).toBeCloseTo(expected.y, 9);
+          expect(hexKey(ofHex(ofHex(hex)))).toBe(hexKey(hex));
+        }
+        maps.add(
+          board
+            .slice(0, 12)
+            .map((hex) => hexKey(ofHex(hex)))
+            .join('|'),
+        );
+      }
+    }
+    // Twelve ways to ask for it, six different mirrors.
+    expect(maps.size).toBe(6);
+  });
+});
+
 describe('duel symmetries', () => {
   const kinds: ['mirror' | 'rotational', DuelAxis][] = [
     ['mirror', 'points'],

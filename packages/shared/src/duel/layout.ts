@@ -1,4 +1,4 @@
-import { hexKey, hexNeighbors, type Hex } from '../hex.js';
+import { hexKey, hexNeighbors, hexRotate, type Hex } from '../hex.js';
 import type { GenerationParams } from '../params.js';
 import { createRng } from '../rng.js';
 import { pointToHex, type Blueprint } from '../royale/blueprint.js';
@@ -6,7 +6,7 @@ import { components, landNeighborCount, type Land } from '../royale/grid.js';
 import { createNoise, type Noise } from '../royale/noise.js';
 import { rasterize } from '../royale/rasterize.js';
 import { buildDuelBlueprint } from './blueprint.js';
-import { hexImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
+import { hexImage, rotatePoint, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 /** Why a board that was drawn was thrown away. */
 export type DuelRejection = 'blueprint' | 'split' | 'area' | 'symmetry' | 'starts';
@@ -15,6 +15,12 @@ export interface DuelReport {
   readonly symmetry: DuelSymmetry;
   /** The line of a mirror board (`points` for half-turn boards, which have none). */
   readonly axis: DuelAxis;
+  /**
+   * How many steps of 60 degrees a mirror board was turned after it was made (0 to 5), so that its
+   * line can be any of the six hex mirror lines. The blueprint is turned with it. Half-turn boards
+   * are not turned.
+   */
+  readonly turns: number;
   /** How many boards were drawn before one passed (1 means the first did). */
   readonly attempts: number;
   /** How many boards were thrown away, and why. */
@@ -188,6 +194,8 @@ export function generateDuelLayout(input: {
   symmetry: DuelSymmetry;
   /** The line of a mirror board; by default one of the two, picked by the seed. */
   axis?: DuelAxis;
+  /** How far the finished mirror board is turned, in steps of 60 degrees; by default random. */
+  turns?: number;
   /** About how many tiles the board should have. */
   targetTiles: number;
   params: GenerationParams;
@@ -195,6 +203,12 @@ export function generateDuelLayout(input: {
   const { seed, symmetry, targetTiles, params } = input;
   // Half the mirror boards are mirrored across a line through tile corners, half across one
   // through the middles of tile edges (30 degrees round from the first).
+  // Then the finished board is turned by a random multiple of 60 degrees (possibly none), so the
+  // mirror line can lie any of the six ways a hex mirror line can.
+  const turns =
+    symmetry === 'rotational'
+      ? 0
+      : (((input.turns ?? createRng(seed ^ 0x5bd1).int(6)) % 6) + 6) % 6;
   const axis: DuelAxis =
     symmetry === 'rotational'
       ? 'points'
@@ -212,15 +226,23 @@ export function generateDuelLayout(input: {
       rejections[board] = (rejections[board] ?? 0) + 1;
       continue;
     }
+    const turn = (hex: Hex): Hex => hexRotate(hex, turns);
     return {
-      hexes: [...board.land.values()].sort((a, b) => a.q - b.q || a.r - b.r),
-      starts: board.starts,
+      hexes: [...board.land.values()].map(turn).sort((a, b) => a.q - b.q || a.r - b.r),
+      starts: [turn(board.starts[0]), turn(board.starts[1])],
       report: {
         symmetry,
         axis,
+        turns,
         attempts: attempt,
         rejections,
-        blueprint: board.blueprint,
+        blueprint: {
+          chambers: board.blueprint.chambers.map((c) => ({
+            ...c,
+            center: rotatePoint(c.center, turns),
+          })),
+          corridors: board.blueprint.corridors,
+        },
         tiles: board.land.size,
         targetTiles,
       },

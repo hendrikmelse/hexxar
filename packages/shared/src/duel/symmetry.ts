@@ -17,26 +17,53 @@ export type DuelAxis = 'points' | 'edges';
 
 const HALF_SQRT3 = Math.sqrt(3) / 2;
 
-/** Where a hex goes under the symmetry. */
+/**
+ * Turn a point (in tile units) round the middle by `turns` steps of 60 degrees, the same way
+ * `hexRotate` turns a hex.
+ */
+export function rotatePoint(point: Point, turns: number): Point {
+  const angle = (((turns % 6) + 6) % 6) * (Math.PI / 3);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return { x: point.x * cos - point.y * sin, y: point.x * sin + point.y * cos };
+}
+
+/**
+ * Where a hex goes under the symmetry. A board that has been turned by `turns` steps of 60 degrees
+ * after it was made (see `generateDuelLayout`) is symmetric across the turned line: the turn, then
+ * the mirror, then the turn back.
+ */
 export const hexImage = (
   symmetry: DuelSymmetry,
   axis: DuelAxis = 'points',
+  turns = 0,
 ): ((hex: Hex) => Hex) => {
+  // A half turn is a half turn however the board is turned.
   if (symmetry === 'rotational') return (hex) => hexRotate(hex, 3);
   // The `edges` mirror is the mirror across a line 60 degrees round from the sideways one, which
   // is that mirror followed by a turn of twice that angle (120 degrees, two steps).
-  return axis === 'points' ? hexFlipHorizontal : (hex) => hexRotate(hexFlipVertical(hex), 2);
+  const mirror =
+    axis === 'points' ? hexFlipHorizontal : (hex: Hex) => hexRotate(hexFlipVertical(hex), 2);
+  if (turns % 6 === 0) return mirror;
+  return (hex) => hexRotate(mirror(hexRotate(hex, -turns)), turns);
 };
 
 /** Where a point (in tile units, see `royale/blueprint.ts`) goes under the symmetry. */
 export const pointImage = (
   symmetry: DuelSymmetry,
   axis: DuelAxis = 'points',
+  turns = 0,
 ): ((point: Point) => Point) => {
   if (symmetry === 'rotational') return (p) => ({ x: -p.x, y: -p.y });
-  return axis === 'points'
-    ? (p) => ({ x: -p.x, y: p.y })
-    : (p) => ({ x: -0.5 * p.x + HALF_SQRT3 * p.y, y: HALF_SQRT3 * p.x + 0.5 * p.y });
+  const mirror =
+    axis === 'points'
+      ? (p: Point): Point => ({ x: -p.x, y: p.y })
+      : (p: Point): Point => ({
+          x: -0.5 * p.x + HALF_SQRT3 * p.y,
+          y: HALF_SQRT3 * p.x + 0.5 * p.y,
+        });
+  if (turns % 6 === 0) return mirror;
+  return (p) => rotatePoint(mirror(rotatePoint(p, -turns)), turns);
 };
 
 /** The direction of a mirror line, and the direction at right angles to it (both of length 1). */

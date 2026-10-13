@@ -10,11 +10,9 @@ import {
   corridorPath,
   createFreeForAllMatch,
   createDuelMatch,
-  hexKey,
   parseMatchConfig,
   ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
-  territories,
   type ArchetypeId,
   type GameState,
   type GenerationParams,
@@ -26,9 +24,8 @@ import {
   type RoyaleReport,
   type Blueprint,
 } from '@hexxar/shared';
-import { playerColor } from '../board.js';
 import { emptyGame, type GameView } from '../game.js';
-import { HEX_SIZE, hexCorners, hexToPixel } from '../layout.js';
+import { HEX_SIZE } from '../layout.js';
 import { preview } from '../preview.js';
 
 const randomSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
@@ -49,44 +46,28 @@ const UNIT = HEX_SIZE * Math.sqrt(3);
 const BLUEPRINT_COLOR = 0xffd166;
 const NEUTRAL_CHAMBER_COLOR = 0x9db4ff;
 
-/** What to draw over the board, or `null` for nothing. */
-function overlayFor(
-  game: GameView,
-  blueprint: Blueprint | null,
-  show: { blueprint: boolean; territories: boolean },
-): ((graphics: Graphics) => void) | null {
-  if (!blueprint || !(show.blueprint || show.territories)) return null;
+/** The blueprint, drawn over the board: a circle for each blob and a strip for each corridor. */
+function blueprintOverlay(blueprint: Blueprint | null): ((graphics: Graphics) => void) | null {
+  if (!blueprint) return null;
   return (g) => {
-    if (show.territories) {
-      // Tint every tile with the color of the player whose city is nearest (by walking).
-      const tiles = Object.values(game.tiles);
-      const starts = tiles.filter((tile) => tile.owner !== null);
-      const split = territories(new Map(tiles.map((tile) => [hexKey(tile), tile])), starts);
-      for (const [key, index] of split.owner) {
-        const color = playerColor(game, starts[index]!.owner) ?? 0xffffff;
-        g.poly(hexCorners(hexToPixel(game.tiles[key]!), 1.5)).fill({ color, alpha: 0.4 });
-      }
+    for (const corridor of blueprint.corridors) {
+      const [first, ...rest] = corridorPath(blueprint, corridor);
+      g.moveTo(first!.x * UNIT, first!.y * UNIT);
+      for (const point of rest) g.lineTo(point.x * UNIT, point.y * UNIT);
+      g.stroke({
+        width: Math.max(3, corridor.width * UNIT * 0.3),
+        color: BLUEPRINT_COLOR,
+        alpha: 0.3,
+        cap: 'round',
+        join: 'round',
+      });
     }
-    if (show.blueprint) {
-      for (const corridor of blueprint.corridors) {
-        const [first, ...rest] = corridorPath(blueprint, corridor);
-        g.moveTo(first!.x * UNIT, first!.y * UNIT);
-        for (const point of rest) g.lineTo(point.x * UNIT, point.y * UNIT);
-        g.stroke({
-          width: Math.max(3, corridor.width * UNIT * 0.3),
-          color: BLUEPRINT_COLOR,
-          alpha: 0.3,
-          cap: 'round',
-          join: 'round',
-        });
-      }
-      for (const chamber of blueprint.chambers) {
-        g.circle(chamber.center.x * UNIT, chamber.center.y * UNIT, chamber.radius * UNIT).stroke({
-          width: 2,
-          color: chamber.spawn ? BLUEPRINT_COLOR : NEUTRAL_CHAMBER_COLOR,
-          alpha: 0.9,
-        });
-      }
+    for (const chamber of blueprint.chambers) {
+      g.circle(chamber.center.x * UNIT, chamber.center.y * UNIT, chamber.radius * UNIT).stroke({
+        width: 2,
+        color: chamber.spawn ? BLUEPRINT_COLOR : NEUTRAL_CHAMBER_COLOR,
+        alpha: 0.9,
+      });
     }
   };
 }
@@ -105,6 +86,7 @@ function generate(
   archetype: ArchetypeId | 'random',
   symmetry: DuelSymmetry | 'random',
   axis: DuelAxis | 'random',
+  turns?: number,
 ): Generated {
   const ids = Array.from({ length: players }, (_, i) => `p${i}`);
   try {
@@ -118,6 +100,7 @@ function generate(
       tiles,
       symmetry: symmetry === 'random' ? undefined : symmetry,
       axis: axis === 'random' ? undefined : axis,
+      turns,
       params,
     });
     return { state, report: null, duel };
@@ -300,6 +283,11 @@ export function MapsPage() {
   const [players, setPlayers] = useState(
     Math.min(FFA_MAX_PLAYERS, Math.max(FFA_MIN_PLAYERS, queryNumber('players') ?? 4)),
   );
+  // How far a mirror board is turned, from the address only (`turns=0` to `5`); otherwise random.
+  const [duelTurns] = useState<number | undefined>(() => {
+    const turns = queryNumber('turns');
+    return turns === null ? undefined : turns;
+  });
   const [duelAxis, setDuelAxis] = useState<DuelAxis | 'random'>(
     query.get('axis') === 'points' || query.get('axis') === 'edges'
       ? (query.get('axis') as DuelAxis)
@@ -315,7 +303,6 @@ export function MapsPage() {
     ARCHETYPE_IDS.find((id) => id === query.get('archetype')) ?? 'random',
   );
   const [showBlueprint, setShowBlueprint] = useState(query.has('blueprint'));
-  const [showTerritories, setShowTerritories] = useState(query.has('territories'));
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRunning, setStatsRunning] = useState(false);
 
@@ -351,8 +338,8 @@ export function MapsPage() {
 
   const count = mode === 'duel' ? 2 : players;
   const result = useMemo(
-    () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis),
-    [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis],
+    () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
+    [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
   );
 
   /** Make many boards one slice at a time, so the page stays usable while it works. */
@@ -430,13 +417,9 @@ export function MapsPage() {
     if (game) preview.show(game);
   }, [game]);
   useEffect(() => {
-    preview.overlay(
-      game
-        ? overlayFor(game, blueprint, { blueprint: showBlueprint, territories: showTerritories })
-        : null,
-    );
+    preview.overlay(game ? blueprintOverlay(showBlueprint ? blueprint : null) : null);
     return () => preview.overlay(null);
-  }, [game, blueprint, showBlueprint, showTerritories]);
+  }, [game, blueprint, showBlueprint]);
 
   return (
     <div className="maps-panel">
@@ -544,14 +527,6 @@ export function MapsPage() {
             />
             Show blueprint
           </label>
-          <label className="maps-flag">
-            <input
-              type="checkbox"
-              checked={showTerritories}
-              onChange={(event) => setShowTerritories(event.target.checked)}
-            />
-            Show territories
-          </label>
         </div>
 
         <details className="maps-params">
@@ -619,7 +594,7 @@ export function MapsPage() {
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
           {duel &&
-            ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis})` : ''}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
+            ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis}, turned ${duel.turns * 60}°)` : ''}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
               ` · ${duel.blueprint.chambers.length} blobs`}
           {report &&
             ` · ${report.archetype}, ${report.attempts} ${report.attempts === 1 ? 'attempt' : 'attempts'}` +
