@@ -29,7 +29,7 @@ export function Out({ actions }: { actions: Actions }) {
     <div className="end-card">
       <div className="end-box" role="dialog" aria-label="Defeat">
         <Logo banner="Defeat" tone="lose" />
-        <div className="end-buttons">
+        <div className={quickPlay ? 'end-buttons three' : 'end-buttons'}>
           <button data-sound="ui.back" onClick={actions.leaveRoom}>
             Main menu
           </button>
