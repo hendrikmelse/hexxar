@@ -14,15 +14,19 @@ export const crowding = (players: number): number => Math.min(1, Math.max(0, (pl
  */
 export const spawnRadius = (startDistance: number, crowded = 0): number =>
   Math.min(2, Math.max(1.2, startDistance * 0.4)) +
-  CROWDED_RADIUS * crowded * bowlGrowth(startDistance);
+  CROWDED_RADIUS * crowded * Math.min(0.5, Math.max(0, (startDistance - 3) / 2)) +
+  LARGE_CROWDED_RADIUS * crowded ** 0.6 * Math.min(1, Math.max(0, startDistance - 4));
 /**
- * How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one,
- * on a normal board (start distance 4), times `bowlGrowth`.
+ * How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one:
+ * 0.2 on a normal board (start distance 4), growing evenly with the crowding, and none on small ones.
  */
 const CROWDED_RADIUS = 0.4;
-/** By start distance: none on small boards (3), 0.5 on normal boards (4), and a lot more on large ones (5). */
-const bowlGrowth = (startDistance: number): number =>
-  startDistance <= 4 ? Math.max(0, (startDistance - 3) / 2) : 0.5 + 1.1 * (startDistance - 4);
+/**
+ * On top of that, the bowls of a large board (start distance 5) are this much bigger when fully
+ * crowded. This grows faster than the crowding does (by its 0.6th power), so large boards with 8
+ * or 10 players get a good part of it already.
+ */
+const LARGE_CROWDED_RADIUS = 0.6;
 /** How much further apart (in tiles) the bowls of a fully crowded board are than those of an empty one. */
 const CROWDED_SPACING = 0.6;
 /** Spawn chamber centers are a little further apart than the cities are required to be. */
