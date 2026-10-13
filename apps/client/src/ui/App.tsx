@@ -23,6 +23,8 @@ import { Tutorial } from './Tutorial.js';
 export interface Actions {
   setName(name: string): void;
   quickPlay(mode: RoomMode): void;
+  /** Leave this quick game and look for another of the same mode. */
+  playAgain(mode: RoomMode): void;
   createRoom(): void;
   joinRoom(code: string): void;
   updateRoom(patch: RoomSettingsPatch): void;
