@@ -2,17 +2,20 @@ import type { Rng } from '../../rng.js';
 import { segmentDistance, type Chamber, type Point } from '../blueprint.js';
 
 /**
- * Spawn chambers are all the same size, so no player starts with a roomier bowl than another.
- * Closer cities get smaller bowls, but never less than the city and the ring around it.
- */
-export const spawnRadius = (startDistance: number): number =>
-  Math.min(2, Math.max(1.2, startDistance * 0.4));
-/**
  * How crowded a board is with players, from 0 (6 players or fewer) rising evenly to 1 (12 or
  * more). Crowded boards get narrower corridors and bowls a little further apart, so that with
  * many players the land does not turn into one wide tangle.
  */
 export const crowding = (players: number): number => Math.min(1, Math.max(0, (players - 6) / 6));
+/**
+ * Spawn chambers are all the same size, so no player starts with a roomier bowl than another.
+ * Closer cities get smaller bowls, but never less than the city and the ring around it. Crowded
+ * boards (see `crowding`) get bigger bowls, so the land is bowls and short bridges, not thin spindles.
+ */
+export const spawnRadius = (startDistance: number, crowded = 0): number =>
+  Math.min(2, Math.max(1.2, startDistance * 0.4)) + CROWDED_RADIUS * crowded;
+/** How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one. */
+const CROWDED_RADIUS = 0.4;
 /** How much further apart (in tiles) the bowls of a fully crowded board are than those of an empty one. */
 const CROWDED_SPACING = 0.6;
 /** Spawn chamber centers are a little further apart than the cities are required to be. */

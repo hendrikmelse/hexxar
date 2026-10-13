@@ -92,7 +92,11 @@ function placeSpawns(
     // Snapping to a hex moves a point a little, so the real gap is checked on the hexes.
     if (centers.slice(i + 1).some((b) => distance(a, b) < startDistance)) return null;
   }
-  return centers.map((center) => ({ center, radius: spawnRadius(startDistance), spawn: true }));
+  return centers.map((center) => ({
+    center,
+    radius: spawnRadius(startDistance, crowded),
+    spawn: true,
+  }));
 }
 
 /**
