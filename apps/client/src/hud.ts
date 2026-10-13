@@ -366,7 +366,7 @@ export class Hud {
     this.roomCode.replaceChildren();
     if (code === null) return;
     const label = el('small', '');
-    label.textContent = 'Code';
+    label.textContent = 'Room code';
     const value = el('strong', '');
     value.textContent = code;
     this.roomCode.append(label, value);
@@ -375,7 +375,7 @@ export class Hud {
   /** Show how many people are watching (nothing, when no one is). */
   setSpectators(count: number): void {
     this.tally.hidden = count === 0;
-    this.tally.textContent = `${count} spectating`;
+    this.tally.textContent = `${count} ${count === 1 ? 'spectator' : 'spectators'}`;
   }
 
   /** Say something in a little bubble above the surrender button, for a few seconds. */
