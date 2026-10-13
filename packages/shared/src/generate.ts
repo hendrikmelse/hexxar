@@ -1,17 +1,32 @@
 import { parseMatchConfig, tileRules, type MatchConfig } from './config.js';
-import {
-  hexDistance,
-  hexFlipHorizontal,
-  hexFlipVertical,
-  hexKey,
-  hexNeighbors,
-  hexRotate,
-  hexagonalBoard,
-  type Hex,
-} from './hex.js';
+import { hexDistance, hexKey, hexNeighbors, hexagonalBoard, type Hex } from './hex.js';
 import { createRng, type Rng } from './rng.js';
-import { DEFAULT_GENERATION_PARAMS, withDefaults, type GenerationParams } from './params.js';
-import { randomShape } from './shape.js';
+import {
+  DUEL_TILES,
+  QUAD_TILES,
+  SEXTET_TILES,
+  TRIO_TILES,
+  withDefaults,
+  type GenerationParams,
+} from './params.js';
+import {
+  generateDuelLayout,
+  hexImage,
+  generateQuadLayout,
+  generateSextetLayout,
+  generateTrioLayout,
+  quadHexImages,
+  sextetGroup,
+  trioHexImages,
+  type DuelAxis,
+  type DuelReport,
+  type DuelSymmetry,
+  type QuadReport,
+  type SextetReport,
+  type SextetSymmetry,
+  type TrioReport,
+} from './duel/index.js';
+import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
@@ -57,104 +72,11 @@ function villageFits(
   );
 }
 
-type Transform = (h: Hex) => Hex;
-
-/**
- * - `rotational`: 6-fold rotation. Supports 2, 3 or 6 players.
- * - `mirror`: for 4 players, left-right and top-bottom mirrors (and so a 180 degree
- *   turn). For 2 players, just the left-right mirror, so the two halves of the board
- *   face each other but each half is not itself symmetric. Supports 2 or 4 players.
- */
-export type Symmetry = 'rotational' | 'mirror';
-
 /** Does this board have a tile at every neighbor of the hex? Tiles that do not are on the edge. */
 const edgeTest =
   (tiles: ReadonlySet<string>) =>
   (hex: Hex): boolean =>
     hexNeighbors(hex).some((n) => !tiles.has(hexKey(n)));
-
-export interface SymmetricMatchOptions {
-  readonly players: readonly PlayerId[];
-  readonly seed: number;
-  /** Board radius in hexes. */
-  readonly radius?: number;
-  /** Defaults to `mirror` for 2 and 4 players, `rotational` for 3 and 6. */
-  readonly symmetry?: Symmetry;
-  /** Overrides for the generation settings; anything left out uses its default. */
-  readonly params?: Partial<GenerationParams>;
-  /** Partial match settings; defaults fill the rest. */
-  readonly config?: unknown;
-}
-
-/** Rotations by a whole share of a turn: 180 degrees for 2 players, 120 for 3, 60 for 6. */
-const rotationGroup = (count: number): Transform[] =>
-  Array.from({ length: count }, (_, i) => (h) => hexRotate(h, (i * 6) / count));
-const mirrors: Transform[] = [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
-
-/**
- * A hex on the given ring (distance from the center) in the lower-right quadrant closest to the given angle (0 = right, 90 = down)
- * whose symmetric images are all at least `minDistance` apart, since they all become cities.
- */
-function ringHexNear(
-  ring: number,
-  degrees: number,
-  images: readonly Transform[],
-  minDistance: number,
-): Hex {
-  let best: Hex | null = null;
-  let bestDiff = Infinity;
-  for (const hex of hexagonalBoard(ring)) {
-    if (hexDistance(hex, { q: 0, r: 0 }) !== ring) continue;
-    const x = Math.sqrt(3) * (hex.q + hex.r / 2);
-    const y = 1.5 * hex.r;
-    if (x <= 0 || y <= 0) continue;
-    const spread = images.map((image) => image(hex));
-    const spaced = spread.every((a, i) =>
-      spread.slice(i + 1).every((b) => hexDistance(a, b) >= minDistance),
-    );
-    if (!spaced) continue;
-    const diff = Math.abs((Math.atan2(y, x) * 180) / Math.PI - degrees);
-    if (diff < bestDiff - 1e-9) {
-      best = hex;
-      bestDiff = diff;
-    }
-  }
-  if (!best) throw new Error('board too small');
-  return best;
-}
-
-/** The terrain symmetry group, and where each player starts. */
-function layout(
-  count: number,
-  symmetry: Symmetry,
-  radius: number,
-  params: GenerationParams,
-): { terrain: Transform[]; starts: Hex[] } {
-  const inset = params.startInset;
-  if (symmetry === 'rotational') {
-    if (![2, 3, 6].includes(count)) throw new Error('rotational boards support 2, 3 or 6 players');
-    const corner: Hex = { q: radius - inset, r: 0 };
-    const stride = 6 / count;
-    return {
-      terrain: rotationGroup(count),
-      starts: Array.from({ length: count }, (_, i) => hexRotate(corner, i * stride)),
-    };
-  }
-  if (count === 2) {
-    // Left and right corners, mirror images across the vertical axis only.
-    const start: Hex = { q: radius - inset, r: 0 };
-    return {
-      terrain: [(h) => h, hexFlipHorizontal],
-      starts: [start, hexFlipHorizontal(start)],
-    };
-  }
-  if (count === 4) {
-    const start = ringHexNear(radius - inset, 45, mirrors, params.minCityDistance);
-    const [, flipV, flipH, turn] = mirrors as [Transform, Transform, Transform, Transform];
-    return { terrain: mirrors, starts: [start, flipV(start), flipH(start), turn(start)] };
-  }
-  throw new Error('mirror boards support 2 or 4 players');
-}
 
 /**
  * Decide which tiles are cities and villages. Everything else is farmland.
@@ -237,62 +159,255 @@ function buildTiles(
   return tiles;
 }
 
+export interface DuelMatchOptions {
+  /** Exactly two players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal duel size. */
+  readonly tiles?: number;
+  /** Defaults to one of the two, picked by the seed. */
+  readonly symmetry?: DuelSymmetry;
+  /** Which line a mirror board is mirrored across; by default one of the two, picked by the seed. */
+  readonly axis?: DuelAxis;
+  /** How far a mirror board is turned, in steps of 60 degrees (0 to 5); by default random. */
+  readonly turns?: number;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
 /**
- * A fair board for 2, 3, 4 or 6 players (5 is unsupported). The terrain is
- * symmetric under the chosen group and players start on matching spots, so
- * every player's surroundings are identical up to rotation or reflection.
+ * A fair board for two players: made of blobs (see `duel/`), and exactly symmetric, either
+ * mirrored left to right or turned half way round. Every tile has a twin of the same type, and the
+ * two players start on twin cities, so each sees the same board from their side.
  */
-export function createSymmetricMatch(options: SymmetricMatchOptions): {
+export function createDuelMatch(options: DuelMatchOptions): {
   state: GameState;
   config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  duel: DuelReport;
 } {
-  const { players, seed, radius = 6 } = options;
-  // Two players get a mirror or a half turn, picked by the seed (so the same seed is the same
-  // board, and different games get different kinds).
-  const twoPlayerSymmetry: Symmetry =
-    createRng(seed ^ 0x2b1d).next() < 0.5 ? 'mirror' : 'rotational';
-  const symmetry =
-    options.symmetry ??
-    (players.length === 2 ? twoPlayerSymmetry : players.length === 4 ? 'mirror' : 'rotational');
+  const { players, seed, tiles = DUEL_TILES.normal } = options;
+  if (players.length !== 2) throw new Error('a duel is for exactly 2 players');
+  if (new Set(players).size !== 2) throw new Error('player ids must be unique');
+  if (tiles < 20) throw new Error('a duel board needs at least 20 tiles');
+  // The same seed gives the same board, and different games get both kinds.
+  const symmetry: DuelSymmetry =
+    options.symmetry ?? (createRng(seed ^ 0x2b1d).next() < 0.5 ? 'mirror' : 'rotational');
   const config = parseMatchConfig(options.config);
-  if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
-  if (radius < 3) throw new Error('radius must be at least 3');
-
   const params = withDefaults(options.params);
-  const { terrain, starts } = layout(players.length, symmetry, radius, params);
-  const startOwners = new Map<string, PlayerId>();
-  starts.forEach((hex, i) => {
-    const player = players[i];
-    if (player === undefined) return;
-    if (startOwners.has(hexKey(hex))) throw new Error('start positions overlap');
-    startOwners.set(hexKey(hex), player);
-  });
-  // Every image of a start hex is a city, so no player sits next to a better spot than another.
-  const cityOrbit = new Set(terrain.map((t) => hexKey(t(starts[0] as Hex))));
 
-  // Group the board into symmetry orbits. Every hex in an orbit gets the same tile type,
-  // which is what keeps the board fair.
-  // The outline is irregular, with a rough coast and lakes, but keeps the board's symmetry.
-  const ordered = randomShape({
-    radius,
-    rng: createRng(seed ^ 0x5eed5eed),
-    group: terrain,
-    protect: starts,
+  const duel = generateDuelLayout({
+    seed,
+    symmetry,
+    axis: options.axis,
+    turns: options.turns,
+    targetTiles: tiles,
     params,
-  }).sort((a, b) => a.q - b.q || a.r - b.r);
+  });
+  return {
+    config,
+    duel: duel.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: duel.hexes,
+      starts: duel.starts,
+      images: [hexImage(symmetry, duel.report.axis, duel.report.turns)],
+      config,
+      params,
+    }),
+  };
+}
+
+export interface TrioMatchOptions {
+  /** Exactly three players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal size for three players. */
+  readonly tiles?: number;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
+/**
+ * A fair board for three players: made of blobs (see `duel/`), and exactly symmetric under turns
+ * of 120 degrees (there is no mirror version, which would not treat three players alike). Every
+ * tile has two twins of the same type, one a third of a turn round and one two thirds, and the three
+ * players start on twin cities, so each sees the same board from their side.
+ */
+export function createTrioMatch(options: TrioMatchOptions): {
+  state: GameState;
+  config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  trio: TrioReport;
+} {
+  const { players, seed, tiles = TRIO_TILES.normal } = options;
+  if (players.length !== 3) throw new Error('a three-player board is for exactly 3 players');
+  if (new Set(players).size !== 3) throw new Error('player ids must be unique');
+  if (tiles < 30) throw new Error('a three-player board needs at least 30 tiles');
+  const config = parseMatchConfig(options.config);
+  const params = withDefaults(options.params);
+  const trio = generateTrioLayout({ seed, targetTiles: tiles, params });
+  return {
+    config,
+    trio: trio.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: trio.hexes,
+      starts: trio.starts,
+      images: trioHexImages,
+      config,
+      params,
+    }),
+  };
+}
+
+export interface QuadMatchOptions {
+  /** Exactly four players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal size for four players. */
+  readonly tiles?: number;
+  /** How far the finished board is turned, in steps of 60 degrees (0 to 2); by default random. */
+  readonly turns?: number;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
+/**
+ * A fair board for four players: made of blobs (see `duel/`), and exactly symmetric under two
+ * mirrors at right angles and the half turn they make together. Every tile has three twins of the
+ * same type, one in each of the other quarters, and the four players start on twin cities, so each
+ * sees the same board from their side.
+ */
+export function createQuadMatch(options: QuadMatchOptions): {
+  state: GameState;
+  config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  quad: QuadReport;
+} {
+  const { players, seed, tiles = QUAD_TILES.normal } = options;
+  if (players.length !== 4) throw new Error('a four-player board is for exactly 4 players');
+  if (new Set(players).size !== 4) throw new Error('player ids must be unique');
+  if (tiles < 40) throw new Error('a four-player board needs at least 40 tiles');
+  const config = parseMatchConfig(options.config);
+  const params = withDefaults(options.params);
+  const quad = generateQuadLayout({ seed, targetTiles: tiles, turns: options.turns, params });
+  return {
+    config,
+    quad: quad.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: quad.hexes,
+      starts: quad.starts,
+      images: quadHexImages(quad.report.turns),
+      config,
+      params,
+    }),
+  };
+}
+
+export interface SextetMatchOptions {
+  /** Exactly six players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal size for six players. */
+  readonly tiles?: number;
+  /** Defaults to one of the two, picked by the seed. */
+  readonly symmetry?: SextetSymmetry;
+  /** The kind of line of a mirror board; by default one of the two, picked by the seed. */
+  readonly axis?: DuelAxis;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
+/**
+ * A fair board for six players: made of blobs (see `duel/`), and exactly symmetric in one of the
+ * two ways a hex board can have six symmetries: turns by a sixth of a turn, or turns by a third of
+ * a turn together with a mirror. Every tile has five twins of the same type (or fewer, for a tile that
+ * a mirror leaves in place), and the six players start on twin cities, so each sees the same board
+ * from their side.
+ */
+export function createSextetMatch(options: SextetMatchOptions): {
+  state: GameState;
+  config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  sextet: SextetReport;
+} {
+  const { players, seed, tiles = SEXTET_TILES.normal } = options;
+  if (players.length !== 6) throw new Error('a six-player board is for exactly 6 players');
+  if (new Set(players).size !== 6) throw new Error('player ids must be unique');
+  if (tiles < 60) throw new Error('a six-player board needs at least 60 tiles');
+  // The same seed gives the same board, and different games get both kinds.
+  const symmetry: SextetSymmetry =
+    options.symmetry ?? (createRng(seed ^ 0x2b1d).next() < 0.5 ? 'rotational' : 'mirror');
+  const config = parseMatchConfig(options.config);
+  const params = withDefaults(options.params);
+  const sextet = generateSextetLayout({
+    seed,
+    symmetry,
+    axis: options.axis,
+    targetTiles: tiles,
+    params,
+  });
+  return {
+    config,
+    sextet: sextet.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: sextet.hexes,
+      starts: sextet.starts,
+      images: sextetGroup(symmetry, sextet.report.axis).hexMaps,
+      config,
+      params,
+    }),
+  };
+}
+
+/**
+ * The match state for a symmetric board. The tiles are grouped into orbits (a tile and its twins,
+ * or a tile alone if it is its own twin) and every tile in an orbit gets the same type, which is
+ * what keeps the board fair. The starting cities are all twins of one another.
+ */
+function symmetricState(input: {
+  players: readonly PlayerId[];
+  seed: number;
+  hexes: readonly Hex[];
+  starts: readonly Hex[];
+  /** Where each tile goes under every symmetry except doing nothing. */
+  images: readonly ((hex: Hex) => Hex)[];
+  config: MatchConfig;
+  params: GenerationParams;
+}): GameState {
+  const { players, seed, hexes: ordered, starts, images, config, params } = input;
+  const startOwners = new Map<string, PlayerId>();
+  starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
+  // Every twin of a start tile is a starting city.
+  const cityOrbit = new Set(starts.map(hexKey));
+
   const present = new Set(ordered.map(hexKey));
   const orbits: Hex[][] = [];
   const grouped = new Set<string>();
   for (const hex of ordered) {
     if (grouped.has(hexKey(hex))) continue;
-    const orbit: Hex[] = [];
-    for (const transform of terrain) {
-      const image = transform(hex);
-      if (grouped.has(hexKey(image)) || !present.has(hexKey(image))) continue;
-      grouped.add(hexKey(image));
-      orbit.push(image);
+    const orbit: Hex[] = [hex];
+    for (const image of images) {
+      const twin = image(hex);
+      if (!orbit.some((member) => hexKey(member) === hexKey(twin))) orbit.push(twin);
     }
-    orbits.push(orbit);
+    for (const member of orbit) grouped.add(hexKey(member));
+    if (orbit.every((member) => present.has(hexKey(member)))) orbits.push(orbit);
   }
 
   const others = orbits.filter((orbit) => !orbit.some((h) => cityOrbit.has(hexKey(h))));
@@ -306,132 +421,53 @@ export function createSymmetricMatch(options: SymmetricMatchOptions): {
     params,
     rng: createRng(seed),
   });
-  const tiles = buildTiles(ordered, types, startOwners, config);
-
   return {
-    config,
-    state: { tick: 0, players: [...players], eliminated: [], winner: null, tiles },
+    tick: 0,
+    players: [...players],
+    eliminated: [],
+    winner: null,
+    tiles: buildTiles(ordered, types, startOwners, config),
   };
 }
-
-/**
- * How many tiles each player gets on a battle royale board: as few as keep every player room
- * of their own. Starting cities end up about 6 tiles apart, with farmland for a full ring
- * around each city and space for a few villages.
- */
-export function recommendedRadius(
-  players: number,
-  tilesPerPlayer: number = DEFAULT_GENERATION_PARAMS.tilesPerPlayer,
-): number {
-  // 3r(r+1) + 1 tiles on a board of radius r.
-  return Math.max(MIN_FFA_RADIUS, Math.ceil(Math.sqrt((players * tilesPerPlayer) / 3)));
-}
-
-const MIN_FFA_RADIUS = 5;
 
 export interface FreeForAllOptions {
   readonly players: readonly PlayerId[];
   readonly seed: number;
-  /** Board radius in hexes; by default one that suits the number of players. */
-  readonly radius?: number;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
+  /** Which kind of board to make; by default one picked by the seed. */
+  readonly archetype?: ArchetypeId | 'random';
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
 }
 
 /**
- * Pick `count` starting hexes from `candidates` (the tiles that are not on the edge) that are
- * well spread out: many random attempts at "put each next player as far from the others as it fits",
- * keeping the attempt whose closest pair of players is furthest apart.
- */
-function spreadStarts(
-  count: number,
-  candidates: readonly Hex[],
-  rng: Rng,
-  minDistance: number,
-): Hex[] {
-  if (candidates.length < count) throw new Error('the board is too small for that many players');
-  let best: Hex[] = [];
-  let bestSpacing = -1;
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const chosen: Hex[] = [candidates[rng.int(candidates.length)]!];
-    let spacing = Infinity;
-    while (chosen.length < count) {
-      let pick: Hex | null = null;
-      let pickGap = -1;
-      for (let i = 0; i < 24; i++) {
-        const hex = candidates[rng.int(candidates.length)]!;
-        const gap = Math.min(...chosen.map((other) => hexDistance(hex, other)));
-        if (gap > pickGap) {
-          pick = hex;
-          pickGap = gap;
-        }
-      }
-      chosen.push(pick!);
-      spacing = Math.min(spacing, pickGap);
-    }
-    if (spacing > bestSpacing) {
-      best = chosen;
-      bestSpacing = spacing;
-    }
-  }
-  if (bestSpacing < minDistance) throw new Error('the board is too small for that many players');
-  return best;
-}
-
-/**
- * The board's hexes and where everyone starts. A random shape might leave too little room for
- * everyone, so in that case another shape is tried.
- */
-function chooseFreeForAllLayout(
-  count: number,
-  radius: number,
-  params: GenerationParams,
-  rng: Rng,
-): { ordered: Hex[]; present: Set<string>; starts: Hex[] } {
-  for (let attempt = 0; ; attempt++) {
-    const ordered = randomShape({ radius, rng, group: [(h) => h], protect: [], params }).sort(
-      (a, b) => a.q - b.q || a.r - b.r,
-    );
-    const present = new Set(ordered.map(hexKey));
-    const isEdge = edgeTest(present);
-    try {
-      const starts = shuffle(
-        spreadStarts(
-          count,
-          ordered.filter((hex) => !isEdge(hex)),
-          rng,
-          params.minCityDistance,
-        ),
-        rng,
-      );
-      return { ordered, present, starts };
-    } catch (error) {
-      if (attempt >= 20) throw error;
-    }
-  }
-}
-
-/**
- * A battle royale board: random terrain with no symmetry, and starting cities spread out as
- * evenly as the board allows. The same terrain rules apply as on symmetric boards.
- * Players are assigned to the starting cities at random.
+ * A battle royale board: random terrain with no symmetry, drawn from a blueprint of rooms and
+ * passages (see `royale/`), with a starting city in every spawn chamber. Cities are never on
+ * the edge and never closer than `minStartDistance`. The same terrain rules apply as on
+ * symmetric boards. Players are assigned to the starting cities at random.
  */
 export function createFreeForAllMatch(options: FreeForAllOptions): {
   state: GameState;
   config: MatchConfig;
+  report: RoyaleReport;
 } {
   const { players, seed } = options;
   const config = parseMatchConfig(options.config);
   if (players.length < 2) throw new Error('a match needs at least 2 players');
   if (new Set(players).size !== players.length) throw new Error('player ids must be unique');
   const params = withDefaults(options.params);
-  const radius = options.radius ?? recommendedRadius(players.length, params.tilesPerPlayer);
-  if (radius < MIN_FFA_RADIUS) throw new Error(`radius must be at least ${MIN_FFA_RADIUS}`);
 
   const rng = createRng(seed);
-  const { ordered, present, starts } = chooseFreeForAllLayout(players.length, radius, params, rng);
+  const layout = generateRoyaleLayout({
+    players: players.length,
+    seed,
+    params,
+    archetype: options.archetype,
+  });
+  const ordered = layout.hexes;
+  const present = new Set(ordered.map(hexKey));
+  const starts = shuffle(layout.starts, rng);
   const startOwners = new Map<string, PlayerId>();
   starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
 
@@ -442,12 +478,13 @@ export function createFreeForAllMatch(options: FreeForAllOptions): {
     others,
     isEdgeHex: edgeTest(present),
     totalTiles: ordered.length,
-    extraCities: params.freeForAllCities,
+    extraCities: false,
     params,
     rng,
   });
   return {
     config,
+    report: layout.report,
     state: {
       tick: 0,
       players: [...players],

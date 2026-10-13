@@ -10,7 +10,12 @@ export type Cover =
       /** Set when this tile is the heart of a big cloud: the way toward the middle of its hidden neighbors. */
       swell: Point | null;
     }
-  | { kind: 'far'; away: Point };
+  | {
+      kind: 'far';
+      away: Point;
+      /** For each partly covered neighbor this tile draws a bridge of cloud to: the way to that tile. */
+      links: readonly Point[];
+    };
 
 /**
  * Do the clouds over two adjacent hidden tiles merge into one bigger cloud? Settled by the pair of
@@ -157,7 +162,7 @@ export class Clouds {
   private signatureOf(cover: Cover): string {
     return cover.kind === 'hidden'
       ? `hidden:${cover.joins.map((j) => `${j.x.toFixed(1)},${j.y.toFixed(1)}`).join(';')}:${cover.swell ? `${cover.swell.x.toFixed(1)},${cover.swell.y.toFixed(1)}` : ''}`
-      : `far:${cover.away.x.toFixed(2)},${cover.away.y.toFixed(2)}`;
+      : `far:${cover.away.x.toFixed(2)},${cover.away.y.toFixed(2)}:${cover.links.map((l) => `${l.x.toFixed(1)},${l.y.toFixed(1)}`).join(';')}`;
   }
 
   private build(q: number, r: number, center: Point, cover: Cover, signature: string): Bank {
@@ -231,19 +236,35 @@ export class Clouds {
       }
     } else {
       // Pushed to the far side of the tile, leaving the edge nearest the player in view.
-      const cx = center.x + cover.away.x * 11;
-      const cy = center.y + cover.away.y * 11;
-      add(cx, cy, 0.32 + noise(q, r, 1) * 0.05, 0);
+      const cx = center.x + cover.away.x * 12;
+      const cy = center.y + cover.away.y * 12;
+      add(cx, cy, 0.27 + noise(q, r, 1) * 0.045, 0);
       for (let i = 0; i < 5; i++) {
         const angle = (Math.PI * 2 * i) / 5 + noise(q, r, 2) * 1.5;
         const reach = 6 + noise(q, r, i + 3) * 3;
         add(
           cx + Math.cos(angle) * reach,
           cy + Math.sin(angle) * reach,
-          0.27 + noise(q, r, i + 30) * 0.07,
+          0.23 + noise(q, r, i + 30) * 0.06,
           i + 1,
         );
       }
+      // Puffs across to each partly covered neighbor, so a line of them reads as one band of
+      // cloud along the edge of what is seen, not a row of dots.
+      cover.links.forEach((way, j) => {
+        const length = Math.hypot(way.x, way.y) || 1;
+        // Sideways of the bridge, so the puffs wobble off the straight line.
+        const side = { x: -way.y / length, y: way.x / length };
+        for (const [k, t] of [0.22, 0.4, 0.6, 0.78].entries()) {
+          const wobble = (noise(q, r, j * 5 + k + 130) - 0.5) * 11;
+          add(
+            cx + way.x * t + side.x * wobble,
+            cy + way.y * t + side.y * wobble,
+            0.29 + noise(q, r, j * 5 + k + 120) * 0.1,
+            40 + j * 5 + k,
+          );
+        }
+      });
     }
     return { puffs, signature, alpha: 1, target: 1 };
   }

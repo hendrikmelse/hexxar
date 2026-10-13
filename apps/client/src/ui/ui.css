@@ -2224,17 +2224,28 @@
   color: #8a93a8;
 }
 
-/* The dev map previewer (/?maps) */
-#ui .maps-page {
-  align-items: flex-start;
+/* The dev map previewer (/?maps): the game's own board fills the screen, with this panel beside it. */
+#ui .maps-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  /* The same as PREVIEW_PANEL_WIDTH in preview.ts, which the board keeps clear when fitting. */
+  width: min(380px, 100%);
+  box-sizing: border-box;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  pointer-events: auto;
+  background: rgba(18, 20, 26, 0.94);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 #ui .maps-wrap {
-  width: min(1100px, 100%);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-bottom: 40px;
+  padding-bottom: 24px;
 }
 
 #ui .maps-wrap header {
@@ -2247,6 +2258,11 @@
   margin: 0;
 }
 
+#ui .maps-wrap header a {
+  color: #8fb8ff;
+  font-size: 13px;
+}
+
 #ui .maps-controls {
   display: flex;
   flex-wrap: wrap;
@@ -2254,9 +2270,9 @@
   gap: 12px 20px;
 }
 
-#ui .maps-choice {
-  display: flex;
-  gap: 6px;
+/* The option bars are the private room's, and span the panel the way they do there, so every option is the same width */
+#ui .maps-controls .field.stack {
+  flex: 1 0 100%;
 }
 
 #ui .maps-players {
@@ -2264,13 +2280,7 @@
   align-items: center;
   gap: 10px;
   color: #c9d0de;
-}
-
-#ui .maps-board {
-  width: 100%;
-  max-height: 78vh;
-  background: #0e1c27;
-  border-radius: 12px;
+  flex: 1 0 100%;
 }
 
 #ui .maps-params {
@@ -2326,6 +2336,20 @@
 
 #ui .maps-actions {
   margin-top: 12px;
+}
+
+#ui .maps-stats {
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #c9d0de;
+}
+
+#ui .maps-stats th {
+  padding: 3px 16px 3px 0;
+  text-align: left;
+  font-weight: 600;
+  color: #8f9ab0;
 }
 
 #ui .maps-changes {

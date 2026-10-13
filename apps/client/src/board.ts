@@ -126,7 +126,7 @@ const LEFT_HUD_WIDTH = 296;
 
 export function playerColor(game: GameView, owner: string | null): number | null {
   if (owner === null) return null;
-  const index = Math.max(0, game.players.indexOf(owner));
+  const index = game.colors[owner] ?? Math.max(0, game.players.indexOf(owner));
   const palette = PLAYER_COLORS[index];
   if (palette !== undefined) return palette;
   // Beyond the hand-picked palette (big battle royales), space hues around the color wheel.
@@ -238,6 +238,8 @@ export class Board {
   private readonly coastLayer = new Graphics();
   private readonly tileLayer = new Container();
   private readonly fogLayer = new Container();
+  /** Drawn over the tiles by whoever asks (the map previewer), under everything the game draws. */
+  private readonly overlayLayer = new Graphics();
   private readonly clouds: Clouds;
   /** What the player can see (`null`: everything), as of the last time it was worked out. */
   private vision: Map<string, Vision> | null = null;
@@ -251,6 +253,8 @@ export class Board {
   private readonly pendingLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
   private bottomInset = 0;
+  /** Room the page keeps on the left when fitting the board; `null` is the HUD's column. */
+  private leftInset: number | null = null;
   private readonly pointerLayer = new Graphics();
   /** The tiles a lesson's demonstration pointer drags across, and when it started. */
   private pointerPath: readonly Hex[] = [];
@@ -282,6 +286,7 @@ export class Board {
       this.coastLayer,
       this.tileLayer,
       this.fogLayer,
+      this.overlayLayer,
       this.highlightLayer,
       this.ringFlash,
       this.queueLayer,
@@ -337,6 +342,10 @@ export class Board {
 
   setAll(game: GameView): void {
     const fresh = this.views.size === 0;
+    // A different set of tiles is a different board, even when one was showing: its old fog goes.
+    const sameBoard =
+      this.views.size === Object.keys(game.tiles).length &&
+      Object.keys(game.tiles).every((key) => this.views.has(key));
     this.pops.clear();
     this.ringAnims.clear();
     this.clearFlights();
@@ -344,11 +353,11 @@ export class Board {
     this.views.clear();
     // A whole new board starts with its fog in place. A fresh look at the same board (the match
     // ended, or someone surrendered, and everything is revealed) keeps the clouds, so they can fade.
-    if (fresh) this.clouds.clear();
+    if (fresh || !sameBoard) this.clouds.clear();
     this.drawCoast(game);
     this.vision = visionFor(game);
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
-    this.coverTiles(game, Object.keys(game.tiles), fresh);
+    this.coverTiles(game, Object.keys(game.tiles), fresh || !sameBoard);
     if (fresh && this.views.size > 0) this.fitToBoard();
   }
 
@@ -556,7 +565,16 @@ export class Board {
           ny += toward.y - center.y;
         }
         const length = Math.hypot(nx, ny) || 1;
-        cover = { kind: 'far', away: { x: -nx / length, y: -ny / length } };
+        // Bridge to each neighbor that is partly covered too, drawn by one of the two tiles.
+        const links: Point[] = [];
+        for (const [dq, dr] of EDGE_NEIGHBORS) {
+          const next = { q: tile.q + dq, r: tile.r + dr };
+          if (this.levelOf(hexKey(next)) !== 'far' || !game.tiles[hexKey(next)]) continue;
+          if (!drawsMerge(tile, next)) continue;
+          const there = hexToPixel(next);
+          links.push({ x: there.x - center.x, y: there.y - center.y });
+        }
+        cover = { kind: 'far', away: { x: -nx / length, y: -ny / length }, links };
       }
       this.clouds.cover(key, tile.q, tile.r, center, cover, instant);
     }
@@ -1542,13 +1560,24 @@ export class Board {
     this.bottomInset = pixels;
   }
 
+  /** Keep this many pixels at the left of wide screens clear when fitting the board (the previewer's panel). */
+  setLeftInset(pixels: number | null): void {
+    this.leftInset = pixels;
+  }
+
+  /** Draw something over the tiles, replacing what was drawn before; `null` clears it. */
+  setOverlay(draw: ((graphics: Graphics) => void) | null): void {
+    this.overlayLayer.clear();
+    draw?.(this.overlayLayer);
+  }
+
   /** Zoom and center so the whole board is visible. */
   fitToBoard(): void {
     const bounds = this.tileLayer.getLocalBounds();
     const { width, height: fullHeight } = this.app.screen;
     const height = fullHeight - this.bottomInset;
     // On wide screens the HUD's left column takes up room, so the board is centered in the rest.
-    const left = width >= WIDE_SCREEN ? LEFT_HUD_WIDTH : 0;
+    const left = width >= WIDE_SCREEN ? (this.leftInset ?? LEFT_HUD_WIDTH) : 0;
     const free = width - left;
     const scale = Math.min(
       MAX_ZOOM,

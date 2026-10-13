@@ -200,6 +200,11 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
     serverTime: z.number(),
     /** Every player's strength, for the scoreboard. Fog of war does not hide this. */
     scores: z.array(playerScoreSchema),
+    /**
+     * Which color each player has (an index into the palette). A room keeps a person's color from
+     * match to match; without it, colors go by the order of `state.players`.
+     */
+    colors: z.record(z.string(), z.number().int().nonnegative()).optional(),
   }),
   /** One tick resolved. Only tiles that changed are included. */
   z.object({

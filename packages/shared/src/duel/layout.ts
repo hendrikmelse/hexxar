@@ -1,0 +1,489 @@
+import { hexKey, hexNeighbors, hexRotate, type Hex } from '../hex.js';
+import type { GenerationParams } from '../params.js';
+import { createRng, type Rng } from '../rng.js';
+import { pointToHex, type Blueprint } from '../royale/blueprint.js';
+import { components, landNeighborCount, type Land } from '../royale/grid.js';
+import { createNoise, type Noise } from '../royale/noise.js';
+import { rasterize } from '../royale/rasterize.js';
+import { buildDuelBlueprint } from './blueprint.js';
+import {
+  hexImage,
+  quadHexImages,
+  rotatePoint,
+  trioHexImages,
+  type DuelAxis,
+  type DuelSymmetry,
+} from './symmetry.js';
+import { buildGroupBlueprint, sextetGroup, type SextetSymmetry } from './group.js';
+import { buildQuadBlueprint } from './quad.js';
+import { buildTrioBlueprint } from './trio.js';
+
+/** Why a board that was drawn was thrown away. */
+export type DuelRejection = 'blueprint' | 'split' | 'area' | 'symmetry' | 'starts';
+
+export interface DuelReport {
+  readonly symmetry: DuelSymmetry;
+  /** The line of a mirror board (`points` for half-turn boards, which have none). */
+  readonly axis: DuelAxis;
+  /**
+   * How many steps of 60 degrees a mirror board was turned after it was made (0 to 5), so that its
+   * line can be any of the six hex mirror lines. The blueprint is turned with it. Half-turn boards
+   * are not turned.
+   */
+  readonly turns: number;
+  /** How many boards were drawn before one passed (1 means the first did). */
+  readonly attempts: number;
+  /** How many boards were thrown away, and why. */
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface DuelLayout {
+  readonly hexes: Hex[];
+  /** The two starting hexes: each is the other's image under the symmetry. */
+  readonly starts: [Hex, Hex];
+  readonly report: DuelReport;
+}
+
+/** How a board for three players was made. */
+export interface TrioReport {
+  readonly attempts: number;
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface TrioLayout {
+  readonly hexes: Hex[];
+  /** The three starting hexes: each is the one before it turned by 120 degrees. */
+  readonly starts: [Hex, Hex, Hex];
+  readonly report: TrioReport;
+}
+
+/** How a board for four players was made. */
+export interface QuadReport {
+  /**
+   * How many steps of 60 degrees the finished board was turned (0 to 2: turning by 180 degrees
+   * changes nothing, so those are the three ways the two mirror lines can lie). The blueprint is
+   * turned with it.
+   */
+  readonly turns: number;
+  readonly attempts: number;
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface QuadLayout {
+  readonly hexes: Hex[];
+  /** The four starting hexes, one in each quarter: the first, then its image across the vertical
+   *  line, across the horizontal line, and through the middle (before any turn). */
+  readonly starts: [Hex, Hex, Hex, Hex];
+  readonly report: QuadReport;
+}
+
+/** How a board for six players was made. */
+export interface SextetReport {
+  readonly symmetry: SextetSymmetry;
+  /** The kind of line a mirror board's three mirror lines are (`points` for the other kind of board). */
+  readonly axis: DuelAxis;
+  readonly attempts: number;
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface SextetLayout {
+  readonly hexes: Hex[];
+  /** The six starting hexes: the first, then its image under each of the other symmetries. */
+  readonly starts: [Hex, Hex, Hex, Hex, Hex, Hex];
+  readonly report: SextetReport;
+}
+
+const MAX_ATTEMPTS = 200;
+/** The layout is stretched (up to this many times) until the land is roughly the wanted area. */
+const SCALE_ITERATIONS = 8;
+const SCALE_TOLERANCE = 0.2;
+/** Then the land is grown or shrunk a little (this many times at most) to get it right. */
+const OFFSET_STEPS = 9;
+const OFFSET_LIMIT = 1.5;
+const AREA_TOLERANCE = 0.03;
+/** A board further than this from the target area is thrown away. */
+const AREA_LIMIT = 0.08;
+
+/**
+ * Tidy a symmetric board: fill one-tile bays and trim one-tile spurs. Each step looks at the
+ * board as it was before the step (never tile by tile), so the result does not depend on the order
+ * tiles are visited in, and a symmetric board stays symmetric.
+ */
+function tidy(land: Land, protectedKeys: ReadonlySet<string>): void {
+  for (let pass = 0; pass < 3; pass++) {
+    const bays = new Map<string, Hex>();
+    for (const hex of land.values()) {
+      for (const n of hexNeighbors(hex)) if (!land.has(hexKey(n))) bays.set(hexKey(n), n);
+    }
+    const filled = [...bays].filter(([, hex]) => landNeighborCount(land, hex) >= 5);
+    for (const [key, hex] of filled) land.set(key, hex);
+    const spurs = [...land].filter(
+      ([key, hex]) => !protectedKeys.has(key) && landNeighborCount(land, hex) <= 1,
+    );
+    for (const [key] of spurs) land.delete(key);
+  }
+}
+
+/**
+ * The symmetry of a board: how the other parts of it map onto the first. A duel board has one other
+ * part (a mirror or a half turn), a board for three has two (turns of 120 and 240 degrees). The
+ * starting blobs are the first chambers of a blueprint, in the same order: the first, then its
+ * image under each of these.
+ */
+type Images = readonly ((hex: Hex) => Hex)[];
+
+/** Lay out a blueprint of the given size, stretched out to the given scale. */
+type Build = (input: { size: number; scale: number; rng: Rng }) => Blueprint | null;
+
+interface Rendered {
+  readonly land: Land;
+  readonly starts: Hex[];
+}
+
+/**
+ * Draw a blueprint onto hexes, symmetrically: the land is what the noisy drawing gives and its
+ * images under the symmetry, tidied, and only the piece with the starts is kept. `null` if the
+ * starts are not in one piece.
+ */
+function render(
+  blueprint: Blueprint,
+  images: Images,
+  noise: Noise,
+  params: GenerationParams,
+  offset: number,
+): Rendered | null {
+  const raster = rasterize(blueprint, {
+    noise,
+    coastRoughness: params.coastRoughness,
+    coastDetail: params.coastDetail,
+    warpStrength: params.warpStrength,
+    offset,
+  });
+  // The noise is not symmetric, so the land is the drawn land together with its images.
+  const land: Land = new Map(raster.land);
+  for (const hex of raster.land.values()) {
+    for (const image of images) {
+      const moved = image(hex);
+      land.set(hexKey(moved), moved);
+    }
+  }
+  tidy(land, raster.protectedKeys);
+
+  const starts = blueprint.chambers.slice(0, images.length + 1).map((c) => pointToHex(c.center));
+  const piece = components(land).find((keys) => keys.includes(hexKey(starts[0]!)));
+  if (!piece || starts.some((start) => !piece.includes(hexKey(start)))) return null;
+  const keep = new Set(piece);
+  for (const key of [...land.keys()]) if (!keep.has(key)) land.delete(key);
+  return { land, starts };
+}
+
+function drawBoard(
+  images: Images,
+  build: Build,
+  targetTiles: number,
+  params: GenerationParams,
+  seed: number,
+): { land: Land; blueprint: Blueprint; starts: Hex[] } | DuelRejection {
+  const rng = createRng(seed);
+  const noise = createNoise(rng.int(0x7fffffff));
+  const layoutSeed = rng.int(0x7fffffff);
+  const size = Math.sqrt((targetTiles * (Math.sqrt(3) / 2)) / Math.PI);
+  const off = (rendered: Rendered): number => Math.abs(rendered.land.size / targetTiles - 1);
+
+  // Stretch the layout until the area is in the right region. Blob sizes and counts come from
+  // `size`, so only how far apart the blobs are changes, and the area follows smoothly.
+  let scale = size;
+  let drawn: { blueprint: Blueprint; rendered: Rendered } | null = null;
+  let failure: DuelRejection = 'blueprint';
+  for (let i = 0; i < SCALE_ITERATIONS; i++) {
+    const blueprint = build({ size, scale, rng: createRng(layoutSeed) });
+    if (!blueprint) {
+      failure = 'blueprint';
+      scale *= 1.1;
+      continue;
+    }
+    const rendered = render(blueprint, images, noise, params, 0);
+    if (!rendered) {
+      failure = 'split';
+      scale *= 1.1;
+      continue;
+    }
+    if (!drawn || off(rendered) < off(drawn.rendered)) drawn = { blueprint, rendered };
+    if (off(rendered) <= SCALE_TOLERANCE) break;
+    scale *= Math.min(1.25, Math.max(0.8, (targetTiles / rendered.land.size) ** 0.5));
+  }
+  if (!drawn) return failure;
+
+  // Fine tune: grow or shrink the land by a fraction of a tile everywhere.
+  const { blueprint } = drawn;
+  let best = drawn.rendered;
+  let low = -OFFSET_LIMIT;
+  let high = OFFSET_LIMIT;
+  for (let step = 0; step < OFFSET_STEPS && off(best) > AREA_TOLERANCE; step++) {
+    const middle = (low + high) / 2;
+    const rendered = render(blueprint, images, noise, params, middle);
+    if (!rendered || rendered.land.size < targetTiles) low = middle;
+    else high = middle;
+    if (rendered && off(rendered) < off(best)) best = rendered;
+  }
+  if (off(best) > AREA_LIMIT) return 'area';
+
+  const { land, starts } = best;
+  // Each start is the first one moved by the symmetry, so the players' surroundings match.
+  for (const [n, image] of images.entries()) {
+    const expected = image(starts[0]!);
+    if (expected.q !== starts[n + 1]!.q || expected.r !== starts[n + 1]!.r) return 'starts';
+  }
+  for (const hex of land.values()) {
+    for (const image of images) if (!land.has(hexKey(image(hex)))) return 'symmetry';
+  }
+  // The starts have all six neighbors (the rasterizer keeps the ring).
+  for (const start of starts) {
+    if (hexNeighbors(start).some((n) => !land.has(hexKey(n)))) return 'starts';
+  }
+  return { land, blueprint, starts };
+}
+
+/** Draw boards until one passes every check. Throws if none does. */
+function findBoard(
+  images: Images,
+  build: Build,
+  targetTiles: number,
+  params: GenerationParams,
+  seed: number,
+  what: string,
+): {
+  board: { land: Land; blueprint: Blueprint; starts: Hex[] };
+  attempts: number;
+  rejections: Partial<Record<DuelRejection, number>>;
+} {
+  const rejections: Partial<Record<DuelRejection, number>> = {};
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const board = drawBoard(
+      images,
+      build,
+      targetTiles,
+      params,
+      (seed + Math.imul(attempt, 0x9e3779b1)) >>> 0,
+    );
+    if (typeof board === 'string') {
+      rejections[board] = (rejections[board] ?? 0) + 1;
+      continue;
+    }
+    return { board, attempts: attempt, rejections };
+  }
+  throw new Error(`could not make a ${what} board of about ${targetTiles} tiles`);
+}
+
+/**
+ * A fully symmetric two-player board made of blobs: one starting blob and its twin, and a few
+ * extra blobs, on the line of symmetry or not, joined by corridors. Bigger boards get a few more
+ * blobs and slightly bigger ones. The same seed always gives the same board.
+ */
+export function generateDuelLayout(input: {
+  seed: number;
+  symmetry: DuelSymmetry;
+  /** The line of a mirror board; by default one of the two, picked by the seed. */
+  axis?: DuelAxis;
+  /** How far the finished mirror board is turned, in steps of 60 degrees; by default random. */
+  turns?: number;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  params: GenerationParams;
+}): DuelLayout {
+  const { seed, symmetry, targetTiles, params } = input;
+  // Half the mirror boards are mirrored across a line through tile corners, half across one
+  // through the middles of tile edges (30 degrees round from the first).
+  // Then the finished board is turned by a random multiple of 60 degrees (possibly none), so the
+  // mirror line can lie any of the six ways a hex mirror line can.
+  const turns =
+    symmetry === 'rotational'
+      ? 0
+      : (((input.turns ?? createRng(seed ^ 0x5bd1).int(6)) % 6) + 6) % 6;
+  const axis: DuelAxis =
+    symmetry === 'rotational'
+      ? 'points'
+      : (input.axis ?? (createRng(seed ^ 0x6a09).next() < 0.5 ? 'points' : 'edges'));
+  const { board, attempts, rejections } = findBoard(
+    [hexImage(symmetry, axis)],
+    ({ size, scale, rng }) =>
+      buildDuelBlueprint({
+        symmetry,
+        axis,
+        size,
+        scale,
+        rng,
+        minCityDistance: params.minCityDistance,
+      }),
+    targetTiles,
+    params,
+    seed,
+    `${symmetry} duel`,
+  );
+  const turn = (hex: Hex): Hex => hexRotate(hex, turns);
+  return {
+    hexes: [...board.land.values()].map(turn).sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: [turn(board.starts[0]!), turn(board.starts[1]!)],
+    report: {
+      symmetry,
+      axis,
+      turns,
+      attempts,
+      rejections,
+      blueprint: {
+        chambers: board.blueprint.chambers.map((c) => ({
+          ...c,
+          center: rotatePoint(c.center, turns),
+        })),
+        corridors: board.blueprint.corridors,
+      },
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}
+
+/**
+ * A fully symmetric board for three players, made of blobs the way a duel board is, but
+ * symmetric under turns of 120 degrees: one starting blob with two twins, sets of three extra blobs,
+ * and perhaps a blob in the middle, joined by corridors. The same seed always gives the same board.
+ */
+export function generateTrioLayout(input: {
+  seed: number;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  params: GenerationParams;
+}): TrioLayout {
+  const { seed, targetTiles, params } = input;
+  const { board, attempts, rejections } = findBoard(
+    trioHexImages,
+    ({ size, scale, rng }) =>
+      buildTrioBlueprint({ size, scale, rng, minCityDistance: params.minCityDistance }),
+    targetTiles,
+    params,
+    seed,
+    'three-player',
+  );
+  return {
+    hexes: [...board.land.values()].sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: [board.starts[0]!, board.starts[1]!, board.starts[2]!],
+    report: {
+      attempts,
+      rejections,
+      blueprint: board.blueprint,
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}
+
+/**
+ * A fully symmetric board for four players, made of blobs the way a duel board is, but with two
+ * mirror lines at right angles (and so a half turn): a starting blob in each quarter, sets of extra
+ * blobs on the lines or off them, and perhaps a blob in the middle, joined by corridors. After it is
+ * made the board is turned by a random multiple of 60 degrees, so the lines can lie any of the
+ * three ways two hex mirror lines at right angles can. The same seed always gives the same board.
+ */
+export function generateQuadLayout(input: {
+  seed: number;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  /** How far the finished board is turned, in steps of 60 degrees (0 to 2); by default random. */
+  turns?: number;
+  params: GenerationParams;
+}): QuadLayout {
+  const { seed, targetTiles, params } = input;
+  const turns = (((input.turns ?? createRng(seed ^ 0x51ad).int(3)) % 6) + 6) % 6;
+  const { board, attempts, rejections } = findBoard(
+    quadHexImages(0),
+    ({ size, scale, rng }) =>
+      buildQuadBlueprint({ size, scale, rng, minCityDistance: params.minCityDistance }),
+    targetTiles,
+    params,
+    seed,
+    'four-player',
+  );
+  const turn = (hex: Hex): Hex => hexRotate(hex, turns);
+  return {
+    hexes: [...board.land.values()].map(turn).sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: [
+      turn(board.starts[0]!),
+      turn(board.starts[1]!),
+      turn(board.starts[2]!),
+      turn(board.starts[3]!),
+    ],
+    report: {
+      turns,
+      attempts,
+      rejections,
+      blueprint: {
+        chambers: board.blueprint.chambers.map((c) => ({
+          ...c,
+          center: rotatePoint(c.center, turns),
+        })),
+        corridors: board.blueprint.corridors,
+      },
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}
+
+/**
+ * A fully symmetric board for six players, made of blobs the way the others are. There are two
+ * ways it can be symmetric, because a hex board has two groups of six symmetries: turns by a sixth
+ * of a turn (`rotational`), or turns by a third of a turn with a mirror (`mirror`, which has three
+ * mirror lines, all through tile corners or all through the middles of tile edges, as `axis` says;
+ * by default one of the two, picked by the seed). Turning the board by a sixth of a turn changes
+ * neither group, so boards are not turned afterwards. The same seed always gives the same board.
+ */
+export function generateSextetLayout(input: {
+  seed: number;
+  symmetry: SextetSymmetry;
+  /** The kind of line of a mirror board; by default one of the two, picked by the seed. */
+  axis?: DuelAxis;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  params: GenerationParams;
+}): SextetLayout {
+  const { seed, symmetry, targetTiles, params } = input;
+  const axis: DuelAxis =
+    symmetry === 'rotational'
+      ? 'points'
+      : (input.axis ?? (createRng(seed ^ 0x6a09).next() < 0.5 ? 'points' : 'edges'));
+  const group = sextetGroup(symmetry, axis);
+  const { board, attempts, rejections } = findBoard(
+    group.hexMaps,
+    ({ size, scale, rng }) =>
+      buildGroupBlueprint(group, { size, scale, rng, minCityDistance: params.minCityDistance }),
+    targetTiles,
+    params,
+    seed,
+    `${symmetry} six-player`,
+  );
+  return {
+    hexes: [...board.land.values()].sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: board.starts as SextetLayout['starts'],
+    report: {
+      symmetry,
+      axis,
+      attempts,
+      rejections,
+      blueprint: board.blueprint,
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}

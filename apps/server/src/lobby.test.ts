@@ -308,6 +308,37 @@ describe('Lobby', () => {
         expect(guest.room?.state).toBe('running');
       });
 
+      it('keeps everyone in the same color from game to game, gaps and all', () => {
+        const host = new FakeClient(lobby).hello('Hana');
+        host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+        const [gus, tia, zed] = ['Gus', 'Tia', 'Zed'].map((name) => {
+          const client = new FakeClient(lobby).hello(name);
+          client.say({ type: 'joinRoom', code: host.room!.code });
+          return client;
+        }) as [FakeClient, FakeClient, FakeClient];
+        const colorsOf = (client: FakeClient) => {
+          const { colors, you } = client.last('snapshot');
+          return { all: colors, mine: colors?.[you ?? ''] };
+        };
+        host.say({ type: 'startGame' });
+        const first = { host: colorsOf(host), tia: colorsOf(tia), zed: colorsOf(zed) };
+        // Four different colors, and everyone sees the same ones.
+        expect(new Set(Object.values(first.host.all ?? {})).size).toBe(4);
+        expect(first.tia.all).toEqual(first.host.all);
+        gus.say({ type: 'surrender' });
+        tia.say({ type: 'surrender' });
+        zed.say({ type: 'surrender' });
+        expect(host.room?.state).toBe('finished');
+        // Gus is not coming back, so the next game has Hana, Tia and Zed: their colors do not shuffle.
+        for (const client of [host, gus, tia, zed]) client.say({ type: 'returnToRoom' });
+        gus.say({ type: 'leaveRoom' });
+        host.say({ type: 'startGame' });
+        expect(host.room?.state).toBe('running');
+        expect(colorsOf(host).mine).toBe(first.host.mine);
+        expect(colorsOf(tia).mine).toBe(first.tia.mine);
+        expect(colorsOf(zed).mine).toBe(first.zed.mine);
+      });
+
       it('keeps the host as host while they read the result, until they leave', () => {
         const { host, guest } = finishedPrivate();
         guest.say({ type: 'returnToRoom' });

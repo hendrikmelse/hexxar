@@ -6,13 +6,13 @@ vi.mock('@hexxar/shared', async (importOriginal) => {
   const shared = await importOriginal<typeof import('@hexxar/shared')>();
   return {
     ...shared,
-    createSymmetricMatch: (...args: Parameters<typeof shared.createSymmetricMatch>) => {
+    createDuelMatch: (...args: Parameters<typeof shared.createDuelMatch>) => {
       generation.calls++;
       if (generation.failures > 0) {
         generation.failures--;
-        throw new Error('could not make a board shape that fits');
+        throw new Error('could not make a duel board');
       }
-      return shared.createSymmetricMatch(...args);
+      return shared.createDuelMatch(...args);
     },
   };
 });
