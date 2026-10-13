@@ -342,6 +342,10 @@ export class Board {
 
   setAll(game: GameView): void {
     const fresh = this.views.size === 0;
+    // A different set of tiles is a different board, even when one was showing: its old fog goes.
+    const sameBoard =
+      this.views.size === Object.keys(game.tiles).length &&
+      Object.keys(game.tiles).every((key) => this.views.has(key));
     this.pops.clear();
     this.ringAnims.clear();
     this.clearFlights();
@@ -349,11 +353,11 @@ export class Board {
     this.views.clear();
     // A whole new board starts with its fog in place. A fresh look at the same board (the match
     // ended, or someone surrendered, and everything is revealed) keeps the clouds, so they can fade.
-    if (fresh) this.clouds.clear();
+    if (fresh || !sameBoard) this.clouds.clear();
     this.drawCoast(game);
     this.vision = visionFor(game);
     for (const tile of Object.values(game.tiles)) this.updateTile(tile, game);
-    this.coverTiles(game, Object.keys(game.tiles), fresh);
+    this.coverTiles(game, Object.keys(game.tiles), fresh || !sameBoard);
     if (fresh && this.views.size > 0) this.fitToBoard();
   }
 
