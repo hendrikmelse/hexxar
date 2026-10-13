@@ -8,7 +8,15 @@ import {
   type Point,
 } from '../blueprint.js';
 import { topologyIssues, topologyOk } from '../topology.js';
-import { blocked, distance, minGap, pickWidth, spawnRadius, spawnSpacing } from './common.js';
+import {
+  blocked,
+  crowding,
+  distance,
+  minGap,
+  pickWidth,
+  spawnRadius,
+  spawnSpacing,
+} from './common.js';
 import type { ArchetypeInput } from './types.js';
 
 /** How many random spots are tried for each room before it is given up on. */
@@ -60,9 +68,10 @@ function placeSpawns(
   count: number,
   spread: number,
   startDistance: number,
+  crowded: number,
   rng: Rng,
 ): Chamber[] | null {
-  const spacing = spawnSpacing(startDistance);
+  const spacing = spawnSpacing(startDistance, crowded);
   const points: Point[] = [];
   for (let i = 0; i < count; i++) {
     let best: Point = inDisc(spread, rng);
@@ -124,7 +133,12 @@ function placeNeutrals(
  * Join the chambers: a minimum spanning tree so everything is reachable, then a few extra short
  * passages that make loops. Corridors are picked at random widths and bowed a little.
  */
-function connect(chambers: readonly Chamber[], exits: number | null, rng: Rng): Corridor[] {
+function connect(
+  chambers: readonly Chamber[],
+  exits: number | null,
+  crowded: number,
+  rng: Rng,
+): Corridor[] {
   const corridors: Corridor[] = [];
   const linked = new Set<number>([0]);
   const pairs = new Set<string>();
@@ -133,7 +147,7 @@ function connect(chambers: readonly Chamber[], exits: number | null, rng: Rng): 
     corridors.push({
       from,
       to,
-      width: pickWidth(rng),
+      width: pickWidth(rng, crowded),
       bend: (rng.next() - 0.5) * 0.3 * length,
     });
     pairs.add(`${Math.min(from, to)}-${Math.max(from, to)}`);
@@ -179,7 +193,8 @@ function connect(chambers: readonly Chamber[], exits: number | null, rng: Rng): 
   if (exits === null) return corridors;
   evenOutSpawns(chambers, corridors, add, pairs, exits);
   repairTopology(chambers, corridors, add, pairs);
-  const width = SPAWN_EXIT_WIDTHS[rng.int(SPAWN_EXIT_WIDTHS.length)]!;
+  const exitWidths = crowded >= 0.5 ? NARROW_SPAWN_EXIT_WIDTHS : SPAWN_EXIT_WIDTHS;
+  const width = exitWidths[rng.int(exitWidths.length)]!;
   return corridors.map((c) =>
     chambers[c.from]!.spawn || chambers[c.to]!.spawn ? { ...c, width } : c,
   );
@@ -253,6 +268,8 @@ const spawnExits = (players: number, startDistance: number, rng: Rng): number =>
   players >= 5 && startDistance >= 4 && rng.next() < THREE_EXITS_CHANCE ? 3 : 2;
 /** Widths of the passages leaving a spawn chamber (the same for every player on a board). */
 const SPAWN_EXIT_WIDTHS = [2, 3] as const;
+/** The same, on a crowded board. */
+const NARROW_SPAWN_EXIT_WIDTHS = [1, 2] as const;
 
 /** Is everything still joined up with the given corridors? */
 function joined(count: number, corridors: readonly Corridor[]): boolean {
@@ -338,10 +355,11 @@ export function buildScattered({
   startDistance,
   evenSpawns,
 }: ArchetypeInput): Blueprint | null {
-  const spawns = placeSpawns(players, scale, startDistance, rng);
+  const crowded = crowding(players);
+  const spawns = placeSpawns(players, scale, startDistance, crowded, rng);
   if (!spawns) return null;
   const chambers: Chamber[] = [...spawns];
   placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, startDistance, rng);
   const exits = evenSpawns ? spawnExits(players, startDistance, rng) : null;
-  return { chambers, corridors: connect(chambers, exits, rng) };
+  return { chambers, corridors: connect(chambers, exits, crowded, rng) };
 }

@@ -7,6 +7,7 @@ import {
   royaleTilesPerPlayer,
 } from '../params.js';
 import { createNoise, fbm } from './noise.js';
+import { crowding, spawnSpacing } from './archetypes/common.js';
 import { ARCHETYPE_IDS } from './archetypes/index.js';
 import { CHOKE_MAX_WIDTH } from './analyze.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
@@ -80,6 +81,38 @@ describe('topology', () => {
     expect(topologyIssues(5, [...cycle, { from: 2, to: 3 }, { from: 3, to: 4 }]).tails).toEqual([
       4,
     ]);
+  });
+});
+
+describe('crowded boards', () => {
+  it('only start to count above 6 players, and are full at 12', () => {
+    expect([2, 6].map(crowding)).toEqual([0, 0]);
+    expect(crowding(9)).toBeCloseTo(0.5);
+    expect([12, 20].map(crowding)).toEqual([1, 1]);
+    // Bowls are pushed a little further apart as boards crowd up.
+    expect(spawnSpacing(4, 1)).toBeGreaterThan(spawnSpacing(4, 0.5));
+    expect(spawnSpacing(4, 0.5)).toBeGreaterThan(spawnSpacing(4, 0));
+  });
+
+  it('get narrower corridors than boards with few players', () => {
+    const averageWidth = (players: number): number => {
+      let total = 0;
+      let count = 0;
+      for (let seed = 1; seed <= 25; seed++) {
+        const sizeParams = {
+          ...params,
+          tilesPerPlayer: royaleTilesPerPlayer('large', players),
+          minStartDistance: ROYALE_START_DISTANCE.large,
+        };
+        const { report } = generateRoyaleLayout({ players, seed, params: sizeParams });
+        for (const corridor of report.blueprint.corridors) {
+          total += corridor.width;
+          count++;
+        }
+      }
+      return total / count;
+    };
+    expect(averageWidth(12)).toBeLessThan(averageWidth(6) - 0.25);
   });
 });
 
