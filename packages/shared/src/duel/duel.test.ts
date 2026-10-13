@@ -10,20 +10,33 @@ const board = (symmetry: DuelSymmetry, seed: number, tiles: number) =>
   generateDuelLayout({ seed, symmetry, targetTiles: tiles, params: DEFAULT_GENERATION_PARAMS });
 
 describe('duel layouts', () => {
-  it('never has a corridor straight from one start to the other, and needs another blob to join them', () => {
+  const straight = (corridors: readonly { from: number; to: number }[]) =>
+    corridors.filter((c) => c.from + c.to === 1 && c.from * c.to === 0);
+
+  it('never has a corridor straight from one start to the other, unless the starts are the only blobs', () => {
     for (const symmetry of ['mirror', 'rotational'] as const) {
       for (const size of MAP_SIZES) {
         for (let seed = 1; seed <= 60; seed++) {
           const { chambers, corridors } = board(symmetry, seed, DUEL_TILES[size]).report.blueprint;
           expect(chambers[0]!.spawn && chambers[1]!.spawn).toBe(true);
-          for (const c of corridors) {
-            expect(c.from + c.to === 1 && c.from * c.to === 0).toBe(false);
-          }
-          // With no direct corridor, the starts are joined through at least one more blob.
-          expect(chambers.length).toBeGreaterThanOrEqual(3);
+          // With other blobs, the starts are joined only through them. With none, the one
+          // corridor between the starts is the only way to join them.
+          expect(straight(corridors)).toHaveLength(chambers.length > 2 ? 0 : 1);
         }
       }
     }
+  });
+
+  it('can have a board with nothing but the two starts, and it is a small one', () => {
+    const only = (size: keyof typeof DUEL_TILES): number => {
+      let count = 0;
+      for (let seed = 1; seed <= 100; seed++) {
+        if (board('mirror', seed, DUEL_TILES[size]).report.blueprint.chambers.length === 2) count++;
+      }
+      return count;
+    };
+    expect(only('small')).toBeGreaterThan(0);
+    expect(only('large')).toBe(0);
   });
 
   it('only sometimes joins blobs on the centerline of a mirror board to each other', () => {

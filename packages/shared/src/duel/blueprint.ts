@@ -206,8 +206,9 @@ export function buildDuelBlueprint({
     distance(chambers[a]!.center, chambers[b]!.center) * between(rng, 0.8, 1.3);
   const spine = rng.next() < SPINE_CHANCE;
   // The two starts (chambers 0 and 1) are never joined by a corridor of their own: they are only
-  // ever joined through other blobs, though the land may happen to run together.
-  const startsKey = keyOf(0, 1);
+  // ever joined through other blobs, though the land may happen to run together. The one exception
+  // is a board with no other blobs, where the starts have no other way to be joined.
+  const startsKey = chambers.length > 2 ? keyOf(0, 1) : -1;
   const pairs: { a: number; b: number; weight: number }[] = [];
   for (const [n, a] of half.entries()) {
     for (const b of half.slice(n + 1)) {
