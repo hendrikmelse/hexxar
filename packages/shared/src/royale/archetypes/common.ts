@@ -14,12 +14,15 @@ export const crowding = (players: number): number => Math.min(1, Math.max(0, (pl
  */
 export const spawnRadius = (startDistance: number, crowded = 0): number =>
   Math.min(2, Math.max(1.2, startDistance * 0.4)) +
-  CROWDED_RADIUS * crowded * Math.min(1, Math.max(0, (startDistance - 3) / 2));
+  CROWDED_RADIUS * crowded * bowlGrowth(startDistance);
 /**
  * How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one,
- * on large boards (start distance 5); normal boards get half of it, and small boards none.
+ * on a normal board (start distance 4), times `bowlGrowth`.
  */
 const CROWDED_RADIUS = 0.4;
+/** By start distance: none on small boards (3), 0.5 on normal boards (4), and a lot more on large ones (5). */
+const bowlGrowth = (startDistance: number): number =>
+  startDistance <= 4 ? Math.max(0, (startDistance - 3) / 2) : 0.5 + 1.1 * (startDistance - 4);
 /** How much further apart (in tiles) the bowls of a fully crowded board are than those of an empty one. */
 const CROWDED_SPACING = 0.6;
 /** Spawn chamber centers are a little further apart than the cities are required to be. */
