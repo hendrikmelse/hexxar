@@ -252,12 +252,16 @@ export class Clouds {
       // Puffs across to each partly covered neighbor, so a line of them reads as one band of
       // cloud along the edge of what is seen, not a row of dots.
       cover.links.forEach((way, j) => {
-        for (const [k, t] of [0.3, 0.5, 0.7].entries()) {
+        const length = Math.hypot(way.x, way.y) || 1;
+        // Sideways of the bridge, so the puffs wobble off the straight line.
+        const side = { x: -way.y / length, y: way.x / length };
+        for (const [k, t] of [0.22, 0.4, 0.6, 0.78].entries()) {
+          const wobble = (noise(q, r, j * 5 + k + 130) - 0.5) * 11;
           add(
-            cx + way.x * t,
-            cy + way.y * t,
-            0.28 + noise(q, r, j * 3 + k + 120) * 0.06,
-            40 + j * 3 + k,
+            cx + way.x * t + side.x * wobble,
+            cy + way.y * t + side.y * wobble,
+            0.34 + noise(q, r, j * 5 + k + 120) * 0.12,
+            40 + j * 5 + k,
           );
         }
       });
