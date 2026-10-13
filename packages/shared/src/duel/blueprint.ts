@@ -27,6 +27,12 @@ const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number])[] = [
   [3, 1],
 ];
 /**
+ * Chance that blobs on the line of symmetry of a mirror board may be joined to each other. Such a
+ * corridor runs dead straight down the middle, so it is allowed on only some boards; on the others
+ * those blobs join the board through blobs off the line.
+ */
+const SPINE_CHANCE = 0.3;
+/**
  * How many corridors cross from one half of the board to the other, besides the one that has to
  * when no blob is on the line or point of symmetry, and how often. Each comes with its twin.
  */
@@ -96,6 +102,14 @@ export function buildDuelBlueprint({
     chambers.every((other) => distance(center, other.center) >= size + other.radius + GAP) &&
     (!hasTwin || distance(center, imageOfPoint(center)) >= 2 * size + GAP);
 
+  // A half-turn board may have a blob at the middle. That is decided first, because it needs room
+  // between the two starts: they are put far enough out for it to fit.
+  const middleSize =
+    symmetry === 'rotational' && rng.next() < ON_AXIS_CHANCE
+      ? radius * between(rng, 0.8, 1.1)
+      : null;
+  const leastOut = middleSize === null ? 0 : middleSize + radius + GAP + 0.3;
+
   // The starting blob, snapped to a hex so its city is exactly on a hex center, and its twin.
   let started = false;
   for (let attempt = 0; attempt < 50 && !started; attempt++) {
@@ -104,7 +118,10 @@ export function buildDuelBlueprint({
       spot = { x: scale * between(rng, 0.45, 0.85), y: scale * between(rng, -0.5, 0.5) };
     } else {
       const angle = rng.next() * Math.PI * 2;
-      const out = scale * between(rng, 0.5, 0.85);
+      const out = Math.max(
+        scale * between(rng, 0.5, 0.85),
+        leastOut + scale * between(rng, 0, 0.2),
+      );
       spot = { x: Math.cos(angle) * out, y: Math.sin(angle) * out };
     }
     const hex = pointToHex(spot);
@@ -116,9 +133,11 @@ export function buildDuelBlueprint({
   }
   if (!started) return null;
 
-  // Extra blobs. On a mirror board several can sit on the line; on a half-turn board only one,
-  // in the middle.
-  let middleTaken = false;
+  if (middleSize !== null) addBlob({ x: 0, y: 0 }, middleSize, false, true);
+
+  // Extra blobs. On a mirror board several can sit on the line; a half-turn board has the middle
+  // blob above or none, and no other blob is on its point.
+  const middleTaken = symmetry === 'rotational';
   for (let blob = 0; blob < extraBlobs(size); blob++) {
     const size = radius * between(rng, 0.8, 1.25);
     for (let attempt = 0; attempt < PLACE_TRIES; attempt++) {
@@ -134,7 +153,6 @@ export function buildDuelBlueprint({
       }
       if (!room(center, size, !onAxis)) continue;
       addBlob(center, size, false, onAxis);
-      if (onAxis && symmetry === 'rotational') middleTaken = true;
       break;
     }
   }
@@ -186,9 +204,14 @@ export function buildDuelBlueprint({
   // Lengths are shaken up a little, so the nearest blob is not always the one that gets joined.
   const shaken = (a: number, b: number): number =>
     distance(chambers[a]!.center, chambers[b]!.center) * between(rng, 0.8, 1.3);
+  const spine = rng.next() < SPINE_CHANCE;
   const pairs: { a: number; b: number; weight: number }[] = [];
   for (const [n, a] of half.entries()) {
-    for (const b of half.slice(n + 1)) pairs.push({ a, b, weight: shaken(a, b) });
+    for (const b of half.slice(n + 1)) {
+      // Two blobs on the line: the corridor between them would run straight down it.
+      if (!spine && twin[a] === a && twin[b] === b) continue;
+      pairs.push({ a, b, weight: shaken(a, b) });
+    }
   }
   pairs.sort((x, y) => x.weight - y.weight);
 
