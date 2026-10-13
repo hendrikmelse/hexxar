@@ -339,6 +339,26 @@ describe('Lobby', () => {
         expect(colorsOf(zed).mine).toBe(first.zed.mine);
       });
 
+      it('counts a player who is out and stays to watch as a spectator for the others', () => {
+        const host = new FakeClient(lobby).hello('Hana');
+        host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+        const [gus, tia, zed] = ['Gus', 'Tia', 'Zed'].map((name) => {
+          const client = new FakeClient(lobby).hello(name);
+          client.say({ type: 'joinRoom', code: host.room!.code });
+          return client;
+        }) as [FakeClient, FakeClient, FakeClient];
+        host.say({ type: 'startGame' });
+        // Still in the game: nothing to watch yet.
+        tia.say({ type: 'spectate' });
+        expect(tia.last('rejected').reason).toMatch(/still in/);
+        expect(host.room?.spectators).toEqual([]);
+        gus.say({ type: 'surrender' });
+        expect(host.room?.state).toBe('running');
+        gus.say({ type: 'spectate' });
+        expect(host.room?.spectators).toEqual(['Gus']);
+        expect(zed.room?.spectators).toEqual(['Gus']);
+      });
+
       it('keeps the host as host while they read the result, until they leave', () => {
         const { host, guest } = finishedPrivate();
         guest.say({ type: 'returnToRoom' });

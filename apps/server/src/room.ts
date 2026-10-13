@@ -103,6 +103,8 @@ interface Member {
   watching: boolean;
   /** Private rooms only: here to watch, not to play. Joined once the room was full or begun. */
   spectator: boolean;
+  /** Knocked out of the running match, and staying to watch the rest of it. Counts as a spectator. */
+  watchingOut: boolean;
   /** The color this person plays in, kept from match to match for as long as they are in the room. */
   colorSlot: number | null;
   afkTimer: Timer | null;
@@ -173,6 +175,7 @@ export class Room {
       reviewing: false,
       watching: false,
       spectator: false,
+      watchingOut: false,
       colorSlot: null,
       afkTimer: null,
     });
@@ -208,6 +211,7 @@ export class Room {
       reviewing: false,
       watching: true,
       spectator: true,
+      watchingOut: false,
       colorSlot: null,
       afkTimer: null,
     };
@@ -296,6 +300,20 @@ export class Room {
     if (!member.reviewing) this.sendSnapshot(member);
   }
 
+  /** A player who is out of the running match chooses to watch the rest: the others see them as a spectator. */
+  keepWatching(session: Session): string | null {
+    const member = this.memberOf(session);
+    if (!member || member.left || this.state !== 'running') return 'you are not in a running game';
+    if (member.playerId === null || !this.match?.state.eliminated.includes(member.playerId)) {
+      return 'you are still in the game';
+    }
+    if (!member.watchingOut) {
+      member.watchingOut = true;
+      this.broadcastRoom();
+    }
+    return null;
+  }
+
   /**
    * Private rooms: after a match, go back to the room to set up the next one. The room is a
    * lobby again from the first person who returns; the others keep their result until they do.
@@ -319,6 +337,7 @@ export class Room {
       member.watching = true;
     }
     member.reviewing = false;
+    member.watchingOut = false;
     member.playerId = null;
     // The host stays the host while they read the result: the role passes on only once they have
     // gone (back to the menu, or the tab closed).
@@ -440,7 +459,9 @@ export class Room {
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
       youVoted: this.votes.has(session.userId),
-      spectators: this.members.filter((m) => m.spectator && !m.left).map((m) => m.session.name),
+      spectators: this.members
+        .filter((m) => (m.spectator || m.watchingOut) && !m.left)
+        .map((m) => m.session.name),
       spectating: this.memberOf(session)?.spectator === true,
       serverTime: Date.now(),
       you: session.userId,
@@ -609,6 +630,7 @@ export class Room {
     this.resetEarlyStart();
     const seed = Math.floor(Math.random() * 2 ** 32);
     // Who starts where is random, so nobody always gets the same side.
+    for (const member of this.members) member.watchingOut = false;
     const order = shuffle(this.activeMembers(), createRng(seed));
     const players = order.map((_, i) => `P${i + 1}`);
     order.forEach((member, i) => (member.playerId = players[i] ?? null));

@@ -165,6 +165,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('becomePlayer') }),
   /** Private rooms: after a match, go back to the room to set up the next one. */
   z.object({ type: z.literal('returnToRoom') }),
+  /** Out of a running match and staying to watch the rest: the others see one more spectator. */
+  z.object({ type: z.literal('spectate') }),
   /** Append an order to your queue. Queues are append-only. */
   z.object({ type: z.literal('order'), order: orderSchema }),
   z.object({ type: z.literal('surrender') }),

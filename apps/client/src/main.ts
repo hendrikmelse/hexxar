@@ -488,7 +488,11 @@ mountUi(document.getElementById('ui')!, {
   returnToRoom: () => connection.send({ type: 'returnToRoom' }),
   becomeSpectator: () => connection.send({ type: 'becomeSpectator' }),
   becomePlayer: () => connection.send({ type: 'becomePlayer' }),
-  spectate: () => appStore.set({ spectating: true }),
+  spectate: () => {
+    appStore.set({ spectating: true });
+    // Tell the room, so the others see one more spectator.
+    connection.send({ type: 'spectate' });
+  },
   launched: () => {
     playSound('match.begin');
     appStore.set({ launching: false });
