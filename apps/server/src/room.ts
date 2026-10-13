@@ -1,10 +1,10 @@
 import {
-  symmetricRadius,
+  DUEL_TILES,
   ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
   createFreeForAllMatch,
   createRng,
-  createSymmetricMatch,
+  createDuelMatch,
   diffTiles,
   parseMatchConfig,
   roomCapacity,
@@ -652,12 +652,7 @@ export class Room {
             minStartDistance: ROYALE_START_DISTANCE[mapSize],
           },
         })
-      : createSymmetricMatch({
-          players,
-          seed,
-          radius: symmetricRadius(mapSize, players.length),
-          config,
-        });
+      : createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize], config });
   }
 
   private scheduleTick(): void {

@@ -1,33 +1,23 @@
 # Map generation
 
-`packages/shared/src/generate.ts` builds boards in two flavors. `createSymmetricMatch` makes fair boards for 2, 3, 4 or 6 players (games use it for duels); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared.
+`packages/shared/src/generate.ts` builds boards in two flavors. `createDuelMatch` makes the fair two-player boards (games use it for duels); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
 
-## Symmetry
+## Duel boards
 
-The board is split into **orbits**: sets of tiles that map onto each other under the board's symmetry. Every tile in an orbit gets the same type, so each player sees the same surroundings, rotated or mirrored.
+A duel board is **exactly symmetric**, in one of two ways, picked by the seed (or by the `symmetry` option): a **mirror** (left to right), or a **half turn** (180 degrees about the middle). The code is in `packages/shared/src/duel/`.
 
-- **Rotational** (3 or 6 players, or 2): the board maps onto itself when turned by 360 / players degrees: 180 degrees for 2 players, 120 for 3, 60 for 6. It is never more symmetric than the player count needs.
-- **Mirror** (2 or 4 players, the default for both). With 4 players: left-right and top-bottom mirrors, plus the 180 degree turn they imply. With 2 players: only the left-right mirror, so the two halves face each other but neither half is symmetric itself.
-- 5 players is unsupported, and mirror boards are rejected for 3 and 6 players (and rotational for 4).
+The board is split into **orbits**: a tile and its twin (a tile on the line or point of symmetry is alone). Every tile in an orbit gets the same type, so each player sees the same surroundings, mirrored or turned. The two players start on twin cities.
 
-Starting positions are matching spots one tile in from the edge of the board: left and right for 2 players, and one per quadrant for 4. Every image of a start tile under the board's symmetry is a starting city, and the symmetry groups are exactly as big as the player count, so every starting city belongs to a player and there are no spare ones. Start cities are at least 3 tiles apart (the same minimum as for any two cities). Symmetric boards need a radius of at least 4.
-
-## Board shape
-
-Every board has a random outline, so you never see a plain hexagon. `randomShape` (`packages/shared/src/shape.ts`) builds it:
-
-- **Outline:** a circle bent by a few random waves, so the board has lobes and bays instead of six straight sides, with each tile's edge position jittered for a rough coast. A circle with the radius of the hexagon it stands in for holds about the same number of tiles, so "radius" below means the size of that stand-in hexagon.
-- **Tidying:** tiles that stick out as spurs (two or fewer neighbors) are removed and one-tile bays are filled, and tiny islands are dropped, so the coast is jagged but never noisy.
-- **Cutouts:** a few lakes are carved out of the inside. Each is one big blob of contiguous tiles (at least 6, up to about 8% of the board), grown compactly, and kept at least 3 tiles from the coast (so there is always room to walk around), from every starting city, and from other lakes.
-- **Checks:** the board must be one connected piece, within 50% to 130% of the hexagon's area, keep the room around every starting city, and not be the plain hexagon itself, otherwise another outline is tried (up to 500 times; small boards fail most attempts, but a few hundred are cheap). If none passes, generation fails rather than hand back a hexagon.
-- **Symmetry:** symmetric boards keep their symmetry. A tile is land if it or any of its images would be, and lakes are carved out along with all of their images, so the whole board maps onto itself.
-- **Starting cities:** protected, with a ring of land around each one.
-
-"Edge" means a tile with a missing neighbor, whether at the coast or beside a lake. Cities never go on edge tiles, so every city has a full ring of six neighbors, and villages fill the interior before the edge.
+- **Size:** `tiles` is about how many tiles the board has (`DUEL_TILES`: 36, 60 and 126 at small, normal and large). There is no radius.
+- **Blobs:** one starting blob (and its twin across the board) and a few extra blobs. An extra blob is either on the line (mirror) or at the middle (half turn), where it has no twin, or off it, where it comes with a twin. Only one blob can be at the middle of a half-turn board. Bigger boards have both more blobs (about one extra for every 2.2 tiles of board radius) and slightly bigger ones (radius 1.2 plus a tenth of the board's radius, at most 2.4).
+- **Corridors** join the blobs. Each corridor is added together with its twin (a mirror turns a corridor's bend the other way), so the whole layout maps onto itself. A spanning tree makes everything reachable, a few more short corridors make loops, and the rule from battle royales applies: no tail or peninsula longer than one corridor.
+- **Drawing:** the blueprint is drawn onto hexes with noise (the same as battle royales: see below). Noise is not symmetric, so the land is what was drawn together with its image, then tidied with rules that look at the board as it was before each step, so the result stays exactly symmetric. Only the piece with the starts is kept. The city and the ring of land round it in each start blob are never removed.
+- **Area:** blob sizes and counts come from the board's size, so only the distance between blobs changes as the layout is stretched to the right area. The land is then grown or shrunk by a fraction of a tile everywhere until the tile count is within 3% of the target (boards more than 8% off are thrown away and drawn again; the first try nearly always passes).
+- **No fallback:** if no board can be made in 200 attempts, generation throws (it did not happen in testing), and the room tries another seed.
 
 ## Tile types
 
-1. **Starting cities** as above.
+1. **Starting cities** as above (on duel boards the two twin cities; on battle royale boards one in each spawn chamber).
 2. **Other cities** are rare: about one per 50 tiles, not counting the starting cities. Orbits are tried in random order, and one is added only if it brings the number of extra cities closer to that target. Cities are never closer than **3 tiles** to any other city, starting cities included, and are never placed on the edge of the board.
 3. **Villages** are placed randomly wherever they fit. Each legal spot gets one with the village chance (40% by default); at 100% the board is filled until nowhere legal is left. A village never touches another village or a city. Edge tiles are only considered once no interior tile can take a village. Placing a village only removes options, so a single random pass over the orbits leaves a board where no further village fits.
 4. **Farmland** is everything else.
@@ -51,7 +41,7 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 6. **Validate:** a candidate must have every city on a non-edge tile (so a full ring of neighbors), cities at least `minStartDistance` apart, at least 2 chokes, no more than 40% of its land deeper than 4 tiles inland (that would be a blob), and a fairness score of at most 0.8 (below). Otherwise the next seed is tried, up to 80 times in total. The reasons candidates are thrown away are in the report that `createFreeForAllMatch` returns, which the map previewer shows.
 
 - **Size:** the target is the number of players times `tilesPerPlayer` (or `minTilesPerPlayer`, a floor that is off by default). A map size sets both `tilesPerPlayer` (15, 25 or 45 at 6 players; fewer per player for more players, see `royaleTilesPerPlayer`) and `minStartDistance` (3, 4 or 5 on small, normal and large, see `ROYALE_START_DISTANCE`). Cities that far apart need about that distance squared in tiles each, so small boards could not hold their players with the large spacing. Spawn chambers shrink with the spacing (radius 1.2 to 2), and so does the open ground required between chambers.
-- **Starting cities:** one per player, at the center of its spawn chamber, never on the edge. Players are assigned to them at random. There are no cities except the starting ones, and villages are placed as on symmetric boards.
+- **Starting cities:** one per player, at the center of its spawn chamber, never on the edge. Players are assigned to them at random. There are no cities except the starting ones, and villages are placed as on duel boards.
 
 ### Fairness
 
@@ -64,10 +54,10 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
 ### Villages
 
-Villages use the same placement as symmetric boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
+Villages use the same placement as duel boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
 
 The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint or tint the board by territory over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint&territories`, which also gets back to a particular board.
 
 ## Settings
 
-Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`): outline size and waves, lake frequency and size, city density and spacing, village chance and spacing, start inset and room, tiles per player, and the battle royale coast and spacing settings. Matches use the defaults, except that the map size picks the duel radius and the battle royale tiles per player (which also depends on the number of players). The generators take a `params` option with overrides, which tests use.
+Every number above is a generation setting (`GenerationParams` in `packages/shared/src/params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`): city density and spacing, village chance and spacing, the battle royale tile and spacing settings, and the coast settings that both kinds of board share. Matches use the defaults, except that the map size picks the number of tiles of a duel board and the battle royale tiles per player and city spacing (which also depend on the number of players). The generators take a `params` option with overrides, which tests use.

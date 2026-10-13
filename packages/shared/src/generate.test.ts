@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   hexDistance,
   hexFlipHorizontal,
-  hexFlipVertical,
   hexKey,
   hexNeighbors,
   hexRotate,
   type Hex,
 } from './hex.js';
-import { createFreeForAllMatch, createSymmetricMatch, type Symmetry } from './generate.js';
+import { createDuelMatch, createFreeForAllMatch } from './generate.js';
+import type { DuelSymmetry } from './duel/index.js';
 import { TILE_TYPES } from './tiles.js';
-import { DEFAULT_GENERATION_PARAMS } from './params.js';
+import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES } from './params.js';
 import { createRng } from './rng.js';
 import { parseMatchConfig } from './config.js';
 
@@ -31,194 +31,164 @@ describe('match config', () => {
   });
 });
 
-describe('createSymmetricMatch', () => {
+const pair = ['A', 'B'];
+const image = (symmetry: DuelSymmetry): ((hex: Hex) => Hex) =>
+  symmetry === 'mirror' ? hexFlipHorizontal : (hex) => hexRotate(hex, 3);
+
+describe('createDuelMatch', () => {
   it('is deterministic for a seed', () => {
-    const opts = { players: ['A', 'B'], seed: 7 };
-    expect(createSymmetricMatch(opts).state).toEqual(createSymmetricMatch(opts).state);
+    const options = { players: pair, seed: 7 };
+    expect(createDuelMatch(options).state).toEqual(createDuelMatch(options).state);
+    expect(createDuelMatch(options).state.tiles).not.toEqual(
+      createDuelMatch({ players: pair, seed: 8 }).state.tiles,
+    );
   });
 
-  it.each([2, 3, 6])('is rotationally symmetric for %i players', (n) => {
-    const players = Array.from({ length: n }, (_, i) => `P${i}`);
-    const { state } = createSymmetricMatch({
-      players,
-      seed: 1234,
-      radius: 5,
-      symmetry: 'rotational',
-    });
-    for (const tile of Object.values(state.tiles)) {
-      // A turn of 360 / players degrees (180 for 2, 120 for 3, 60 for 6) maps the board onto itself.
-      const image = state.tiles[hexKey(hexRotate(tile, 6 / n))]!;
-      expect(image.type).toBe(tile.type);
-      // Neutral tiles must match in garrison too; start tiles are checked below.
-      if (tile.owner === null && image.owner === null) expect(image.troops).toBe(tile.troops);
-    }
-  });
-
-  it('only needs as much rotational symmetry as there are players', () => {
-    // Under one 60 degree step the board changes, unless there are 6 players.
-    const rotatesBy60 = (n: number, seed: number) => {
-      const players = Array.from({ length: n }, (_, i) => `P${i}`);
-      const { state } = createSymmetricMatch({ players, seed, radius: 8, symmetry: 'rotational' });
-      return Object.values(state.tiles).every(
-        (t) => state.tiles[hexKey(hexRotate(t, 1))]?.type === t.type,
-      );
-    };
-    const seeds = [1, 2, 3, 4, 5];
-    expect(seeds.every((s) => !rotatesBy60(2, s))).toBe(true);
-    expect(seeds.every((s) => !rotatesBy60(3, s))).toBe(true);
-    expect(seeds.every((s) => rotatesBy60(6, s))).toBe(true);
-  });
-
-  it('gives every player an identical starting city', () => {
-    const { state, config } = createSymmetricMatch({ players: ['A', 'B', 'C'], seed: 9 });
-    for (const p of state.players) {
-      const owned = Object.values(state.tiles).filter((t) => t.owner === p);
-      expect(owned).toHaveLength(1);
-      expect(owned[0]).toMatchObject({ type: 'city', troops: config.startingTroops });
-    }
-  });
-
-  const mirrorSymmetries: [number, Symmetry][] = [
-    [2, 'mirror'],
-    [4, 'mirror'],
-  ];
-  it.each(mirrorSymmetries)('is mirror symmetric for %i players', (n, symmetry) => {
-    const players = Array.from({ length: n }, (_, i) => `P${i}`);
-    const { state } = createSymmetricMatch({ players, seed: 99, radius: 6, symmetry });
-    // Two players are only mirrored left-right; four are mirrored both ways.
-    const maps: ((h: Hex) => Hex)[] =
-      n === 2 ? [hexFlipHorizontal] : [hexFlipVertical, hexFlipHorizontal];
-    for (const tile of Object.values(state.tiles)) {
-      for (const map of maps) {
-        const image = state.tiles[hexKey(map(tile))]!;
-        expect(image.type).toBe(tile.type);
-        if (tile.owner === null && image.owner === null) expect(image.troops).toBe(tile.troops);
+  it.each(['mirror', 'rotational'] as const)('is exactly %s symmetric', (symmetry) => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { state } = createDuelMatch({ players: pair, seed, symmetry });
+      for (const tile of Object.values(state.tiles)) {
+        const twin = state.tiles[hexKey(image(symmetry)(tile))];
+        expect(twin).toBeDefined();
+        expect(twin!.type).toBe(tile.type);
+        // Neutral tiles match in garrison too; the starting cities are checked below.
+        if (tile.owner === null && twin!.owner === null) expect(twin!.troops).toBe(tile.troops);
       }
     }
-    for (const p of players) {
-      const owned = Object.values(state.tiles).filter((t) => t.owner === p);
-      expect(owned).toHaveLength(1);
-      expect(owned[0]!.type).toBe('city');
-    }
   });
 
-  it('makes two-player boards mirror or half-turn symmetric, both kinds turning up', () => {
+  it('makes both kinds of board by default', () => {
     const kinds = new Set<string>();
     for (let seed = 1; seed <= 30; seed++) {
-      const { state } = createSymmetricMatch({ players: ['A', 'B'], seed, radius: 6 });
-      const same = (transform: (hex: { q: number; r: number }) => { q: number; r: number }) =>
-        Object.values(state.tiles).every((t) => state.tiles[hexKey(transform(t))]?.type === t.type);
-      const mirror = same(hexFlipHorizontal);
-      const turn = same((hex) => hexRotate(hex, 3));
-      expect(mirror || turn).toBe(true);
-      kinds.add(mirror ? 'mirror' : 'turn');
+      const { duel } = createDuelMatch({ players: pair, seed });
+      kinds.add(duel.symmetry);
     }
-    expect(kinds.size).toBe(2);
+    expect(kinds).toEqual(new Set(['mirror', 'rotational']));
   });
 
-  it('defaults to mirror symmetry for 4 players, rotational for 3 and 6', () => {
-    const mirrored = (n: number) => {
-      const players = Array.from({ length: n }, (_, i) => `P${i}`);
-      const { state } = createSymmetricMatch({ players, seed: 11 });
-      return Object.values(state.tiles).every(
-        (t) => state.tiles[hexKey(hexFlipVertical(t))]?.type === t.type,
-      );
-    };
-    expect(mirrored(4)).toBe(true);
-    expect(mirrored(3)).toBe(false);
-    expect(mirrored(6)).toBe(false);
-  });
-
-  it('puts two players on opposite sides, one tile in from the edge', () => {
-    const { state } = createSymmetricMatch({ players: ['A', 'B'], seed: 4, radius: 6 });
-    const owned = Object.values(state.tiles).filter((t) => t.owner !== null);
-    expect(owned.map((t) => [t.q, t.r]).sort()).toEqual([
-      [-5, 0],
-      [5, 0],
-    ]);
-  });
-
-  it('spreads four players around the board', () => {
-    const players = ['A', 'B', 'C', 'D'];
-    const { state } = createSymmetricMatch({ players, seed: 5 });
-    const starts = Object.values(state.tiles).filter((t) => t.owner !== null);
-    const quadrants = new Set(starts.map((t) => `${Math.sign(t.q + t.r / 2)},${Math.sign(t.r)}`));
-    expect(quadrants.size).toBe(4);
+  it('gives each player one starting city, and the two are twins', () => {
+    for (const symmetry of ['mirror', 'rotational'] as const) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const { state, config } = createDuelMatch({ players: pair, seed, symmetry });
+        const [a, b] = pair.map((p) => Object.values(state.tiles).filter((t) => t.owner === p));
+        expect(a).toHaveLength(1);
+        expect(b).toHaveLength(1);
+        expect(a![0]).toMatchObject({ type: 'city', troops: config.startingTroops });
+        expect(b![0]).toMatchObject({ type: 'city', troops: config.startingTroops });
+        expect(hexKey(image(symmetry)(a![0]!))).toBe(hexKey(b![0]!));
+      }
+    }
   });
 
   it('starts neutral tiles at their base garrison', () => {
-    const { state } = createSymmetricMatch({ players: ['A', 'B'], seed: 3 });
+    const { state } = createDuelMatch({ players: pair, seed: 3 });
     for (const t of Object.values(state.tiles)) {
       if (t.owner === null) expect(t.troops).toBe(TILE_TYPES[t.type].baseGarrison);
     }
   });
 
-  it('rejects unsupported combinations', () => {
-    const make = (players: string[], symmetry?: Symmetry) =>
-      createSymmetricMatch({ players, seed: 1, symmetry });
-    expect(() => make(['A', 'B', 'C', 'D', 'E'])).toThrow();
-    expect(() => make(['A', 'B', 'C', 'D'], 'rotational')).toThrow();
-    expect(() => make(['A', 'B', 'C'], 'mirror')).toThrow();
-    expect(() => make(['A'])).toThrow();
+  it('has about the number of tiles asked for', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const tiles = Object.keys(
+          createDuelMatch({ players: pair, seed, tiles: DUEL_TILES[size] }).state.tiles,
+        ).length;
+        expect(tiles / DUEL_TILES[size]).toBeGreaterThan(0.9);
+        expect(tiles / DUEL_TILES[size]).toBeLessThan(1.1);
+      }
+    }
+  });
+
+  it('has more blobs on bigger boards, and slightly bigger ones', () => {
+    const average = (size: keyof typeof DUEL_TILES) => {
+      let blobs = 0;
+      let radius = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        const { duel } = createDuelMatch({ players: pair, seed, tiles: DUEL_TILES[size] });
+        blobs += duel.blueprint.chambers.length;
+        radius += duel.blueprint.chambers[0]!.radius;
+      }
+      return { blobs: blobs / 20, radius: radius / 20 };
+    };
+    const [small, normal, large] = [average('small'), average('normal'), average('large')];
+    expect(normal.blobs).toBeGreaterThan(small.blobs);
+    expect(large.blobs).toBeGreaterThan(normal.blobs);
+    expect(large.radius).toBeGreaterThan(small.radius);
+  });
+
+  it('puts extra blobs on the line or point of symmetry sometimes, and off it sometimes', () => {
+    for (const symmetry of ['mirror', 'rotational'] as const) {
+      let onAxis = 0;
+      let offAxis = 0;
+      for (let seed = 1; seed <= 40; seed++) {
+        const { duel } = createDuelMatch({
+          players: pair,
+          seed,
+          symmetry,
+          tiles: DUEL_TILES.large,
+        });
+        for (const chamber of duel.blueprint.chambers.filter((c) => !c.spawn)) {
+          const { x, y } = chamber.center;
+          const middle = symmetry === 'mirror' ? x === 0 : x === 0 && y === 0;
+          if (middle) onAxis++;
+          else offAxis++;
+        }
+      }
+      expect(onAxis).toBeGreaterThan(0);
+      expect(offAxis).toBeGreaterThan(0);
+    }
+  });
+
+  it('rejects anything but two different players', () => {
+    expect(() => createDuelMatch({ players: ['A'], seed: 1 })).toThrow();
+    expect(() => createDuelMatch({ players: ['A', 'B', 'C'], seed: 1 })).toThrow();
+    expect(() => createDuelMatch({ players: ['A', 'A'], seed: 1 })).toThrow();
   });
 });
 
 describe('terrain rules', () => {
-  const setups: { players: number; symmetry: Symmetry; radius: number }[] = [
-    { players: 2, symmetry: 'mirror', radius: 6 },
-    { players: 2, symmetry: 'rotational', radius: 8 },
-    { players: 3, symmetry: 'rotational', radius: 7 },
-    { players: 4, symmetry: 'mirror', radius: 10 },
-    { players: 6, symmetry: 'rotational', radius: 9 },
+  const setups: { symmetry: DuelSymmetry; tiles: number }[] = [
+    { symmetry: 'mirror', tiles: DUEL_TILES.normal },
+    { symmetry: 'rotational', tiles: DUEL_TILES.normal },
+    { symmetry: 'mirror', tiles: DUEL_TILES.large },
+    { symmetry: 'rotational', tiles: DUEL_TILES.large },
   ];
 
-  /** The symmetry group the generator uses, for finding a tile's orbit. */
-  const group = (symmetry: Symmetry, players: number): ((h: Hex) => Hex)[] => {
-    if (symmetry === 'rotational') {
-      return Array.from({ length: players }, (_, i) => (h) => hexRotate(h, (i * 6) / players));
-    }
-    return players === 2
-      ? [(h) => h, hexFlipHorizontal]
-      : [(h) => h, hexFlipVertical, hexFlipHorizontal, (h) => hexRotate(h, 3)];
-  };
-
   const forEachBoard = (
-    check: (board: ReturnType<typeof boardFor>, symmetry: Symmetry, players: number) => void,
+    check: (board: ReturnType<typeof boardFor>, symmetry: DuelSymmetry) => void,
   ) => {
-    for (const { players, symmetry, radius } of setups) {
-      for (let seed = 1; seed <= 25; seed++)
-        check(boardFor(players, symmetry, radius, seed), symmetry, players);
+    for (const { symmetry, tiles } of setups) {
+      for (let seed = 1; seed <= 25; seed++) check(boardFor(symmetry, tiles, seed), symmetry);
     }
   };
 
-  const boardFor = (n: number, symmetry: Symmetry, radius: number, seed: number) => {
-    const ids = Array.from({ length: n }, (_, i) => `P${i}`);
+  const boardFor = (symmetry: DuelSymmetry, tiles: number, seed: number) => {
     // Fully packed with villages, so the "nowhere legal is left" check means something.
-    const { state } = createSymmetricMatch({
-      players: ids,
+    const { state } = createDuelMatch({
+      players: pair,
       seed,
-      radius,
+      tiles,
       symmetry,
       params: { villageChance: 100 },
     });
-    const tiles = Object.values(state.tiles);
+    const all = Object.values(state.tiles);
     return {
-      tiles,
+      tiles: all,
       byKey: state.tiles,
-      cities: tiles.filter((t) => t.type === 'city'),
-      villages: tiles.filter((t) => t.type === 'village'),
-      startCities: tiles.filter((t) => t.owner !== null),
+      cities: all.filter((t) => t.type === 'city'),
+      villages: all.filter((t) => t.type === 'village'),
     };
   };
 
-  it('never puts cities closer than 4 tiles apart', () => {
+  it('never puts cities closer than the minimum apart', () => {
     forEachBoard(({ cities }) => {
       for (const a of cities) {
         for (const b of cities) {
-          if (a !== b)
+          if (a !== b) {
             expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
               DEFAULT_GENERATION_PARAMS.minCityDistance,
             );
+          }
         }
       }
     });
@@ -233,18 +203,12 @@ describe('terrain rules', () => {
   });
 
   it('keeps extra cities near one per 50 tiles', () => {
-    forEachBoard(({ tiles, cities, startCities }) => {
-      // The whole start orbit counts as starting cities, owned or not.
-      const startOrbit = cities.filter((c) =>
-        startCities.some(
-          (s) =>
-            s.owner !== null && hexDistance(s, { q: 0, r: 0 }) === hexDistance(c, { q: 0, r: 0 }),
-        ),
-      );
-      const extra = cities.length - startOrbit.length;
-      const target = tiles.length / DEFAULT_GENERATION_PARAMS.tilesPerCity;
+    forEachBoard(({ tiles, cities }) => {
+      const extra = cities.length - 2;
       expect(extra).toBeGreaterThanOrEqual(0);
-      expect(extra).toBeLessThanOrEqual(Math.ceil(target) + 6);
+      expect(extra).toBeLessThanOrEqual(
+        Math.ceil(tiles.length / DEFAULT_GENERATION_PARAMS.tilesPerCity) + 6,
+      );
     });
   });
 
@@ -265,10 +229,9 @@ describe('terrain rules', () => {
   });
 
   it('places villages until nowhere legal is left', () => {
-    forEachBoard(({ tiles, byKey }, symmetry, players) => {
-      const images = group(symmetry, players);
+    forEachBoard(({ tiles, byKey }, symmetry) => {
       for (const tile of tiles.filter((t) => t.type === 'farmland')) {
-        const orbit = images.map((f) => f(tile));
+        const orbit: Hex[] = [tile, image(symmetry)(tile)];
         const blocked = orbit.some(
           (hex, i) =>
             hexNeighbors(hex).some((n) => {

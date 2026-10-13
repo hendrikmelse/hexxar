@@ -3,13 +3,13 @@ import type { Graphics } from 'pixi.js';
 import {
   ARCHETYPE_IDS,
   DEFAULT_GENERATION_PARAMS,
-  symmetricRadius,
+  DUEL_TILES,
   FFA_MAX_PLAYERS,
   FFA_MIN_PLAYERS,
   MAP_SIZES,
   corridorPath,
   createFreeForAllMatch,
-  createSymmetricMatch,
+  createDuelMatch,
   hexKey,
   parseMatchConfig,
   ROYALE_START_DISTANCE,
@@ -19,8 +19,11 @@ import {
   type GameState,
   type GenerationParams,
   type MapSize,
+  type DuelReport,
+  type DuelSymmetry,
   type RoomMode,
   type RoyaleReport,
+  type Blueprint,
 } from '@hexxar/shared';
 import { playerColor } from '../board.js';
 import { emptyGame, type GameView } from '../game.js';
@@ -48,10 +51,10 @@ const NEUTRAL_CHAMBER_COLOR = 0x9db4ff;
 /** What to draw over the board, or `null` for nothing. */
 function overlayFor(
   game: GameView,
-  report: RoyaleReport | null,
+  blueprint: Blueprint | null,
   show: { blueprint: boolean; territories: boolean },
 ): ((graphics: Graphics) => void) | null {
-  if (!report || !(show.blueprint || show.territories)) return null;
+  if (!blueprint || !(show.blueprint || show.territories)) return null;
   return (g) => {
     if (show.territories) {
       // Tint every tile with the color of the player whose city is nearest (by walking).
@@ -64,8 +67,8 @@ function overlayFor(
       }
     }
     if (show.blueprint) {
-      for (const corridor of report.blueprint.corridors) {
-        const [first, ...rest] = corridorPath(report.blueprint, corridor);
+      for (const corridor of blueprint.corridors) {
+        const [first, ...rest] = corridorPath(blueprint, corridor);
         g.moveTo(first!.x * UNIT, first!.y * UNIT);
         for (const point of rest) g.lineTo(point.x * UNIT, point.y * UNIT);
         g.stroke({
@@ -76,7 +79,7 @@ function overlayFor(
           join: 'round',
         });
       }
-      for (const chamber of report.blueprint.chambers) {
+      for (const chamber of blueprint.chambers) {
         g.circle(chamber.center.x * UNIT, chamber.center.y * UNIT, chamber.radius * UNIT).stroke({
           width: 2,
           color: chamber.spawn ? BLUEPRINT_COLOR : NEUTRAL_CHAMBER_COLOR,
@@ -87,31 +90,34 @@ function overlayFor(
   };
 }
 
-/** The player counts a symmetric board supports. */
-const SYMMETRIC_PLAYERS = [2, 3, 4, 6] as const;
-
 /** A board, and for battle royales how it was made. Or the reason it could not be made. */
-type Generated = { state: GameState; report: RoyaleReport | null } | string;
+type Generated =
+  { state: GameState; report: RoyaleReport | null; duel: DuelReport | null } | string;
 
 /** Make a board the way a room would for these settings. */
 function generate(
   mode: RoomMode,
-  radius: number,
+  tiles: number,
   players: number,
   seed: number,
   params: GenerationParams,
   archetype: ArchetypeId | 'random',
+  symmetry: DuelSymmetry | 'random',
 ): Generated {
   const ids = Array.from({ length: players }, (_, i) => `p${i}`);
   try {
     if (mode === 'ffa') {
       const { state, report } = createFreeForAllMatch({ players: ids, seed, params, archetype });
-      return { state, report };
+      return { state, report, duel: null };
     }
-    return {
-      state: createSymmetricMatch({ players: ids, seed, radius, params }).state,
-      report: null,
-    };
+    const { state, duel } = createDuelMatch({
+      players: ids,
+      seed,
+      tiles,
+      symmetry: symmetry === 'random' ? undefined : symmetry,
+      params,
+    });
+    return { state, report: null, duel };
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -155,48 +161,14 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
         key: 'fairnessCandidates',
         hint: 'This many valid boards are drawn and the fairest is used (1 is the first valid one)',
       },
+    ],
+  },
+  {
+    title: 'Coast (all boards)',
+    fields: [
       { key: 'coastRoughness', hint: 'How far noise pushes the coast in and out, in tiles' },
       { key: 'coastDetail', hint: 'Size of the coast bumps, in tiles' },
-      { key: 'warpStrength', hint: 'How far noise bends the rooms out of round, in tiles' },
-    ],
-  },
-  {
-    title: 'Outline (duels)',
-    fields: [
-      {
-        key: 'outlineScale',
-        hint: 'Size of the outline circle relative to a hexagon of the same radius',
-      },
-      { key: 'waveCount', hint: 'How many waves bend the outline (0 is a plain circle)' },
-      { key: 'waveStrength', hint: 'How far the waves push the outline in and out' },
-      { key: 'waveDetail', hint: 'The highest wave frequency; higher gives finer lobes' },
-      { key: 'jaggedness', hint: 'How rough the coast is, in tiles' },
-      {
-        key: 'minAreaRatio',
-        hint: 'A shape is kept only if its area is at least this fraction of the hexagon',
-      },
-      {
-        key: 'maxAreaRatio',
-        hint: 'A shape is kept only if its area is at most this fraction of the hexagon',
-      },
-    ],
-  },
-  {
-    title: 'Lakes (duels)',
-    fields: [
-      { key: 'tilesPerLake', hint: 'About one lake per this many tiles (0 for none)' },
-      {
-        key: 'lakeCountVariation',
-        hint: 'How far the number of lakes may stray from the expected number, in percent either way',
-      },
-      {
-        key: 'maxTotalLakePercent',
-        hint: 'The most water all the lakes together may take, as a percentage of the board',
-      },
-      { key: 'minLakeSize', hint: 'Smallest lake, in tiles' },
-      { key: 'maxLakePercent', hint: 'Biggest a lake may be, as a percentage of the board' },
-      { key: 'maxLakeSize', hint: 'Absolute cap on lake size, in tiles' },
-      { key: 'lakeClearance', hint: 'Tiles of land kept between a lake and the coast' },
+      { key: 'warpStrength', hint: 'How far noise bends the blobs out of round, in tiles' },
     ],
   },
   {
@@ -204,7 +176,7 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
     fields: [
       {
         key: 'tilesPerCity',
-        hint: 'About one extra city per this many tiles (symmetric boards; royales only with the option below)',
+        hint: 'About one extra city per this many tiles on duel boards (battle royales have none)',
       },
       { key: 'minCityDistance', hint: 'Cities are never closer than this to each other' },
       { key: 'villageChance', hint: 'Percent chance a village is placed where one fits' },
@@ -212,16 +184,6 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
         key: 'minVillageDistance',
         hint: 'Villages are never closer than this (2: they never touch)',
       },
-    ],
-  },
-  {
-    title: 'Starting positions (duels)',
-    fields: [
-      {
-        key: 'startInset',
-        hint: 'Symmetric boards: starting cities sit this many tiles in from the edge',
-      },
-      { key: 'startRoom', hint: 'Rings of land kept around each starting city on random shapes' },
     ],
   },
 ];
@@ -335,7 +297,11 @@ export function MapsPage() {
   const [players, setPlayers] = useState(
     Math.min(FFA_MAX_PLAYERS, Math.max(FFA_MIN_PLAYERS, queryNumber('players') ?? 4)),
   );
-  const [symmetricPlayers, setSymmetricPlayers] = useState<number>(2);
+  const [duelSymmetry, setDuelSymmetry] = useState<DuelSymmetry | 'random'>(
+    query.get('symmetry') === 'mirror' || query.get('symmetry') === 'rotational'
+      ? (query.get('symmetry') as DuelSymmetry)
+      : 'random',
+  );
   const [seed, setSeed] = useState(() => queryNumber('seed') ?? randomSeed());
   const [archetype, setArchetype] = useState<ArchetypeId | 'random'>(
     ARCHETYPE_IDS.find((id) => id === query.get('archetype')) ?? 'random',
@@ -353,14 +319,13 @@ export function MapsPage() {
     minStartDistance: ROYALE_START_DISTANCE[size],
   });
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
-  const [radius, setRadius] = useState<number>(symmetricRadius(mapSize, 2));
+  const [tiles, setTiles] = useState<number>(queryNumber('tiles') ?? DUEL_TILES[mapSize]);
 
-  // The radius that gives each player about the same land, for this size and number of players.
-  const defaultRadius = symmetricRadius(mapSize, symmetricPlayers);
+  const defaultTiles = DUEL_TILES[mapSize];
   const chooseSize = (size: MapSize): void => {
     setMapSize(size);
     setParams(sizeDefaults(size, players));
-    setRadius(symmetricRadius(size, symmetricPlayers));
+    setTiles(DUEL_TILES[size]);
   };
   const chooseRoyalePlayers = (count: number): void => {
     setPlayers(count);
@@ -369,21 +334,17 @@ export function MapsPage() {
       tilesPerPlayer: royaleTilesPerPlayer(mapSize, count),
     }));
   };
-  const choosePlayers = (count: number): void => {
-    setSymmetricPlayers(count);
-    setRadius(symmetricRadius(mapSize, count));
-  };
   const baseline = sizeDefaults(mapSize, players);
   const changes: Record<string, number | boolean> = {};
   for (const key of Object.keys(params) as (keyof GenerationParams)[]) {
     if (params[key] !== baseline[key]) changes[key] = params[key];
   }
-  if (mode === 'duel' && radius !== defaultRadius) changes.radius = radius;
+  if (mode === 'duel' && tiles !== defaultTiles) changes.tiles = tiles;
 
-  const count = mode === 'duel' ? symmetricPlayers : players;
+  const count = mode === 'duel' ? 2 : players;
   const result = useMemo(
-    () => generate(mode, radius, count, seed, params, archetype),
-    [mode, radius, count, seed, params, archetype],
+    () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry),
+    [mode, tiles, count, seed, params, archetype, duelSymmetry],
   );
 
   /** Make many boards one slice at a time, so the page stays usable while it works. */
@@ -408,7 +369,7 @@ export function MapsPage() {
     const step = (done: number): void => {
       const started = performance.now();
       for (let i = done; i < Math.min(done + 5, STATS_RUNS); i++) {
-        const board = generate('ffa', radius, players, first + i, params, archetype);
+        const board = generate('ffa', tiles, players, first + i, params, archetype, duelSymmetry);
         total.runs++;
         if (typeof board === 'string' || !board.report) {
           total.failures++;
@@ -440,6 +401,8 @@ export function MapsPage() {
 
   const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
   const report = typeof result === 'string' ? null : result.report;
+  const duel = typeof result === 'string' ? null : result.duel;
+  const blueprint = report?.blueprint ?? duel?.blueprint ?? null;
 
   // The board itself is the game's own, drawn by `main.ts`: hand it each new board, then the overlays.
   const game = useMemo(
@@ -452,11 +415,11 @@ export function MapsPage() {
   useEffect(() => {
     preview.overlay(
       game
-        ? overlayFor(game, report, { blueprint: showBlueprint, territories: showTerritories })
+        ? overlayFor(game, blueprint, { blueprint: showBlueprint, territories: showTerritories })
         : null,
     );
     return () => preview.overlay(null);
-  }, [game, report, showBlueprint, showTerritories]);
+  }, [game, blueprint, showBlueprint, showTerritories]);
 
   return (
     <div className="maps-panel">
@@ -475,7 +438,7 @@ export function MapsPage() {
                 data-sound="none"
                 onClick={() => setMode(value)}
               >
-                {value === 'duel' ? 'Symmetric (duel)' : 'Battle royale'}
+                {value === 'duel' ? 'Duel' : 'Battle royale'}
               </button>
             ))}
           </div>
@@ -493,14 +456,14 @@ export function MapsPage() {
           </div>
           {mode === 'duel' ? (
             <div className="maps-choice">
-              {SYMMETRIC_PLAYERS.map((value) => (
+              {(['random', 'mirror', 'rotational'] as const).map((value) => (
                 <button
                   key={value}
-                  className={symmetricPlayers === value ? 'primary' : ''}
+                  className={duelSymmetry === value ? 'primary' : ''}
                   data-sound="none"
-                  onClick={() => choosePlayers(value)}
+                  onClick={() => setDuelSymmetry(value)}
                 >
-                  {value} players
+                  {value[0]!.toUpperCase() + value.slice(1)}
                 </button>
               ))}
             </div>
@@ -562,15 +525,15 @@ export function MapsPage() {
           </summary>
           {mode === 'duel' && (
             <div className="maps-group">
-              <h4>Symmetric board</h4>
+              <h4>Duel board</h4>
               <div className="maps-fields">
                 <NumberField
-                  label="radius"
-                  hint="Board radius, in tiles"
-                  value={radius}
+                  label="tiles"
+                  hint="About how many tiles the board has"
+                  value={tiles}
                   step={1}
-                  changed={radius !== defaultRadius}
-                  onChange={setRadius}
+                  changed={tiles !== defaultTiles}
+                  onChange={setTiles}
                 />
               </div>
             </div>
@@ -608,7 +571,7 @@ export function MapsPage() {
               data-sound="none"
               onClick={() => {
                 setParams(baseline);
-                setRadius(defaultRadius);
+                setTiles(defaultTiles);
               }}
             >
               Reset to this size&apos;s defaults
@@ -620,6 +583,9 @@ export function MapsPage() {
 
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
+          {duel &&
+            ` · ${duel.symmetry}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
+              ` · ${duel.blueprint.chambers.length} blobs`}
           {report &&
             ` · ${report.archetype}, ${report.attempts} ${report.attempts === 1 ? 'attempt' : 'attempts'}` +
               ` · ${report.metrics.chokes.length} chokes (${report.metrics.widths

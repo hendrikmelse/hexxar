@@ -2,45 +2,17 @@ import type { Rng } from '../../rng.js';
 import {
   hexToPoint,
   pointToHex,
-  segmentDistance,
   type Blueprint,
   type Chamber,
   type Corridor,
   type Point,
 } from '../blueprint.js';
 import { topologyIssues, topologyOk } from '../topology.js';
+import { blocked, distance, minGap, pickWidth, spawnRadius, spawnSpacing } from './common.js';
 import type { ArchetypeInput } from './types.js';
 
-/**
- * Spawn chambers are all the same size, so no player starts with a roomier bowl than another.
- * Closer cities get smaller bowls, but never less than the city and the ring around it.
- */
-export const spawnRadius = (startDistance: number): number =>
-  Math.min(2, Math.max(1.2, startDistance * 0.4));
-/** Spawn chamber centers are a little further apart than the cities are required to be. */
-const spawnSpacing = (startDistance: number): number => startDistance + 0.6;
-/** The least open ground between two chambers, so a corridor is long enough to read as one. */
-const minGap = (startDistance: number): number => Math.min(2.5, Math.max(1.5, startDistance * 0.5));
 /** How many random spots are tried for each room before it is given up on. */
 const PLACE_TRIES = 200;
-
-/** Corridor widths, in hexes, and how often each is picked. The wide ones are not chokes. */
-export const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number])[] = [
-  [1, 3],
-  [2, 3],
-  [3, 2.5],
-  [4, 1.5],
-];
-
-export function pickWidth(rng: Rng): number {
-  const total = CORRIDOR_WIDTHS.reduce((sum, [, weight]) => sum + weight, 0);
-  let roll = rng.next() * total;
-  for (const [width, weight] of CORRIDOR_WIDTHS) {
-    roll -= weight;
-    if (roll < 0) return width;
-  }
-  return CORRIDOR_WIDTHS[0]![0];
-}
 
 /** A random spot in a disc of the given radius around the origin. */
 function inDisc(radius: number, rng: Rng): Point {
@@ -48,8 +20,6 @@ function inDisc(radius: number, rng: Rng): Point {
   const distance = radius * Math.sqrt(rng.next());
   return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance };
 }
-
-const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 
 /**
  * Push apart any points closer than `spacing`, keeping them inside a disc, until none are (or
@@ -149,15 +119,6 @@ function placeNeutrals(
     }
   }
 }
-
-/** Does the straight line between two chambers run through another one? */
-const blocked = (chambers: readonly Chamber[], a: number, b: number): boolean =>
-  chambers.some(
-    (other, i) =>
-      i !== a &&
-      i !== b &&
-      segmentDistance(other.center, chambers[a]!.center, chambers[b]!.center) < other.radius + 0.5,
-  );
 
 /**
  * Join the chambers: a minimum spanning tree so everything is reachable, then a few extra short

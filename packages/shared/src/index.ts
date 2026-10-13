@@ -1,4 +1,5 @@
 export * from './config.js';
+export * from './duel/index.js';
 export * from './generate.js';
 export * from './feedback.js';
 export * from './generation.js';
@@ -10,7 +11,6 @@ export * from './resolve.js';
 export * from './royale/index.js';
 export * from './rng.js';
 export * from './scores.js';
-export * from './shape.js';
 export * from './state.js';
 export * from './tiles.js';
 export * from './visibility.js';

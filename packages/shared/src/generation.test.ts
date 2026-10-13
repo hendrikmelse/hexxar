@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseMatchConfig } from './config.js';
-import { createSymmetricMatch } from './generate.js';
+import { createDuelMatch } from './generate.js';
 import { applyTickDiff, generationInterval, ownedFarmNeighbors, stepTile } from './generation.js';
 import { HEX_DIRECTIONS, hexKey, hexNeighbors } from './hex.js';
 import type { Order, OrdersByPlayer } from './orders.js';
@@ -100,10 +100,10 @@ describe('applyTickDiff', () => {
         village: { generation: { cap: 6 } },
       },
     };
-    const { state: initial, config: matchConfig } = createSymmetricMatch({
+    const { state: initial, config: matchConfig } = createDuelMatch({
       players: ['A', 'B'],
       seed: 21,
-      radius: 5,
+      tiles: 91,
       config: fast,
     });
     const rng = createRng(77);
