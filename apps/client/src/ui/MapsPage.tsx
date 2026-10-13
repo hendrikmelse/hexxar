@@ -497,26 +497,22 @@ export function MapsPage() {
           <button className="primary" data-sound="none" onClick={() => setSeed(randomSeed())}>
             Generate new map
           </button>
-          {mode === 'ffa' && (
-            <>
-              <label className="maps-flag">
-                <input
-                  type="checkbox"
-                  checked={showBlueprint}
-                  onChange={(event) => setShowBlueprint(event.target.checked)}
-                />
-                Show blueprint
-              </label>
-              <label className="maps-flag">
-                <input
-                  type="checkbox"
-                  checked={showTerritories}
-                  onChange={(event) => setShowTerritories(event.target.checked)}
-                />
-                Show territories
-              </label>
-            </>
-          )}
+          <label className="maps-flag">
+            <input
+              type="checkbox"
+              checked={showBlueprint}
+              onChange={(event) => setShowBlueprint(event.target.checked)}
+            />
+            Show blueprint
+          </label>
+          <label className="maps-flag">
+            <input
+              type="checkbox"
+              checked={showTerritories}
+              onChange={(event) => setShowTerritories(event.target.checked)}
+            />
+            Show territories
+          </label>
         </div>
 
         <details className="maps-params">
