@@ -199,8 +199,6 @@ export class Lobby {
             return null;
           case 'returnToRoom':
             return room.returnToRoom(session);
-          case 'spectate':
-            return room.keepWatching(session);
           case 'becomeSpectator':
             return room.setSpectating(session, true);
           case 'becomePlayer':
