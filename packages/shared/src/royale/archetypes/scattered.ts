@@ -94,7 +94,7 @@ function placeSpawns(
   }
   return centers.map((center) => ({
     center,
-    radius: spawnRadius(startDistance, crowded),
+    radius: spawnRadius(startDistance, crowded, count),
     spawn: true,
   }));
 }

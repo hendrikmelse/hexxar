@@ -12,7 +12,7 @@ export const crowding = (players: number): number => Math.min(1, Math.max(0, (pl
  * Closer cities get smaller bowls, but never less than the city and the ring around it. Crowded
  * boards (see `crowding`) get bigger bowls, so the land is bowls and short bridges, not thin spindles.
  */
-export const spawnRadius = (startDistance: number, crowded = 0): number => {
+export const spawnRadius = (startDistance: number, crowded = 0, players = Infinity): number => {
   // Large boards (start distance 5) always have the bowls of a fully crowded board, whatever the
   // number of players; normal boards grow with the crowding, and small ones not at all.
   const large = Math.min(1, Math.max(0, startDistance - 4));
@@ -20,7 +20,8 @@ export const spawnRadius = (startDistance: number, crowded = 0): number => {
   return (
     Math.min(2, Math.max(1.2, startDistance * 0.4)) +
     CROWDED_RADIUS * growth * Math.min(0.5, Math.max(0, (startDistance - 3) / 2)) +
-    LARGE_RADIUS * large
+    LARGE_RADIUS * large +
+    LOW_COUNT_RADIUS * fewPlayers(players) * normalBoard(startDistance)
   );
 };
 /**
@@ -30,6 +31,14 @@ export const spawnRadius = (startDistance: number, crowded = 0): number => {
 const CROWDED_RADIUS = 0.4;
 /** On top of that, the bowls of every large board are this much bigger. */
 const LARGE_RADIUS = 0.6;
+/**
+ * Normal boards with few players are bigger-bowled too, or they turn into thin spindles: this much
+ * bigger with 3 players, fading out evenly to nothing at 8 players.
+ */
+const LOW_COUNT_RADIUS = 0.55;
+const fewPlayers = (players: number): number => Math.min(1, Math.max(0, (8 - players) / 5)) ** 2;
+/** 1 for a normal board (start distance 4), fading to 0 a whole tile either way. */
+const normalBoard = (startDistance: number): number => Math.max(0, 1 - Math.abs(startDistance - 4));
 /** How much further apart (in tiles) the bowls of a fully crowded board are than those of an empty one. */
 const CROWDED_SPACING = 0.6;
 /** Spawn chamber centers are a little further apart than the cities are required to be. */
