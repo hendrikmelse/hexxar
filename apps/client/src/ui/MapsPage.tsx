@@ -162,8 +162,6 @@ interface Stats {
   chokes: number;
   cutChokes: number;
   interiorShare: number;
-  fairnessScore: number;
-  worstReachRatio: number;
   widths: number[];
   rejections: Record<string, number>;
   milliseconds: number;
@@ -186,10 +184,6 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
         hint: 'Boards never get less than this per player (0 for no floor)',
       },
       { key: 'minStartDistance', hint: 'Starting cities are never closer than this' },
-      {
-        key: 'fairnessCandidates',
-        hint: 'This many valid boards are drawn and the fairest is used (1 is the first valid one)',
-      },
     ],
   },
   {
@@ -220,14 +214,9 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
 /** On/off settings, shown in the group of the same title. */
 const FLAGS: {
   group: string;
-  key: 'villagesNextToCities' | 'checkFairness';
+  key: 'villagesNextToCities';
   label: string;
 }[] = [
-  {
-    group: 'Battle royale terrain',
-    key: 'checkFairness',
-    label: 'Check fairness (equal exits for every start, reject lopsided boards, best of several)',
-  },
   { group: 'Cities and villages', key: 'villagesNextToCities', label: 'Villages may touch cities' },
 ];
 
@@ -292,8 +281,6 @@ function StatsTable({ stats }: { stats: Stats }) {
         .join(', '),
     ],
     ['deep inland', `${Math.round((stats.interiorShare / ok) * 100)}%`],
-    ['unfairness score', `${(stats.fairnessScore / ok).toFixed(2)} (0 is perfectly even)`],
-    ['nearby land, best over worst player', `${(stats.worstReachRatio / ok).toFixed(2)}×`],
     ['time per board', `${(stats.milliseconds / stats.runs).toFixed(0)} ms`],
   ];
   return (
@@ -416,8 +403,6 @@ export function MapsPage() {
       chokes: 0,
       cutChokes: 0,
       interiorShare: 0,
-      fairnessScore: 0,
-      worstReachRatio: 0,
       widths: [],
       rejections: {},
       milliseconds: 0,
@@ -448,8 +433,6 @@ export function MapsPage() {
         total.chokes += report.metrics.chokes.length;
         total.cutChokes += report.metrics.chokes.filter((choke) => choke.cut).length;
         total.interiorShare += report.metrics.interiorShare;
-        total.fairnessScore += report.fairness.score;
-        total.worstReachRatio += report.fairness.reachRatio;
         report.metrics.widths.forEach((n, width) => {
           total.widths[width] = (total.widths[width] ?? 0) + n;
         });
@@ -685,8 +668,7 @@ export function MapsPage() {
                   ', ',
                 )} wide, ${report.metrics.chokes.filter((c) => c.cut).length} cut the map)` +
               ` · ${report.metrics.loops} loops, ${report.metrics.deadEnds} dead ends` +
-              ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland` +
-              ` · fairness ${report.fairness.score.toFixed(2)} (best of ${report.compared}; nearby land ${report.fairness.reachRatio.toFixed(1)}×)`}
+              ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland`}
         </p>
 
         {mode === 'ffa' && (

@@ -14,7 +14,6 @@ import { hexToPoint, pointToHex } from './blueprint.js';
 import { components, depthFromCoast } from './grid.js';
 import { topologyIssues, topologyOk } from './topology.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
-import { territories } from './fairness.js';
 
 // Each test draws dozens of whole boards.
 vi.setConfig({ testTimeout: 60000 });
@@ -192,34 +191,6 @@ describe('royale layouts', () => {
     }
   });
 
-  it('with fairness checking on, picks the fairest of several boards', () => {
-    const fair = { ...params, checkFairness: true };
-    for (const players of playerCounts) {
-      for (const seed of seeds) {
-        const { report, hexes, starts } = generateRoyaleLayout({ players, seed, params: fair });
-        expect(report.compared).toBeGreaterThanOrEqual(1);
-        expect(report.compared).toBeLessThanOrEqual(params.fairnessCandidates);
-        expect(report.fairness.score).toBeLessThanOrEqual(0.8);
-        expect(report.fairness.territory).toHaveLength(players);
-        // Every tile belongs to somebody, and territories add up to the whole board.
-        const land = new Map(hexes.map((h) => [hexKey(h), h]));
-        expect(territories(land, starts).sizes.reduce((a, b) => a + b, 0)).toBe(hexes.length);
-      }
-    }
-    // More candidates to choose from never gives a worse board.
-    const one = generateRoyaleLayout({
-      players: 8,
-      seed: 3,
-      params: { ...params, checkFairness: true, fairnessCandidates: 1 },
-    });
-    const many = generateRoyaleLayout({
-      players: 8,
-      seed: 3,
-      params: { ...params, checkFairness: true, fairnessCandidates: 6 },
-    });
-    expect(many.report.fairness.score).toBeLessThanOrEqual(one.report.fairness.score);
-  });
-
   it('can be told which archetype to draw', () => {
     for (const archetype of ARCHETYPE_IDS) {
       expect(layout(5, 3, archetype).report.archetype).toBe(archetype);
@@ -259,26 +230,6 @@ describe('royale layouts', () => {
     expect(withPeninsula).toBeGreaterThanOrEqual(3);
     expect(withPeninsula).toBeLessThan(seedCount);
     expect(startOnPeninsula).toBeGreaterThanOrEqual(1);
-  });
-
-  it('with fairness checking on, starting chambers have much more even exits', () => {
-    const unevenness = (checkFairness: boolean): number => {
-      let total = 0;
-      for (const seed of seeds) {
-        const { report } = generateRoyaleLayout({
-          players: 6,
-          seed,
-          params: { ...params, checkFairness },
-        });
-        const { chambers, corridors } = report.blueprint;
-        const exits = chambers.flatMap((c, i) =>
-          c.spawn ? [corridors.filter((k) => k.from === i || k.to === i).length] : [],
-        );
-        total += Math.max(...exits) - Math.min(...exits);
-      }
-      return total / seeds.length;
-    };
-    expect(unevenness(true)).toBeLessThan(unevenness(false) / 2);
   });
 
   it('is centered on the origin', () => {

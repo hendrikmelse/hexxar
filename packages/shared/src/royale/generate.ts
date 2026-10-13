@@ -5,13 +5,12 @@ import { ARCHETYPE_IDS, archetypeById, type ArchetypeId } from './archetypes/ind
 import { analyze, type RoyaleMetrics } from './analyze.js';
 import { translate, pointToHex, hexToPoint, type Blueprint } from './blueprint.js';
 import { depthFromCoast, type Land } from './grid.js';
-import { measureFairness, territories, type Fairness } from './fairness.js';
 import { createNoise } from './noise.js';
 import { topologyOk } from './topology.js';
 import { centroidShift, cleanup, rasterize } from './rasterize.js';
 
 /** Why a candidate board was thrown away. */
-export type Rejection = 'cramped' | 'area' | 'spawns' | 'chokes' | 'blobby' | 'unfair' | 'topology';
+export type Rejection = 'cramped' | 'area' | 'spawns' | 'chokes' | 'blobby' | 'topology';
 
 export interface RoyaleReport {
   readonly archetype: ArchetypeId;
@@ -21,10 +20,6 @@ export interface RoyaleReport {
   readonly rejections: Readonly<Partial<Record<Rejection, number>>>;
   readonly blueprint: Blueprint;
   readonly metrics: RoyaleMetrics;
-  /** How evenly the land is shared between the players, with the territories as drawn. */
-  readonly fairness: Fairness;
-  /** How many valid boards were compared, the fairest being used. */
-  readonly compared: number;
   readonly targetTiles: number;
 }
 
@@ -51,8 +46,6 @@ const AREA_TOLERANCE = 0.06;
 const AREA_LIMIT = 0.12;
 /** A board needs this many chokes (passages at most 3 hexes across) however many players there are. */
 const MIN_CHOKES = 2;
-/** A board where players' land differs by more than this (see `Fairness.score`) is thrown away. */
-const MAX_UNFAIRNESS = 0.8;
 /** Boards with more than this share of tiles deep inland are just blobs. */
 const MAX_INTERIOR_SHARE = 0.4;
 
@@ -65,7 +58,6 @@ interface Candidate {
   readonly blueprint: Blueprint;
   readonly starts: Hex[];
   readonly metrics: RoyaleMetrics;
-  readonly fairness: Fairness;
 }
 
 /** Draw one board. It is either a candidate that passed every check, or the reason it did not. */
@@ -91,7 +83,6 @@ function drawCandidate(
       scale,
       rng: createRng(layoutSeed),
       startDistance: params.minStartDistance,
-      evenSpawns: params.checkFairness,
     });
     if (!blueprint) {
       drawn = null;
@@ -145,9 +136,7 @@ function drawCandidate(
   const metrics = analyze(blueprint, land, depth, starts);
   if (metrics.chokes.length < MIN_CHOKES) return 'chokes';
   if (metrics.interiorShare > MAX_INTERIOR_SHARE) return 'blobby';
-  const fairness = measureFairness(land, starts, territories(land, starts));
-  if (params.checkFairness && fairness.score > MAX_UNFAIRNESS) return 'unfair';
-  return { land, blueprint, starts, metrics, fairness };
+  return { land, blueprint, starts, metrics };
 }
 
 /**
@@ -159,11 +148,9 @@ export function generateRoyaleLayout(input: RoyaleInput): RoyaleLayout {
   const { seed } = input;
   const rejections: Partial<Record<Rejection, number>> = {};
   const pick = createRng(seed ^ 0xa11ce);
-  const wanted = input.params.checkFairness ? Math.max(1, input.params.fairnessCandidates) : 1;
   let best: { candidate: Candidate; archetype: ArchetypeId } | null = null;
-  let compared = 0;
   let attempts = 0;
-  while (attempts < MAX_ATTEMPTS && compared < wanted) {
+  while (attempts < MAX_ATTEMPTS && !best) {
     attempts++;
     const archetype =
       input.archetype && input.archetype !== 'random'
@@ -178,10 +165,7 @@ export function generateRoyaleLayout(input: RoyaleInput): RoyaleLayout {
       rejections[candidate] = (rejections[candidate] ?? 0) + 1;
       continue;
     }
-    compared++;
-    if (!best || candidate.fairness.score < best.candidate.fairness.score) {
-      best = { candidate, archetype };
-    }
+    best = { candidate, archetype };
   }
   if (!best) throw new Error('could not make a battle royale board that fits');
   const { candidate, archetype } = best;
@@ -194,8 +178,6 @@ export function generateRoyaleLayout(input: RoyaleInput): RoyaleLayout {
       rejections,
       blueprint: candidate.blueprint,
       metrics: candidate.metrics,
-      fairness: candidate.fairness,
-      compared,
       targetTiles: royaleTargetTiles(input.players, input.params),
     },
   };

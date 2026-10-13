@@ -27,13 +27,6 @@ export interface GenerationParams {
   minTilesPerPlayer: number;
   /** Battle Royale boards: starting cities are never closer than this to each other. */
   minStartDistance: number;
-  /**
-   * Battle Royale boards: balance the players' surroundings. Every spawn chamber gets the same
-   * exits, boards that are too lopsided are thrown away, and the fairest of several is used.
-   */
-  checkFairness: boolean;
-  /** Battle Royale boards, with `checkFairness`: this many valid boards are drawn and the fairest one is used. */
-  fairnessCandidates: number;
 
   // -- Coast (battle royale and duel boards) -------------------------------------------
 
@@ -55,8 +48,6 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   tilesPerPlayer: 25,
   minTilesPerPlayer: 0,
   minStartDistance: 4,
-  checkFairness: false,
-  fairnessCandidates: 4,
 
   coastRoughness: 1,
   coastDetail: 5,

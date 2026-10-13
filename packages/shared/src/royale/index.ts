@@ -8,7 +8,6 @@ export {
   type Point,
 } from './blueprint.js';
 export { depthFromCoast } from './grid.js';
-export { measureFairness, territories, type Fairness, type Territories } from './fairness.js';
 export {
   generateRoyaleLayout,
   royaleTargetTiles,

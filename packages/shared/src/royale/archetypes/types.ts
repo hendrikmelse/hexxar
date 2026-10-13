@@ -12,11 +12,6 @@ export interface ArchetypeInput {
   readonly rng: Rng;
   /** Starting cities are at least this many tiles apart; chambers shrink to fit when it is small. */
   readonly startDistance: number;
-  /**
-   * Give every spawn chamber the same number of exits at the same width, for fairness. Without
-   * it spawn chambers are like any other chamber, and one can be a dead end.
-   */
-  readonly evenSpawns?: boolean;
 }
 
 /**

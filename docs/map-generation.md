@@ -78,23 +78,14 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 3. **Area:** the same blueprint is redrawn at a corrected scale (up to 6 times) until the land is within 6% of the target. A candidate more than 12% off is thrown away.
 4. **Cleanup:** one-tile bays are filled, one-tile spurs trimmed, and everything but the biggest connected piece removed. The board is then recentered on the origin.
 5. **Analyze** (`analyze.ts`): the finished board is measured, not the blueprint. For each corridor, the land is measured at right angles to its centerline along its middle stretch; the narrowest cross section is its width (a **choke** if at most 3 hexes) and it is a **cut** if closing it splits the board in two pieces.
-6. **Validate:** a candidate must have every city on a non-edge tile (so a full ring of neighbors), cities at least `minStartDistance` apart, at least 2 chokes, no more than 40% of its land deeper than 4 tiles inland (that would be a blob), and a fairness score of at most 0.8 (below). Otherwise the next seed is tried, up to 80 times in total. The reasons candidates are thrown away are in the report that `createFreeForAllMatch` returns, which the map previewer shows.
+6. **Validate:** a candidate must have every city on a non-edge tile (so a full ring of neighbors), cities at least `minStartDistance` apart, at least 2 chokes, no more than 40% of its land deeper than 4 tiles inland (that would be a blob). Otherwise the next seed is tried, up to 80 times in total. The reasons candidates are thrown away are in the report that `createFreeForAllMatch` returns, which the map previewer shows.
 
 - **Size:** the target is the number of players times `tilesPerPlayer` (or `minTilesPerPlayer`, a floor that is off by default). A map size sets both `tilesPerPlayer` (15, 25 or 45 at 6 players; fewer per player for more players, see `royaleTilesPerPlayer`) and `minStartDistance` (3, 4 or 5 on small, normal and large, see `ROYALE_START_DISTANCE`). Cities that far apart need about that distance squared in tiles each, so small boards could not hold their players with the large spacing. Spawn chambers shrink with the spacing (radius 1.2 to 2), and so does the open ground required between chambers.
 - **Starting cities:** one per player, at the center of its spawn chamber, never on the edge. Players are assigned to them at random. There are no cities except the starting ones, and villages are placed as on duel boards.
 
-### Fairness
-
-**Switched off for now** (`checkFairness`, off by default; the previewer has a checkbox for it), to see how boards turn out without it. The score is still measured and shown. When it is on:
-
-- **By construction:** every spawn chamber gets the same number of ways out (two, or three on some boards with room; the longest extra ones are dropped, as long as that leaves no long tail, or one is added to the nearest chamber), all of one width on a board. This also means no starting chamber is a peninsula. Spawn chambers are all the same size either way.
-- **Territories:** the land is split between the players by walking distance from their cities. Each player's **reach** is the number of tiles within 5 steps of their city.
-- **Score:** how much territory sizes and reaches differ, each as a standard deviation over the mean, added up. 0 is perfectly even; boards over 0.8 are thrown away.
-- **Best of several:** `fairnessCandidates` (4) valid boards are drawn and the one with the lowest score is used. Boards with more players are inherently less even, since the players' land overlaps.
-
 ### Villages
 
-Villages use the same placement as duel boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
+Villages use the same placement as duel boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players.
 
 The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint`, which also gets back to a particular board. For duels it also takes `symmetry`, `axis`, `tiles` and `turns`; `mode=trio` and `mode=quad` show the three- and four-player boards (with `tiles`; `turns` for the four-player boards).
 
