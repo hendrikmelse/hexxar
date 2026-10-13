@@ -268,6 +268,8 @@ function awaitCard(): void {
 
 /** Forget the match: back in the menu, or in a lobby for the next one. */
 function clearMatch(): void {
+  // The map previewer has no match, and its board is not this one to clear.
+  if (isPreview()) return;
   stopWatchingForCard();
   playedResults.clear();
   Object.assign(game, emptyGame());

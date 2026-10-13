@@ -15,6 +15,7 @@ import {
   MAP_SIZES,
   corridorPath,
   createFreeForAllMatch,
+  createRng,
   createDuelMatch,
   parseMatchConfig,
   ROYALE_START_DISTANCE,
@@ -41,11 +42,13 @@ import { Segmented } from './Lobby.js';
 const randomSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
 
 /** A generated board as the client's board drawing wants it: a match nobody is playing in. */
-function toGameView(state: GameState): GameView {
+function toGameView(state: GameState, viewer: string | null): GameView {
   return {
     ...emptyGame(),
     status: 'playing',
-    config: parseMatchConfig({}),
+    // With a viewer the board is drawn as that player sees it, covered in fog.
+    playerId: viewer,
+    config: parseMatchConfig({ fog: viewer === null ? 'off' : 'on' }),
     tiles: { ...state.tiles },
     players: [...state.players],
   };
@@ -347,6 +350,7 @@ export function MapsPage() {
     ARCHETYPE_IDS.find((id) => id === query.get('archetype')) ?? 'random',
   );
   const [showBlueprint, setShowBlueprint] = useState(query.has('blueprint'));
+  const [showFog, setShowFog] = useState(query.has('fog'));
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsRunning, setStatsRunning] = useState(false);
 
@@ -476,10 +480,14 @@ export function MapsPage() {
     null;
 
   // The board itself is the game's own, drawn by `main.ts`: hand it each new board, then the overlays.
-  const game = useMemo(
-    () => (typeof result === 'string' ? null : toGameView(result.state)),
-    [result],
-  );
+  const game = useMemo(() => {
+    if (typeof result === 'string') return null;
+    // Whose eyes: one of the players, picked by the seed (so a new map is a new color).
+    const viewer = showFog
+      ? (result.state.players[Math.floor(createRng(seed).next() * count)] ?? null)
+      : null;
+    return toGameView(result.state, viewer);
+  }, [result, showFog, seed, count]);
   useEffect(() => {
     if (game) preview.show(game);
   }, [game]);
@@ -576,6 +584,14 @@ export function MapsPage() {
               onChange={(event) => setShowBlueprint(event.target.checked)}
             />
             Show blueprint
+          </label>
+          <label className="maps-flag">
+            <input
+              type="checkbox"
+              checked={showFog}
+              onChange={(event) => setShowFog(event.target.checked)}
+            />
+            Show fog
           </label>
         </div>
 
