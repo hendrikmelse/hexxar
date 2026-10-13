@@ -236,16 +236,16 @@ export class Clouds {
       }
     } else {
       // Pushed to the far side of the tile, leaving the edge nearest the player in view.
-      const cx = center.x + cover.away.x * 11;
-      const cy = center.y + cover.away.y * 11;
-      add(cx, cy, 0.32 + noise(q, r, 1) * 0.05, 0);
+      const cx = center.x + cover.away.x * 12;
+      const cy = center.y + cover.away.y * 12;
+      add(cx, cy, 0.27 + noise(q, r, 1) * 0.045, 0);
       for (let i = 0; i < 5; i++) {
         const angle = (Math.PI * 2 * i) / 5 + noise(q, r, 2) * 1.5;
         const reach = 6 + noise(q, r, i + 3) * 3;
         add(
           cx + Math.cos(angle) * reach,
           cy + Math.sin(angle) * reach,
-          0.27 + noise(q, r, i + 30) * 0.07,
+          0.23 + noise(q, r, i + 30) * 0.06,
           i + 1,
         );
       }
@@ -260,7 +260,7 @@ export class Clouds {
           add(
             cx + way.x * t + side.x * wobble,
             cy + way.y * t + side.y * wobble,
-            0.34 + noise(q, r, j * 5 + k + 120) * 0.12,
+            0.29 + noise(q, r, j * 5 + k + 120) * 0.1,
             40 + j * 5 + k,
           );
         }
