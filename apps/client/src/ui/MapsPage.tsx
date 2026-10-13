@@ -5,8 +5,10 @@ import {
   DEFAULT_GENERATION_PARAMS,
   DUEL_TILES,
   QUAD_TILES,
+  SEXTET_TILES,
   TRIO_TILES,
   createQuadMatch,
+  createSextetMatch,
   createTrioMatch,
   FFA_MAX_PLAYERS,
   FFA_MIN_PLAYERS,
@@ -25,6 +27,7 @@ import {
   type DuelReport,
   type DuelSymmetry,
   type QuadReport,
+  type SextetReport,
   type TrioReport,
   type RoomMode,
   type RoyaleReport,
@@ -79,8 +82,8 @@ function blueprintOverlay(blueprint: Blueprint | null): ((graphics: Graphics) =>
   };
 }
 
-/** What the previewer can make: the game's two modes, and the boards for three and four players. */
-type PreviewMode = RoomMode | 'trio' | 'quad';
+/** What the previewer can make: the game's two modes, and the boards for three, four and six players. */
+type PreviewMode = RoomMode | 'trio' | 'quad' | 'six';
 
 /** A board, and for battle royales how it was made. Or the reason it could not be made. */
 type Generated =
@@ -90,6 +93,7 @@ type Generated =
       duel: DuelReport | null;
       trio: TrioReport | null;
       quad: QuadReport | null;
+      sextet: SextetReport | null;
     }
   | string;
 
@@ -109,15 +113,26 @@ function generate(
   try {
     if (mode === 'ffa') {
       const { state, report } = createFreeForAllMatch({ players: ids, seed, params, archetype });
-      return { state, report, duel: null, trio: null, quad: null };
+      return { state, report, duel: null, trio: null, quad: null, sextet: null };
     }
     if (mode === 'trio') {
       const { state, trio } = createTrioMatch({ players: ids, seed, tiles, params });
-      return { state, report: null, duel: null, trio, quad: null };
+      return { state, report: null, duel: null, trio, quad: null, sextet: null };
     }
     if (mode === 'quad') {
       const { state, quad } = createQuadMatch({ players: ids, seed, tiles, params, turns });
-      return { state, report: null, duel: null, trio: null, quad };
+      return { state, report: null, duel: null, trio: null, quad, sextet: null };
+    }
+    if (mode === 'six') {
+      const { state, sextet } = createSextetMatch({
+        players: ids,
+        seed,
+        tiles,
+        symmetry: symmetry === 'random' ? undefined : symmetry,
+        axis: axis === 'random' ? undefined : axis,
+        params,
+      });
+      return { state, report: null, duel: null, trio: null, quad: null, sextet };
     }
     const { state, duel } = createDuelMatch({
       players: ids,
@@ -128,7 +143,7 @@ function generate(
       turns,
       params,
     });
-    return { state, report: null, duel, trio: null, quad: null };
+    return { state, report: null, duel, trio: null, quad: null, sextet: null };
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -302,13 +317,9 @@ export function MapsPage() {
     return value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
   };
   const [mode, setMode] = useState<PreviewMode>(
-    query.get('mode') === 'ffa'
-      ? 'ffa'
-      : query.get('mode') === 'trio'
-        ? 'trio'
-        : query.get('mode') === 'quad'
-          ? 'quad'
-          : 'duel',
+    (['duel', 'trio', 'quad', 'six', 'ffa'] as const).find(
+      (value) => value === query.get('mode'),
+    ) ?? 'duel',
   );
   const [mapSize, setMapSize] = useState<MapSize>(
     MAP_SIZES.find((size) => size === query.get('size')) ?? 'normal',
@@ -347,13 +358,15 @@ export function MapsPage() {
     minStartDistance: ROYALE_START_DISTANCE[size],
   });
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
-  /** About how many tiles a fair board has at a map size: two players' shares, or three players'. */
+  /** About how many tiles a fair board has at a map size, for as many players as the mode has. */
   const tilesFor = (forMode: PreviewMode, size: MapSize): number =>
     forMode === 'trio'
       ? TRIO_TILES[size]
       : forMode === 'quad'
         ? QUAD_TILES[size]
-        : DUEL_TILES[size];
+        : forMode === 'six'
+          ? SEXTET_TILES[size]
+          : DUEL_TILES[size];
   const [tiles, setTiles] = useState<number>(queryNumber('tiles') ?? tilesFor(mode, mapSize));
 
   const defaultTiles = tilesFor(mode, mapSize);
@@ -380,7 +393,8 @@ export function MapsPage() {
   }
   if (mode !== 'ffa' && tiles !== defaultTiles) changes.tiles = tiles;
 
-  const count = mode === 'duel' ? 2 : mode === 'trio' ? 3 : mode === 'quad' ? 4 : players;
+  const count =
+    mode === 'duel' ? 2 : mode === 'trio' ? 3 : mode === 'quad' ? 4 : mode === 'six' ? 6 : players;
   const result = useMemo(
     () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
     [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
@@ -452,8 +466,14 @@ export function MapsPage() {
   const duel = typeof result === 'string' ? null : result.duel;
   const trio = typeof result === 'string' ? null : result.trio;
   const quad = typeof result === 'string' ? null : result.quad;
+  const sextet = typeof result === 'string' ? null : result.sextet;
   const blueprint =
-    report?.blueprint ?? duel?.blueprint ?? trio?.blueprint ?? quad?.blueprint ?? null;
+    report?.blueprint ??
+    duel?.blueprint ??
+    trio?.blueprint ??
+    quad?.blueprint ??
+    sextet?.blueprint ??
+    null;
 
   // The board itself is the game's own, drawn by `main.ts`: hand it each new board, then the overlays.
   const game = useMemo(
@@ -482,8 +502,9 @@ export function MapsPage() {
             value={mode}
             options={[
               { value: 'duel', label: 'Duel' },
-              { value: 'trio', label: '3 players' },
-              { value: 'quad', label: '4 players' },
+              { value: 'trio', label: 'Trio' },
+              { value: 'quad', label: 'Quad' },
+              { value: 'six', label: 'Sextet' },
               { value: 'ffa', label: 'Royale' },
             ]}
             onChange={chooseMode}
@@ -497,7 +518,7 @@ export function MapsPage() {
             }))}
             onChange={chooseSize}
           />
-          {mode === 'trio' || mode === 'quad' ? null : mode === 'duel' ? (
+          {mode === 'trio' || mode === 'quad' ? null : mode === 'duel' || mode === 'six' ? (
             <>
               <Segmented
                 label="Symmetry"
@@ -505,7 +526,7 @@ export function MapsPage() {
                 options={[
                   { value: 'random', label: 'Random' },
                   { value: 'mirror', label: 'Mirror' },
-                  { value: 'rotational', label: 'Half turn' },
+                  { value: 'rotational', label: mode === 'six' ? 'Sixth turns' : 'Half turn' },
                 ]}
                 onChange={setDuelSymmetry}
               />
@@ -569,7 +590,9 @@ export function MapsPage() {
                   ? 'Three-player board'
                   : mode === 'quad'
                     ? 'Four-player board'
-                    : 'Duel board'}
+                    : mode === 'six'
+                      ? 'Six-player board'
+                      : 'Duel board'}
               </h4>
               <div className="maps-fields">
                 <NumberField
@@ -628,6 +651,8 @@ export function MapsPage() {
 
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
+          {sextet &&
+            ` · ${sextet.symmetry === 'rotational' ? 'turns of 60°' : `turns of 120° and mirrors (through tile ${sextet.axis})`}, ${sextet.attempts} ${sextet.attempts === 1 ? 'attempt' : 'attempts'} · ${sextet.blueprint.chambers.length} blobs`}
           {quad &&
             ` · two mirror lines, turned ${quad.turns * 60}°, ${quad.attempts} ${quad.attempts === 1 ? 'attempt' : 'attempts'} · ${quad.blueprint.chambers.length} blobs`}
           {trio &&

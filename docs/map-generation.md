@@ -1,6 +1,6 @@
 # Map generation
 
-`packages/shared/src/generate.ts` builds boards in four flavors. `createDuelMatch` makes the fair two-player boards (games use it for duels); `createTrioMatch` and `createQuadMatch` make the fair boards for three and four players (nothing in a room uses them yet); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
+`packages/shared/src/generate.ts` builds boards in five flavors (the fair ones for two, three, four and six players, and random ones for any number). `createDuelMatch` makes the fair two-player boards (games use it for duels); `createTrioMatch`, `createQuadMatch` and `createSextetMatch` make the fair boards for three, four and six players (nothing in a room uses them yet); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
 
 ## Duel boards
 
@@ -41,6 +41,19 @@ The board is split into **orbits**: a tile and its twin (a tile on the line or p
 - **The four starts are never joined by a corridor of their own**, unless they are the only blobs (small boards without a middle blob), where they have to be joined to one another.
 - **Narrow corridors, blobs well apart, no tail rule, drawing, area and symmetry** are as for duels and three-player boards.
 - **Terrain:** a tile and its three twins are an orbit and always get the same type, so extra cities and villages come in fours (or twos, for tiles on a line) and the starting cities are twins.
+
+## Six-player boards
+
+`createSextetMatch` makes a fair board for six players, in `duel/` beside the others. Quad and sextet boards are laid out by the generic group builder in `duel/group.ts`: a `FairGroup` lists the group's symmetries, a fundamental domain, and where starts and extra blobs may sit. A hex board has two groups of six symmetries, and both are made, picked by the seed (or by the `symmetry` option):
+
+- **Rotational (`rotational`):** turns of 60 degrees, six in all (the middle is the only tile that is its own twin). A blob at the middle has no twins; every other blob has five.
+- **Mirror (`mirror`):** turns of 120 degrees together with three mirror lines 60 degrees apart (the group of a triangle, D3). The three lines run either through tile corners (`axis: 'points'`) or through the middles of tile edges (`axis: 'edges'`), picked by the seed. Blobs off the lines come in sixes, blobs on a line in threes, and a blob at the middle alone. A corridor that is its own mirror image runs dead straight, so a corridor between two blobs on one line is allowed on only 30% of boards.
+
+- **Size:** `tiles` is about how many tiles the board has (`SEXTET_TILES`: 90, 180 and 300 at small, normal and large), which is 15, 30 and 50 tiles for each player.
+- **Blobs, corridors, crossovers:** as for four players: a start blob and its images, sets of extra blobs (one on normal boards, two on large, as far as they fit), a blob at the middle on 40% of boards, corridors made for one sixth (or twelfth, for a mirror board's domain) and copied by every symmetry, then a random number of crossovers. The six starts are never joined by a corridor of their own unless they are the only blobs (small boards without other blobs).
+- **No final turn:** the board is not turned afterwards; the line of a mirror board lies one way for each kind.
+- **Terrain:** a tile and its twins are an orbit and always get the same type, so the starting cities are twins and extra cities and villages come in sixes (fewer on a line).
+- **Previewer:** `/?maps&mode=six` (the Sextet mode), with a symmetry bar and, for mirror boards, a mirror line bar.
 
 ## Tile types
 

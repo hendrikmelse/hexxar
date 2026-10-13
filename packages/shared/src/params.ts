@@ -97,6 +97,13 @@ export const QUAD_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
   large: 60,
 };
 
+/** The same for a board for six players, who get less again. */
+export const SEXTET_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
+  small: 15,
+  normal: 30,
+  large: 50,
+};
+
 /** About how many tiles a duel board has at each map size (two players' shares). */
 export const DUEL_TILES: Readonly<Record<MapSize, number>> = {
   small: 2 * DUEL_TILES_PER_PLAYER.small,
@@ -116,6 +123,13 @@ export const QUAD_TILES: Readonly<Record<MapSize, number>> = {
   small: 4 * QUAD_TILES_PER_PLAYER.small,
   normal: 4 * QUAD_TILES_PER_PLAYER.normal,
   large: 4 * QUAD_TILES_PER_PLAYER.large,
+};
+
+/** About how many tiles a board for six players has at each map size (six players' shares). */
+export const SEXTET_TILES: Readonly<Record<MapSize, number>> = {
+  small: 6 * SEXTET_TILES_PER_PLAYER.small,
+  normal: 6 * SEXTET_TILES_PER_PLAYER.normal,
+  large: 6 * SEXTET_TILES_PER_PLAYER.large,
 };
 
 /**

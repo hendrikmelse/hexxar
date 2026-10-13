@@ -1,15 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { hexDistance, hexKey, hexNeighbors, hexRotate, type Hex } from './hex.js';
 import {
   createDuelMatch,
   createFreeForAllMatch,
   createQuadMatch,
+  createSextetMatch,
   createTrioMatch,
 } from './generate.js';
 import {
   hexImage,
   pointImage,
   quadHexImages,
+  sextetGroup,
   type DuelAxis,
   type DuelSymmetry,
 } from './duel/index.js';
@@ -19,10 +21,14 @@ import {
   DUEL_TILES,
   MAP_SIZES,
   QUAD_TILES,
+  SEXTET_TILES,
   TRIO_TILES,
 } from './params.js';
 import { createRng } from './rng.js';
 import { parseMatchConfig } from './config.js';
+
+// Many of these tests make dozens of whole boards.
+vi.setConfig({ testTimeout: 60000 });
 
 describe('rng', () => {
   it('is deterministic for a seed', () => {
@@ -577,6 +583,193 @@ describe('createQuadMatch', () => {
           tiles: all,
           byKey: state.tiles,
           images: quadHexImages(quad.turns),
+          cities: all.filter((t) => t.type === 'city'),
+          villages: all.filter((t) => t.type === 'village'),
+        };
+      }),
+    );
+
+    it('never puts cities too close together, or on the edge of the board', () => {
+      for (const { cities, byKey } of boards) {
+        for (const a of cities) {
+          for (const nb of hexNeighbors(a)) expect(byKey[hexKey(nb)]).toBeDefined();
+          for (const b of cities) {
+            if (a !== b) {
+              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+                DEFAULT_GENERATION_PARAMS.minCityDistance,
+              );
+            }
+          }
+        }
+      }
+    });
+
+    it('never lets villages touch each other or a city', () => {
+      for (const { villages, byKey } of boards) {
+        for (const v of villages) {
+          for (const n of hexNeighbors(v)) {
+            const type = byKey[hexKey(n)]?.type;
+            expect(type === 'village' || type === 'city').toBe(false);
+          }
+        }
+      }
+    });
+
+    it('places villages until nowhere legal is left', () => {
+      for (const { tiles, byKey, images } of boards) {
+        for (const tile of tiles.filter((t) => t.type === 'farmland')) {
+          const orbit: Hex[] = [tile, ...images.map((image) => image(tile))];
+          const blocked = orbit.some(
+            (hex, i) =>
+              hexNeighbors(hex).some((n) => {
+                const type = byKey[hexKey(n)]?.type;
+                return type === 'village' || type === 'city';
+              }) || orbit.slice(i + 1).some((other) => hexDistance(hex, other) === 1),
+          );
+          expect(blocked).toBe(true);
+        }
+      }
+    });
+  });
+});
+
+const six = ['A', 'B', 'C', 'D', 'E', 'F'];
+/** The ways a board for six players can be symmetric: both groups, and both kinds of mirror line. */
+const sextetKinds = [
+  { symmetry: 'rotational', axis: 'points' },
+  { symmetry: 'mirror', axis: 'points' },
+  { symmetry: 'mirror', axis: 'edges' },
+] as const;
+
+describe('createSextetMatch', () => {
+  it('is deterministic for a seed', () => {
+    const options = { players: six, seed: 7 };
+    expect(createSextetMatch(options).state).toEqual(createSextetMatch(options).state);
+    expect(createSextetMatch(options).state.tiles).not.toEqual(
+      createSextetMatch({ players: six, seed: 8 }).state.tiles,
+    );
+  });
+
+  it.each(sextetKinds)(
+    'is exactly symmetric under all six $symmetry symmetries ($axis)',
+    (kind) => {
+      for (const size of MAP_SIZES) {
+        for (let seed = 1; seed <= 8; seed++) {
+          const { state, sextet } = createSextetMatch({
+            players: six,
+            seed,
+            tiles: SEXTET_TILES[size],
+            ...kind,
+          });
+          expect(sextet.symmetry).toBe(kind.symmetry);
+          for (const image of sextetGroup(kind.symmetry, sextet.axis).hexMaps) {
+            for (const tile of Object.values(state.tiles)) {
+              const twin = state.tiles[hexKey(image(tile))];
+              expect(twin).toBeDefined();
+              expect(twin!.type).toBe(tile.type);
+              // Neutral tiles match in garrison too; the starting cities are checked below.
+              if (tile.owner === null && twin!.owner === null)
+                expect(twin!.troops).toBe(tile.troops);
+            }
+          }
+        }
+      }
+    },
+  );
+
+  it('gives each player one starting city, and the six are twins of one another', () => {
+    for (const kind of sextetKinds) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const { state, config, sextet } = createSextetMatch({ players: six, seed, ...kind });
+        const cities = six.map((p) => Object.values(state.tiles).filter((t) => t.owner === p));
+        for (const owned of cities) {
+          expect(owned).toHaveLength(1);
+          expect(owned[0]).toMatchObject({ type: 'city', troops: config.startingTroops });
+        }
+        // Each is the first moved by one of the other five symmetries, so all six sit apart.
+        sextetGroup(kind.symmetry, sextet.axis).hexMaps.forEach((image, n) => {
+          expect(hexKey(image(cities[0]![0]!))).toBe(hexKey(cities[n + 1]![0]!));
+        });
+        expect(new Set(cities.map((c) => hexKey(c[0]!))).size).toBe(6);
+      }
+    }
+  });
+
+  it('makes both groups by default, and both kinds of mirror line, or as told', () => {
+    const symmetries = new Set<string>();
+    const mirrorLines = new Set<string>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const { sextet } = createSextetMatch({ players: six, seed });
+      symmetries.add(sextet.symmetry);
+      if (sextet.symmetry === 'mirror') mirrorLines.add(sextet.axis);
+    }
+    expect(symmetries).toEqual(new Set(['rotational', 'mirror']));
+    expect(mirrorLines).toEqual(new Set(['points', 'edges']));
+    expect(
+      createSextetMatch({ players: six, seed: 3, symmetry: 'rotational' }).sextet.symmetry,
+    ).toBe('rotational');
+    expect(
+      createSextetMatch({ players: six, seed: 3, symmetry: 'mirror', axis: 'edges' }).sextet.axis,
+    ).toBe('edges');
+  });
+
+  it('starts neutral tiles at their base garrison', () => {
+    const { state } = createSextetMatch({ players: six, seed: 3 });
+    for (const t of Object.values(state.tiles)) {
+      if (t.owner === null) expect(t.troops).toBe(TILE_TYPES[t.type].baseGarrison);
+    }
+  });
+
+  it('has about the number of tiles asked for', () => {
+    for (const kind of sextetKinds) {
+      for (const size of MAP_SIZES) {
+        for (let seed = 1; seed <= 6; seed++) {
+          const tiles = Object.keys(
+            createSextetMatch({ players: six, seed, tiles: SEXTET_TILES[size], ...kind }).state
+              .tiles,
+          ).length;
+          expect(tiles / SEXTET_TILES[size]).toBeGreaterThan(0.9);
+          expect(tiles / SEXTET_TILES[size]).toBeLessThan(1.1);
+        }
+      }
+    }
+  });
+
+  it('has more blobs on bigger boards', () => {
+    const average = (size: keyof typeof SEXTET_TILES): number => {
+      let blobs = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        blobs += createSextetMatch({ players: six, seed, tiles: SEXTET_TILES[size] }).sextet
+          .blueprint.chambers.length;
+      }
+      return blobs / 20;
+    };
+    expect(average('normal')).toBeGreaterThan(average('small'));
+    expect(average('large')).toBeGreaterThanOrEqual(average('normal'));
+  });
+
+  it('rejects anything but six different players', () => {
+    expect(() => createSextetMatch({ players: ['A', 'B', 'C', 'D'], seed: 1 })).toThrow();
+    expect(() => createSextetMatch({ players: [...six, 'G'], seed: 1 })).toThrow();
+    expect(() => createSextetMatch({ players: ['A', 'A', 'B', 'C', 'D', 'E'], seed: 1 })).toThrow();
+  });
+
+  describe.each(sextetKinds)('terrain rules ($symmetry, $axis)', (kind) => {
+    const boards = [SEXTET_TILES.normal, SEXTET_TILES.large].flatMap((tiles) =>
+      Array.from({ length: 12 }, (_, i) => {
+        // Fully packed with villages, so the "nowhere legal is left" check means something.
+        const { state, sextet } = createSextetMatch({
+          players: six,
+          seed: i + 1,
+          tiles,
+          params: { villageChance: 100 },
+          ...kind,
+        });
+        const all = Object.values(state.tiles);
+        return {
+          tiles: all,
+          byKey: state.tiles,
+          images: sextetGroup(kind.symmetry, sextet.axis).hexMaps,
           cities: all.filter((t) => t.type === 'city'),
           villages: all.filter((t) => t.type === 'village'),
         };

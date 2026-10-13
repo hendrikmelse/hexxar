@@ -4,6 +4,7 @@ import { createRng, type Rng } from './rng.js';
 import {
   DUEL_TILES,
   QUAD_TILES,
+  SEXTET_TILES,
   TRIO_TILES,
   withDefaults,
   type GenerationParams,
@@ -12,13 +13,17 @@ import {
   generateDuelLayout,
   hexImage,
   generateQuadLayout,
+  generateSextetLayout,
   generateTrioLayout,
   quadHexImages,
+  sextetGroup,
   trioHexImages,
   type DuelAxis,
   type DuelReport,
   type DuelSymmetry,
   type QuadReport,
+  type SextetReport,
+  type SextetSymmetry,
   type TrioReport,
 } from './duel/index.js';
 import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
@@ -304,6 +309,66 @@ export function createQuadMatch(options: QuadMatchOptions): {
       hexes: quad.hexes,
       starts: quad.starts,
       images: quadHexImages(quad.report.turns),
+      config,
+      params,
+    }),
+  };
+}
+
+export interface SextetMatchOptions {
+  /** Exactly six players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal size for six players. */
+  readonly tiles?: number;
+  /** Defaults to one of the two, picked by the seed. */
+  readonly symmetry?: SextetSymmetry;
+  /** The kind of line of a mirror board; by default one of the two, picked by the seed. */
+  readonly axis?: DuelAxis;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
+/**
+ * A fair board for six players: made of blobs (see `duel/`), and exactly symmetric in one of the
+ * two ways a hex board can have six symmetries: turns by a sixth of a turn, or turns by a third of
+ * a turn together with a mirror. Every tile has five twins of the same type (or fewer, for a tile that
+ * a mirror leaves in place), and the six players start on twin cities, so each sees the same board
+ * from their side.
+ */
+export function createSextetMatch(options: SextetMatchOptions): {
+  state: GameState;
+  config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  sextet: SextetReport;
+} {
+  const { players, seed, tiles = SEXTET_TILES.normal } = options;
+  if (players.length !== 6) throw new Error('a six-player board is for exactly 6 players');
+  if (new Set(players).size !== 6) throw new Error('player ids must be unique');
+  if (tiles < 60) throw new Error('a six-player board needs at least 60 tiles');
+  // The same seed gives the same board, and different games get both kinds.
+  const symmetry: SextetSymmetry =
+    options.symmetry ?? (createRng(seed ^ 0x2b1d).next() < 0.5 ? 'rotational' : 'mirror');
+  const config = parseMatchConfig(options.config);
+  const params = withDefaults(options.params);
+  const sextet = generateSextetLayout({
+    seed,
+    symmetry,
+    axis: options.axis,
+    targetTiles: tiles,
+    params,
+  });
+  return {
+    config,
+    sextet: sextet.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: sextet.hexes,
+      starts: sextet.starts,
+      images: sextetGroup(symmetry, sextet.report.axis).hexMaps,
       config,
       params,
     }),

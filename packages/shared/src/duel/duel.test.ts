@@ -4,9 +4,15 @@ import {
   DUEL_TILES,
   MAP_SIZES,
   QUAD_TILES,
+  SEXTET_TILES,
   TRIO_TILES,
 } from '../params.js';
-import { generateDuelLayout, generateQuadLayout, generateTrioLayout } from './layout.js';
+import {
+  generateDuelLayout,
+  generateQuadLayout,
+  generateSextetLayout,
+  generateTrioLayout,
+} from './layout.js';
 import { pointImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 // Each test draws hundreds of whole boards.
@@ -280,5 +286,87 @@ describe('four-player layouts', () => {
     }
     expect(boards).toBeGreaterThan(50);
     expect(spines / boards).toBeLessThan(0.55);
+  });
+});
+
+const sextet = (
+  symmetry: 'rotational' | 'mirror',
+  axis: 'points' | 'edges',
+  seed: number,
+  tiles: number,
+) =>
+  generateSextetLayout({
+    seed,
+    symmetry,
+    axis,
+    targetTiles: tiles,
+    params: DEFAULT_GENERATION_PARAMS,
+  });
+
+describe('six-player layouts', () => {
+  const kinds = [
+    ['rotational', 'points'],
+    ['mirror', 'points'],
+    ['mirror', 'edges'],
+  ] as const;
+
+  it.each(kinds)(
+    'never join two starts by a corridor of their own, unless the starts are the only blobs (%s, %s)',
+    (symmetry, axis) => {
+      for (const size of MAP_SIZES) {
+        for (let seed = 1; seed <= 40; seed++) {
+          const { chambers, corridors } = sextet(symmetry, axis, seed, SEXTET_TILES[size]).report
+            .blueprint;
+          expect(chambers.slice(0, 6).every((c) => c.spawn)).toBe(true);
+          expect(chambers.slice(6).some((c) => c.spawn)).toBe(false);
+          const amongStarts = corridors.filter((c) => c.from < 6 && c.to < 6);
+          if (chambers.length > 6) expect(amongStarts).toHaveLength(0);
+        }
+      }
+    },
+  );
+
+  it.each(kinds)(
+    'only let the smallest boards be nothing but the six starts (%s, %s)',
+    (symmetry, axis) => {
+      const only = (size: keyof typeof SEXTET_TILES): number => {
+        let count = 0;
+        for (let seed = 1; seed <= 40; seed++) {
+          if (
+            sextet(symmetry, axis, seed, SEXTET_TILES[size]).report.blueprint.chambers.length === 6
+          ) {
+            count++;
+          }
+        }
+        return count;
+      };
+      expect(only('small')).toBeGreaterThan(0);
+      expect(only('normal')).toBe(0);
+      expect(only('large')).toBe(0);
+    },
+  );
+
+  it.each(kinds)('have a blob in the middle sometimes (%s, %s)', (symmetry, axis) => {
+    let withMiddle = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+      const { chambers } = sextet(symmetry, axis, seed, SEXTET_TILES.normal).report.blueprint;
+      if (chambers.some((c) => Math.hypot(c.center.x, c.center.y) < 1e-6)) withMiddle++;
+    }
+    expect(withMiddle).toBeGreaterThan(20);
+    expect(withMiddle).toBeLessThan(70);
+  });
+
+  it('have blobs on the mirror lines of mirror boards, and none can be on a line of turns alone', () => {
+    // On a mirror board a set of blobs on one of the three lines is three blobs, not six.
+    let threes = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+      const { chambers } = sextet('mirror', 'points', seed, SEXTET_TILES.large).report.blueprint;
+      const extra =
+        chambers.length -
+        6 -
+        (chambers.some((c) => Math.hypot(c.center.x, c.center.y) < 1e-6) ? 1 : 0);
+      if (extra % 6 === 3) threes++;
+    }
+    expect(threes).toBeGreaterThan(0);
   });
 });

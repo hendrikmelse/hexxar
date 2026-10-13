@@ -14,6 +14,7 @@ import {
   type DuelAxis,
   type DuelSymmetry,
 } from './symmetry.js';
+import { buildGroupBlueprint, sextetGroup, type SextetSymmetry } from './group.js';
 import { buildQuadBlueprint } from './quad.js';
 import { buildTrioBlueprint } from './trio.js';
 
@@ -83,6 +84,25 @@ export interface QuadLayout {
    *  line, across the horizontal line, and through the middle (before any turn). */
   readonly starts: [Hex, Hex, Hex, Hex];
   readonly report: QuadReport;
+}
+
+/** How a board for six players was made. */
+export interface SextetReport {
+  readonly symmetry: SextetSymmetry;
+  /** The kind of line a mirror board's three mirror lines are (`points` for the other kind of board). */
+  readonly axis: DuelAxis;
+  readonly attempts: number;
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface SextetLayout {
+  readonly hexes: Hex[];
+  /** The six starting hexes: the first, then its image under each of the other symmetries. */
+  readonly starts: [Hex, Hex, Hex, Hex, Hex, Hex];
+  readonly report: SextetReport;
 }
 
 const MAX_ATTEMPTS = 200;
@@ -415,6 +435,53 @@ export function generateQuadLayout(input: {
         })),
         corridors: board.blueprint.corridors,
       },
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}
+
+/**
+ * A fully symmetric board for six players, made of blobs the way the others are. There are two
+ * ways it can be symmetric, because a hex board has two groups of six symmetries: turns by a sixth
+ * of a turn (`rotational`), or turns by a third of a turn with a mirror (`mirror`, which has three
+ * mirror lines, all through tile corners or all through the middles of tile edges, as `axis` says;
+ * by default one of the two, picked by the seed). Turning the board by a sixth of a turn changes
+ * neither group, so boards are not turned afterwards. The same seed always gives the same board.
+ */
+export function generateSextetLayout(input: {
+  seed: number;
+  symmetry: SextetSymmetry;
+  /** The kind of line of a mirror board; by default one of the two, picked by the seed. */
+  axis?: DuelAxis;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  params: GenerationParams;
+}): SextetLayout {
+  const { seed, symmetry, targetTiles, params } = input;
+  const axis: DuelAxis =
+    symmetry === 'rotational'
+      ? 'points'
+      : (input.axis ?? (createRng(seed ^ 0x6a09).next() < 0.5 ? 'points' : 'edges'));
+  const group = sextetGroup(symmetry, axis);
+  const { board, attempts, rejections } = findBoard(
+    group.hexMaps,
+    ({ size, scale, rng }) =>
+      buildGroupBlueprint(group, { size, scale, rng, minCityDistance: params.minCityDistance }),
+    targetTiles,
+    params,
+    seed,
+    `${symmetry} six-player`,
+  );
+  return {
+    hexes: [...board.land.values()].sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: board.starts as SextetLayout['starts'],
+    report: {
+      symmetry,
+      axis,
+      attempts,
+      rejections,
+      blueprint: board.blueprint,
       tiles: board.land.size,
       targetTiles,
     },

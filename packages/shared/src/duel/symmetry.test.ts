@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hexagonalBoard, hexKey, hexNeighbors, type Hex } from '../hex.js';
 import { hexToPoint } from '../royale/blueprint.js';
+import { sextetGroup } from './group.js';
 import {
   hexImage,
   mirrorFrame,
@@ -155,5 +156,57 @@ describe('four-player symmetry', () => {
     for (const hex of fixedBy(horizontal)) expect(Math.abs(hexToPoint(hex).y)).toBeLessThan(1e-9);
     expect(fixedBy(vertical).length).toBeGreaterThan(8);
     expect(fixedBy(horizontal).length).toBeGreaterThan(8);
+  });
+});
+
+describe('six-player symmetry groups', () => {
+  const groups = [
+    ['rotational', 'points'],
+    ['mirror', 'points'],
+    ['mirror', 'edges'],
+  ] as const;
+  const sample = board.slice(0, 40);
+  const fingerprint = (image: (h: Hex) => Hex): string =>
+    sample.map((h) => hexKey(image(h))).join('|');
+
+  it.each(groups)(
+    '%s (%s) is six symmetries that make a group, agreeing on hexes and points',
+    (symmetry, axis) => {
+      const group = sextetGroup(symmetry, axis);
+      expect(group.elements).toHaveLength(6);
+      expect(group.hexMaps).toHaveLength(5);
+      const maps: ((h: Hex) => Hex)[] = [(h) => h, ...group.hexMaps];
+      // Six different ones, closed under doing one after another.
+      const prints = new Set(maps.map(fingerprint));
+      expect(prints.size).toBe(6);
+      for (const first of maps) {
+        for (const second of maps) {
+          expect(prints.has(fingerprint((h) => second(first(h))))).toBe(true);
+        }
+      }
+      // The blueprint's elements are the same maps, on points.
+      group.hexMaps.forEach((image, n) => {
+        for (const hex of sample) {
+          const expected = group.elements[n + 1]!.map(hexToPoint(hex));
+          const actual = hexToPoint(image(hex));
+          expect(actual.x).toBeCloseTo(expected.x, 9);
+          expect(actual.y).toBeCloseTo(expected.y, 9);
+        }
+      });
+      // Mirrors are the elements that turn a corridor's bend the other way.
+      const mirrorCount = group.elements.filter((e) => e.mirrors).length;
+      expect(mirrorCount).toBe(symmetry === 'mirror' ? 3 : 0);
+    },
+  );
+
+  it('are three different groups of six', () => {
+    const prints = groups.map(([symmetry, axis]) => {
+      const group = sextetGroup(symmetry, axis);
+      return new Set(group.hexMaps.map(fingerprint));
+    });
+    for (const [i, a] of prints.entries()) {
+      for (const b of prints.slice(i + 1))
+        expect([...a].filter((p) => b.has(p)).length).toBeLessThan(5);
+    }
   });
 });
