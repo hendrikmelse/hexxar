@@ -103,6 +103,8 @@ interface Member {
   watching: boolean;
   /** Private rooms only: here to watch, not to play. Joined once the room was full or begun. */
   spectator: boolean;
+  /** The color this person plays in, kept from match to match for as long as they are in the room. */
+  colorSlot: number | null;
   afkTimer: Timer | null;
 }
 
@@ -140,6 +142,8 @@ export class Room {
   private closed = false;
   /** Who was in the last match, for those still looking at its result. */
   private resultPlayers: RoomView['players'] | null = null;
+  /** The color slot of each player of the current match, by player id. */
+  private matchColors: Record<string, number> = {};
 
   constructor(private readonly options: RoomOptions) {
     this.id = options.id;
@@ -169,6 +173,7 @@ export class Room {
       reviewing: false,
       watching: false,
       spectator: false,
+      colorSlot: null,
       afkTimer: null,
     });
     session.room = this;
@@ -203,6 +208,7 @@ export class Room {
       reviewing: false,
       watching: true,
       spectator: true,
+      colorSlot: null,
       afkTimer: null,
     };
     this.members.push(member);
@@ -606,6 +612,7 @@ export class Room {
     const order = shuffle(this.activeMembers(), createRng(seed));
     const players = order.map((_, i) => `P${i + 1}`);
     order.forEach((member, i) => (member.playerId = players[i] ?? null));
+    this.assignColors(order);
 
     let board: ReturnType<Room['generateBoard']> | null = null;
     let failure: unknown = null;
@@ -637,6 +644,33 @@ export class Room {
     this.broadcastRoom();
     this.broadcastSnapshots();
     this.scheduleTick();
+  }
+
+  /**
+   * Everyone in the match keeps the color they had, so the same people have the same colors from
+   * game to game, even when that means the first colors are not used. A newcomer takes the lowest
+   * color nobody else here has.
+   */
+  private assignColors(players: readonly Member[]): void {
+    const taken = new Set<number>();
+    for (const member of players) {
+      if (member.colorSlot !== null && !taken.has(member.colorSlot)) taken.add(member.colorSlot);
+      else member.colorSlot = null;
+    }
+    for (const member of players) {
+      if (member.colorSlot !== null) continue;
+      let slot = 0;
+      while (taken.has(slot)) slot++;
+      member.colorSlot = slot;
+      taken.add(slot);
+    }
+    this.matchColors = Object.fromEntries(
+      players.flatMap((member) =>
+        member.playerId !== null && member.colorSlot !== null
+          ? [[member.playerId, member.colorSlot] as const]
+          : [],
+      ),
+    );
   }
 
   /** The board for this room's settings: a battle royale sized by its players, or a duel by map size. */
@@ -750,9 +784,9 @@ export class Room {
       nextTickAt: this.nextTickAt,
       serverTime: Date.now(),
       scores: scoresOf(match.state, match.config),
+      colors: this.matchColors,
     };
   }
-
   private sendSnapshot(member: Member): void {
     const snapshot = this.snapshotFor(member);
     if (snapshot) member.session.connection?.send(snapshot);

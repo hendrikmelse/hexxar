@@ -37,6 +37,8 @@ export interface GameView {
   scores: PlayerScore[];
   /** Names for players, when the room does not have them (the tutorial's rivals). */
   names: Record<PlayerId, string>;
+  /** Which palette color each player has, where the server says (otherwise by the order of `players`). */
+  colors: Record<PlayerId, number>;
 }
 
 /**
@@ -82,6 +84,7 @@ export function emptyGame(): GameView {
     queues: {},
     scores: [],
     names: {},
+    colors: {},
   };
 }
 
@@ -108,6 +111,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       game.nextTickAt = message.nextTickAt;
       game.clockOffset = message.serverTime - Date.now();
       game.scores = message.scores;
+      game.colors = { ...message.colors };
       game.status = message.state.winner === null ? 'playing' : 'over';
       game.notice = '';
       return { kind: 'all' };

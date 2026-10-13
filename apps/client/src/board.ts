@@ -126,7 +126,7 @@ const LEFT_HUD_WIDTH = 296;
 
 export function playerColor(game: GameView, owner: string | null): number | null {
   if (owner === null) return null;
-  const index = Math.max(0, game.players.indexOf(owner));
+  const index = game.colors[owner] ?? Math.max(0, game.players.indexOf(owner));
   const palette = PLAYER_COLORS[index];
   if (palette !== undefined) return palette;
   // Beyond the hand-picked palette (big battle royales), space hues around the color wheel.
