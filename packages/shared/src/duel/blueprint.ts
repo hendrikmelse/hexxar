@@ -114,7 +114,7 @@ export function buildDuelBlueprint({
     }
   }
 
-  // -- Corridors: always an edge together with its twin.
+  // -- Corridors. Every one is added together with its twin, so the layout maps onto itself.
   const corridors: Corridor[] = [];
   const keyOf = (a: number, b: number): number => Math.min(a, b) * 1000 + Math.max(a, b);
   const twinKey = (a: number, b: number): number => keyOf(twin[a]!, twin[b]!);
@@ -150,36 +150,74 @@ export function buildDuelBlueprint({
   };
   const components = (): number => new Set(chambers.map((_, i) => find(i))).size;
 
-  // Every pair, once for each twin pair of pairs, shortest first.
-  const candidates: { a: number; b: number; length: number }[] = [];
-  const seen = new Set<number>();
-  for (let a = 0; a < chambers.length; a++) {
-    for (let b = a + 1; b < chambers.length; b++) {
-      if (seen.has(keyOf(a, b))) continue;
-      seen.add(keyOf(a, b));
-      seen.add(twinKey(a, b));
-      candidates.push({ a, b, length: distance(chambers[a]!.center, chambers[b]!.center) });
-    }
+  // The corridors are made for one half of the board, picked at random, and mirrored onto the
+  // other. The half has every blob on its side, and the blobs on the line or point of symmetry.
+  const keepSide = rng.next() < 0.5 ? 1 : -1;
+  const sideOf = (i: number): number => {
+    const { x, y } = chambers[i]!.center;
+    return Math.sign(symmetry === 'mirror' || y === 0 ? x : y);
+  };
+  const half = chambers.map((_, i) => i).filter((i) => twin[i] === i || sideOf(i) === keepSide);
+  // Lengths are shaken up a little, so the nearest blob is not always the one that gets joined.
+  const shaken = (a: number, b: number): number =>
+    distance(chambers[a]!.center, chambers[b]!.center) * between(rng, 0.8, 1.3);
+  const pairs: { a: number; b: number; weight: number }[] = [];
+  for (const [n, a] of half.entries()) {
+    for (const b of half.slice(n + 1)) pairs.push({ a, b, weight: shaken(a, b) });
   }
-  candidates.sort((x, y) => x.length - y.length);
-  const joinsSomething = (a: number, b: number): boolean =>
-    find(a) !== find(b) || find(twin[a]!) !== find(twin[b]!);
-  // First without corridors that run through another blob, then (if need be) with them.
-  for (const allowBlocked of [false, true]) {
-    for (const { a, b } of candidates) {
-      if (!allowBlocked && blocked(chambers, a, b)) continue;
-      if (!linked.has(keyOf(a, b)) && joinsSomething(a, b)) addEdge(a, b);
-    }
-    if (components() === 1) break;
-  }
-  if (components() !== 1) return null;
+  pairs.sort((x, y) => x.weight - y.weight);
 
-  // A few more short corridors, for loops.
-  const extras = candidates.filter(
-    ({ a, b }) => !linked.has(keyOf(a, b)) && !blocked(chambers, a, b),
-  );
-  for (const { a, b } of extras.slice(0, Math.round(chambers.length * 0.25))) {
-    if (!linked.has(keyOf(a, b))) addEdge(a, b);
+  // A spanning tree over the half (first without corridors that run through another blob, then,
+  // if need be, with them), then a few more short corridors for loops.
+  const inHalf = new Map(half.map((i) => [i, i]));
+  const halfFind = (i: number): number => {
+    const parentOf = inHalf.get(i)!;
+    if (parentOf === i) return i;
+    const root = halfFind(parentOf);
+    inHalf.set(i, root);
+    return root;
+  };
+  const chosen: { a: number; b: number }[] = [];
+  const isChosen = new Set<number>();
+  const choose = (a: number, b: number): void => {
+    chosen.push({ a, b });
+    isChosen.add(keyOf(a, b));
+  };
+  const halfComponents = (): number => new Set(half.map(halfFind)).size;
+  for (const allowBlocked of [false, true]) {
+    for (const { a, b } of pairs) {
+      if (!allowBlocked && blocked(chambers, a, b)) continue;
+      if (halfFind(a) === halfFind(b)) continue;
+      inHalf.set(halfFind(a), halfFind(b));
+      choose(a, b);
+    }
+    if (halfComponents() === 1) break;
+  }
+  if (halfComponents() !== 1) return null;
+  const loops = pairs.filter(({ a, b }) => !isChosen.has(keyOf(a, b)) && !blocked(chambers, a, b));
+  for (const { a, b } of loops.slice(0, Math.round(half.length * 0.35))) choose(a, b);
+  for (const { a, b } of chosen) if (!linked.has(keyOf(a, b))) addEdge(a, b);
+
+  // Both halves are joined through the blobs on the line or point, if there are any. If not, one
+  // corridor has to cross over.
+  if (components() !== 1) {
+    const across: { a: number; b: number; weight: number }[] = [];
+    for (const a of half) {
+      for (let b = 0; b < chambers.length; b++) {
+        if (twin[a] !== a && twin[b] !== b && sideOf(b) !== keepSide) {
+          across.push({ a, b, weight: shaken(a, b) });
+        }
+      }
+    }
+    across.sort((x, y) => x.weight - y.weight);
+    for (const allowBlocked of [false, true]) {
+      for (const { a, b } of across) {
+        if (components() === 1) break;
+        if (!allowBlocked && blocked(chambers, a, b)) continue;
+        if (!linked.has(keyOf(a, b))) addEdge(a, b);
+      }
+    }
+    if (components() !== 1) return null;
   }
 
   // No tail or peninsula longer than one corridor: close each into a loop, twins together.
