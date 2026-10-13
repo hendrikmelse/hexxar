@@ -18,17 +18,12 @@ import {
   ON_AXIS_CHANCE,
   pickWeighted,
   PLACE_TRIES,
+  SPINE_CHANCE,
 } from './common.js';
 import { hexImage, mirrorFrame, pointImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 /** How many extra blobs (not counting the starting ones and their twins) a board of this size gets. */
 const extraBlobs = (size: number): number => Math.max(1, Math.round(size / 2.2));
-/**
- * Chance that blobs on the line of symmetry of a mirror board may be joined to each other. Such a
- * corridor runs dead straight down the middle, so it is allowed on only some boards; on the others
- * those blobs join the board through blobs off the line.
- */
-const SPINE_CHANCE = 0.3;
 
 export interface DuelBlueprintInput {
   readonly symmetry: DuelSymmetry;

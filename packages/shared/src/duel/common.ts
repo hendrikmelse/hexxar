@@ -30,6 +30,13 @@ export const CROSSOVERS: readonly (readonly [count: number, weight: number])[] =
   [3, 1],
 ];
 
+/**
+ * Chance that blobs on a line of symmetry of a mirror board may be joined to each other. Such a
+ * corridor runs dead straight along the line, so it is allowed on only some boards; on the others
+ * those blobs join the board through blobs off the line.
+ */
+export const SPINE_CHANCE = 0.3;
+
 export const pickWeighted = (rng: Rng, options: readonly (readonly [number, number])[]): number => {
   const total = options.reduce((sum, [, weight]) => sum + weight, 0);
   let roll = rng.next() * total;

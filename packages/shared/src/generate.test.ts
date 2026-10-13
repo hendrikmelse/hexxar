@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { hexDistance, hexKey, hexNeighbors, hexRotate, type Hex } from './hex.js';
-import { createDuelMatch, createFreeForAllMatch, createTrioMatch } from './generate.js';
-import { hexImage, pointImage, type DuelAxis, type DuelSymmetry } from './duel/index.js';
+import {
+  createDuelMatch,
+  createFreeForAllMatch,
+  createQuadMatch,
+  createTrioMatch,
+} from './generate.js';
+import {
+  hexImage,
+  pointImage,
+  quadHexImages,
+  type DuelAxis,
+  type DuelSymmetry,
+} from './duel/index.js';
 import { TILE_TYPES } from './tiles.js';
-import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES, TRIO_TILES } from './params.js';
+import {
+  DEFAULT_GENERATION_PARAMS,
+  DUEL_TILES,
+  MAP_SIZES,
+  QUAD_TILES,
+  TRIO_TILES,
+} from './params.js';
 import { createRng } from './rng.js';
 import { parseMatchConfig } from './config.js';
 
@@ -439,6 +456,163 @@ describe('createTrioMatch', () => {
       for (const { tiles, byKey } of boards) {
         for (const tile of tiles.filter((t) => t.type === 'farmland')) {
           const orbit: Hex[] = [tile, turned(tile, 2), turned(tile, 4)];
+          const blocked = orbit.some(
+            (hex, i) =>
+              hexNeighbors(hex).some((n) => {
+                const type = byKey[hexKey(n)]?.type;
+                return type === 'village' || type === 'city';
+              }) || orbit.slice(i + 1).some((other) => hexDistance(hex, other) === 1),
+          );
+          expect(blocked).toBe(true);
+        }
+      }
+    });
+  });
+});
+
+const four = ['A', 'B', 'C', 'D'];
+
+describe('createQuadMatch', () => {
+  it('is deterministic for a seed', () => {
+    const options = { players: four, seed: 7 };
+    expect(createQuadMatch(options).state).toEqual(createQuadMatch(options).state);
+    expect(createQuadMatch(options).state.tiles).not.toEqual(
+      createQuadMatch({ players: four, seed: 8 }).state.tiles,
+    );
+  });
+
+  it('is exactly symmetric under both mirrors and the half turn', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 15; seed++) {
+        const { state, quad } = createQuadMatch({ players: four, seed, tiles: QUAD_TILES[size] });
+        for (const image of quadHexImages(quad.turns)) {
+          for (const tile of Object.values(state.tiles)) {
+            const twin = state.tiles[hexKey(image(tile))];
+            expect(twin).toBeDefined();
+            expect(twin!.type).toBe(tile.type);
+            // Neutral tiles match in garrison too; the starting cities are checked below.
+            if (tile.owner === null && twin!.owner === null) expect(twin!.troops).toBe(tile.troops);
+          }
+        }
+      }
+    }
+  });
+
+  it('gives each player one starting city, and the four are twins of one another', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { state, config, quad } = createQuadMatch({ players: four, seed });
+      const cities = four.map((p) => Object.values(state.tiles).filter((t) => t.owner === p));
+      for (const owned of cities) {
+        expect(owned).toHaveLength(1);
+        expect(owned[0]).toMatchObject({ type: 'city', troops: config.startingTroops });
+      }
+      // Each is the first moved by one of the three symmetries, so all four sit in different quarters.
+      quadHexImages(quad.turns).forEach((image, n) => {
+        expect(hexKey(image(cities[0]![0]!))).toBe(hexKey(cities[n + 1]![0]!));
+      });
+    }
+  });
+
+  it('starts neutral tiles at their base garrison', () => {
+    const { state } = createQuadMatch({ players: four, seed: 3 });
+    for (const t of Object.values(state.tiles)) {
+      if (t.owner === null) expect(t.troops).toBe(TILE_TYPES[t.type].baseGarrison);
+    }
+  });
+
+  it('has about the number of tiles asked for', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const tiles = Object.keys(
+          createQuadMatch({ players: four, seed, tiles: QUAD_TILES[size] }).state.tiles,
+        ).length;
+        expect(tiles / QUAD_TILES[size]).toBeGreaterThan(0.9);
+        expect(tiles / QUAD_TILES[size]).toBeLessThan(1.1);
+      }
+    }
+  });
+
+  it('has more blobs on bigger boards', () => {
+    const average = (size: keyof typeof QUAD_TILES): number => {
+      let blobs = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        blobs += createQuadMatch({ players: four, seed, tiles: QUAD_TILES[size] }).quad.blueprint
+          .chambers.length;
+      }
+      return blobs / 20;
+    };
+    expect(average('normal')).toBeGreaterThan(average('small'));
+    expect(average('large')).toBeGreaterThan(average('normal'));
+  });
+
+  it('turns the finished board one of three ways, or as told', () => {
+    const seen = new Set<number>();
+    for (let seed = 1; seed <= 40; seed++) {
+      seen.add(createQuadMatch({ players: four, seed }).quad.turns);
+    }
+    expect(seen).toEqual(new Set([0, 1, 2]));
+    for (let turns = 0; turns < 3; turns++) {
+      expect(createQuadMatch({ players: four, seed: 4, turns }).quad.turns).toBe(turns);
+    }
+  });
+
+  it('rejects anything but four different players', () => {
+    expect(() => createQuadMatch({ players: ['A', 'B', 'C'], seed: 1 })).toThrow();
+    expect(() => createQuadMatch({ players: ['A', 'B', 'C', 'D', 'E'], seed: 1 })).toThrow();
+    expect(() => createQuadMatch({ players: ['A', 'A', 'B', 'C'], seed: 1 })).toThrow();
+  });
+
+  describe('terrain rules', () => {
+    const boards = [QUAD_TILES.normal, QUAD_TILES.large].flatMap((tiles) =>
+      Array.from({ length: 20 }, (_, i) => {
+        // Fully packed with villages, so the "nowhere legal is left" check means something.
+        const { state, quad } = createQuadMatch({
+          players: four,
+          seed: i + 1,
+          tiles,
+          params: { villageChance: 100 },
+        });
+        const all = Object.values(state.tiles);
+        return {
+          tiles: all,
+          byKey: state.tiles,
+          images: quadHexImages(quad.turns),
+          cities: all.filter((t) => t.type === 'city'),
+          villages: all.filter((t) => t.type === 'village'),
+        };
+      }),
+    );
+
+    it('never puts cities too close together, or on the edge of the board', () => {
+      for (const { cities, byKey } of boards) {
+        for (const a of cities) {
+          for (const nb of hexNeighbors(a)) expect(byKey[hexKey(nb)]).toBeDefined();
+          for (const b of cities) {
+            if (a !== b) {
+              expect(hexDistance(a, b)).toBeGreaterThanOrEqual(
+                DEFAULT_GENERATION_PARAMS.minCityDistance,
+              );
+            }
+          }
+        }
+      }
+    });
+
+    it('never lets villages touch each other or a city', () => {
+      for (const { villages, byKey } of boards) {
+        for (const v of villages) {
+          for (const n of hexNeighbors(v)) {
+            const type = byKey[hexKey(n)]?.type;
+            expect(type === 'village' || type === 'city').toBe(false);
+          }
+        }
+      }
+    });
+
+    it('places villages until nowhere legal is left', () => {
+      for (const { tiles, byKey, images } of boards) {
+        for (const tile of tiles.filter((t) => t.type === 'farmland')) {
+          const orbit: Hex[] = [tile, ...images.map((image) => image(tile))];
           const blocked = orbit.some(
             (hex, i) =>
               hexNeighbors(hex).some((n) => {

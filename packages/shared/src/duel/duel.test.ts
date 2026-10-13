@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES, TRIO_TILES } from '../params.js';
-import { generateDuelLayout, generateTrioLayout } from './layout.js';
+import {
+  DEFAULT_GENERATION_PARAMS,
+  DUEL_TILES,
+  MAP_SIZES,
+  QUAD_TILES,
+  TRIO_TILES,
+} from '../params.js';
+import { generateDuelLayout, generateQuadLayout, generateTrioLayout } from './layout.js';
 import { pointImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 // Each test draws hundreds of whole boards.
@@ -205,5 +211,74 @@ describe('three-player layouts', () => {
       expect(widths.size).toBe(corridors.length);
       expect(chambers.length).toBeGreaterThan(3);
     }
+  });
+});
+
+/** A four-player board left as it was drawn (not turned), so its mirror lines are the axes. */
+const quad = (seed: number, tiles: number) =>
+  generateQuadLayout({ seed, targetTiles: tiles, turns: 0, params: DEFAULT_GENERATION_PARAMS });
+
+describe('four-player layouts', () => {
+  it('never join two starts by a corridor of their own, unless the starts are the only blobs', () => {
+    for (const size of MAP_SIZES) {
+      for (let seed = 1; seed <= 60; seed++) {
+        const { chambers, corridors } = quad(seed, QUAD_TILES[size]).report.blueprint;
+        expect(chambers.slice(0, 4).every((c) => c.spawn)).toBe(true);
+        expect(chambers.slice(4).some((c) => c.spawn)).toBe(false);
+        const amongStarts = corridors.filter((c) => c.from < 4 && c.to < 4);
+        if (chambers.length === 4) {
+          // Nothing else to go through: the four starts have to be joined to one another.
+          expect(amongStarts.length).toBeGreaterThanOrEqual(3);
+        } else {
+          expect(amongStarts).toHaveLength(0);
+        }
+      }
+    }
+  });
+
+  it('only let the smallest boards be nothing but the four starts', () => {
+    const only = (size: keyof typeof QUAD_TILES): number => {
+      let count = 0;
+      for (let seed = 1; seed <= 60; seed++) {
+        if (quad(seed, QUAD_TILES[size]).report.blueprint.chambers.length === 4) count++;
+      }
+      return count;
+    };
+    expect(only('small')).toBeGreaterThan(0);
+    expect(only('normal')).toBe(0);
+    expect(only('large')).toBe(0);
+  });
+
+  it('keep blobs on the two mirror lines sometimes, and a blob in the middle sometimes', () => {
+    let onLines = 0;
+    let withMiddle = 0;
+    let boards = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+      const { chambers } = quad(seed, QUAD_TILES.large).report.blueprint;
+      boards++;
+      if (chambers.some((c) => (c.center.x === 0) !== (c.center.y === 0))) onLines++;
+      if (chambers.some((c) => c.center.x === 0 && c.center.y === 0)) withMiddle++;
+    }
+    expect(onLines).toBeGreaterThan(boards * 0.2);
+    expect(withMiddle).toBeGreaterThan(boards * 0.2);
+    expect(withMiddle).toBeLessThan(boards * 0.7);
+  });
+
+  it('only sometimes run a corridor straight along a mirror line', () => {
+    let boards = 0;
+    let spines = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      const { chambers, corridors } = quad(seed, QUAD_TILES.large).report.blueprint;
+      const along = (a: number, b: number): boolean =>
+        (chambers[a]!.center.x === 0 && chambers[b]!.center.x === 0) ||
+        (chambers[a]!.center.y === 0 && chambers[b]!.center.y === 0);
+      // Only boards that have two blobs on one line to join.
+      const hasPair = chambers.some((_, a) => chambers.some((_, b) => a < b && along(a, b)));
+      if (!hasPair) continue;
+      boards++;
+      if (corridors.some((c) => along(c.from, c.to))) spines++;
+    }
+    expect(boards).toBeGreaterThan(50);
+    expect(spines / boards).toBeLessThan(0.55);
   });
 });

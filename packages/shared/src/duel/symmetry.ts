@@ -82,3 +82,20 @@ export const trioHexImages: readonly ((hex: Hex) => Hex)[] = [
   (hex) => hexRotate(hex, 2),
   (hex) => hexRotate(hex, 4),
 ];
+
+/**
+ * The symmetry of a board for four players: a mirror across a line through tile corners (up and
+ * down), a mirror across the line at right angles to it (which runs through the middles of tile
+ * edges: on a hex grid, two lines at right angles are always one of each kind), and the half turn
+ * you get by doing both. A board turned by `turns` steps of 60 degrees after it was made is
+ * symmetric across the turned lines (as with `hexImage`).
+ */
+export const quadHexImages = (turns = 0): ((hex: Hex) => Hex)[] => {
+  const base: ((hex: Hex) => Hex)[] = [
+    hexFlipHorizontal,
+    hexFlipVertical,
+    (hex) => hexRotate(hex, 3),
+  ];
+  if (turns % 6 === 0) return base;
+  return base.map((image) => (hex) => hexRotate(image(hexRotate(hex, -turns)), turns));
+};

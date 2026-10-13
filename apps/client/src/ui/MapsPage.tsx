@@ -4,7 +4,9 @@ import {
   ARCHETYPE_IDS,
   DEFAULT_GENERATION_PARAMS,
   DUEL_TILES,
+  QUAD_TILES,
   TRIO_TILES,
+  createQuadMatch,
   createTrioMatch,
   FFA_MAX_PLAYERS,
   FFA_MIN_PLAYERS,
@@ -22,6 +24,7 @@ import {
   type DuelAxis,
   type DuelReport,
   type DuelSymmetry,
+  type QuadReport,
   type TrioReport,
   type RoomMode,
   type RoyaleReport,
@@ -76,8 +79,8 @@ function blueprintOverlay(blueprint: Blueprint | null): ((graphics: Graphics) =>
   };
 }
 
-/** What the previewer can make: the game's two modes, and the board for three players. */
-type PreviewMode = RoomMode | 'trio';
+/** What the previewer can make: the game's two modes, and the boards for three and four players. */
+type PreviewMode = RoomMode | 'trio' | 'quad';
 
 /** A board, and for battle royales how it was made. Or the reason it could not be made. */
 type Generated =
@@ -86,6 +89,7 @@ type Generated =
       report: RoyaleReport | null;
       duel: DuelReport | null;
       trio: TrioReport | null;
+      quad: QuadReport | null;
     }
   | string;
 
@@ -105,11 +109,15 @@ function generate(
   try {
     if (mode === 'ffa') {
       const { state, report } = createFreeForAllMatch({ players: ids, seed, params, archetype });
-      return { state, report, duel: null, trio: null };
+      return { state, report, duel: null, trio: null, quad: null };
     }
     if (mode === 'trio') {
       const { state, trio } = createTrioMatch({ players: ids, seed, tiles, params });
-      return { state, report: null, duel: null, trio };
+      return { state, report: null, duel: null, trio, quad: null };
+    }
+    if (mode === 'quad') {
+      const { state, quad } = createQuadMatch({ players: ids, seed, tiles, params, turns });
+      return { state, report: null, duel: null, trio: null, quad };
     }
     const { state, duel } = createDuelMatch({
       players: ids,
@@ -120,7 +128,7 @@ function generate(
       turns,
       params,
     });
-    return { state, report: null, duel, trio: null };
+    return { state, report: null, duel, trio: null, quad: null };
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -294,7 +302,13 @@ export function MapsPage() {
     return value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
   };
   const [mode, setMode] = useState<PreviewMode>(
-    query.get('mode') === 'ffa' ? 'ffa' : query.get('mode') === 'trio' ? 'trio' : 'duel',
+    query.get('mode') === 'ffa'
+      ? 'ffa'
+      : query.get('mode') === 'trio'
+        ? 'trio'
+        : query.get('mode') === 'quad'
+          ? 'quad'
+          : 'duel',
   );
   const [mapSize, setMapSize] = useState<MapSize>(
     MAP_SIZES.find((size) => size === query.get('size')) ?? 'normal',
@@ -335,7 +349,11 @@ export function MapsPage() {
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
   /** About how many tiles a fair board has at a map size: two players' shares, or three players'. */
   const tilesFor = (forMode: PreviewMode, size: MapSize): number =>
-    forMode === 'trio' ? TRIO_TILES[size] : DUEL_TILES[size];
+    forMode === 'trio'
+      ? TRIO_TILES[size]
+      : forMode === 'quad'
+        ? QUAD_TILES[size]
+        : DUEL_TILES[size];
   const [tiles, setTiles] = useState<number>(queryNumber('tiles') ?? tilesFor(mode, mapSize));
 
   const defaultTiles = tilesFor(mode, mapSize);
@@ -362,7 +380,7 @@ export function MapsPage() {
   }
   if (mode !== 'ffa' && tiles !== defaultTiles) changes.tiles = tiles;
 
-  const count = mode === 'duel' ? 2 : mode === 'trio' ? 3 : players;
+  const count = mode === 'duel' ? 2 : mode === 'trio' ? 3 : mode === 'quad' ? 4 : players;
   const result = useMemo(
     () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
     [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
@@ -433,7 +451,9 @@ export function MapsPage() {
   const report = typeof result === 'string' ? null : result.report;
   const duel = typeof result === 'string' ? null : result.duel;
   const trio = typeof result === 'string' ? null : result.trio;
-  const blueprint = report?.blueprint ?? duel?.blueprint ?? trio?.blueprint ?? null;
+  const quad = typeof result === 'string' ? null : result.quad;
+  const blueprint =
+    report?.blueprint ?? duel?.blueprint ?? trio?.blueprint ?? quad?.blueprint ?? null;
 
   // The board itself is the game's own, drawn by `main.ts`: hand it each new board, then the overlays.
   const game = useMemo(
@@ -462,8 +482,9 @@ export function MapsPage() {
             value={mode}
             options={[
               { value: 'duel', label: 'Duel' },
-              { value: 'trio', label: 'Three players' },
-              { value: 'ffa', label: 'Battle Royale' },
+              { value: 'trio', label: '3 players' },
+              { value: 'quad', label: '4 players' },
+              { value: 'ffa', label: 'Royale' },
             ]}
             onChange={chooseMode}
           />
@@ -476,7 +497,7 @@ export function MapsPage() {
             }))}
             onChange={chooseSize}
           />
-          {mode === 'trio' ? null : mode === 'duel' ? (
+          {mode === 'trio' || mode === 'quad' ? null : mode === 'duel' ? (
             <>
               <Segmented
                 label="Symmetry"
@@ -543,7 +564,13 @@ export function MapsPage() {
           </summary>
           {mode !== 'ffa' && (
             <div className="maps-group">
-              <h4>{mode === 'trio' ? 'Three-player board' : 'Duel board'}</h4>
+              <h4>
+                {mode === 'trio'
+                  ? 'Three-player board'
+                  : mode === 'quad'
+                    ? 'Four-player board'
+                    : 'Duel board'}
+              </h4>
               <div className="maps-fields">
                 <NumberField
                   label="tiles"
@@ -601,6 +628,8 @@ export function MapsPage() {
 
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
+          {quad &&
+            ` · two mirror lines, turned ${quad.turns * 60}°, ${quad.attempts} ${quad.attempts === 1 ? 'attempt' : 'attempts'} · ${quad.blueprint.chambers.length} blobs`}
           {trio &&
             ` · turns of 120°, ${trio.attempts} ${trio.attempts === 1 ? 'attempt' : 'attempts'} · ${trio.blueprint.chambers.length} blobs`}
           {duel &&

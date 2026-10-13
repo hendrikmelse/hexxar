@@ -8,11 +8,13 @@ import { rasterize } from '../royale/rasterize.js';
 import { buildDuelBlueprint } from './blueprint.js';
 import {
   hexImage,
+  quadHexImages,
   rotatePoint,
   trioHexImages,
   type DuelAxis,
   type DuelSymmetry,
 } from './symmetry.js';
+import { buildQuadBlueprint } from './quad.js';
 import { buildTrioBlueprint } from './trio.js';
 
 /** Why a board that was drawn was thrown away. */
@@ -58,6 +60,29 @@ export interface TrioLayout {
   /** The three starting hexes: each is the one before it turned by 120 degrees. */
   readonly starts: [Hex, Hex, Hex];
   readonly report: TrioReport;
+}
+
+/** How a board for four players was made. */
+export interface QuadReport {
+  /**
+   * How many steps of 60 degrees the finished board was turned (0 to 2: turning by 180 degrees
+   * changes nothing, so those are the three ways the two mirror lines can lie). The blueprint is
+   * turned with it.
+   */
+  readonly turns: number;
+  readonly attempts: number;
+  readonly rejections: Readonly<Partial<Record<DuelRejection, number>>>;
+  readonly blueprint: Blueprint;
+  readonly tiles: number;
+  readonly targetTiles: number;
+}
+
+export interface QuadLayout {
+  readonly hexes: Hex[];
+  /** The four starting hexes, one in each quarter: the first, then its image across the vertical
+   *  line, across the horizontal line, and through the middle (before any turn). */
+  readonly starts: [Hex, Hex, Hex, Hex];
+  readonly report: QuadReport;
 }
 
 const MAX_ATTEMPTS = 200;
@@ -338,6 +363,58 @@ export function generateTrioLayout(input: {
       attempts,
       rejections,
       blueprint: board.blueprint,
+      tiles: board.land.size,
+      targetTiles,
+    },
+  };
+}
+
+/**
+ * A fully symmetric board for four players, made of blobs the way a duel board is, but with two
+ * mirror lines at right angles (and so a half turn): a starting blob in each quarter, sets of extra
+ * blobs on the lines or off them, and perhaps a blob in the middle, joined by corridors. After it is
+ * made the board is turned by a random multiple of 60 degrees, so the lines can lie any of the
+ * three ways two hex mirror lines at right angles can. The same seed always gives the same board.
+ */
+export function generateQuadLayout(input: {
+  seed: number;
+  /** About how many tiles the board should have. */
+  targetTiles: number;
+  /** How far the finished board is turned, in steps of 60 degrees (0 to 2); by default random. */
+  turns?: number;
+  params: GenerationParams;
+}): QuadLayout {
+  const { seed, targetTiles, params } = input;
+  const turns = (((input.turns ?? createRng(seed ^ 0x51ad).int(3)) % 6) + 6) % 6;
+  const { board, attempts, rejections } = findBoard(
+    quadHexImages(0),
+    ({ size, scale, rng }) =>
+      buildQuadBlueprint({ size, scale, rng, minCityDistance: params.minCityDistance }),
+    targetTiles,
+    params,
+    seed,
+    'four-player',
+  );
+  const turn = (hex: Hex): Hex => hexRotate(hex, turns);
+  return {
+    hexes: [...board.land.values()].map(turn).sort((a, b) => a.q - b.q || a.r - b.r),
+    starts: [
+      turn(board.starts[0]!),
+      turn(board.starts[1]!),
+      turn(board.starts[2]!),
+      turn(board.starts[3]!),
+    ],
+    report: {
+      turns,
+      attempts,
+      rejections,
+      blueprint: {
+        chambers: board.blueprint.chambers.map((c) => ({
+          ...c,
+          center: rotatePoint(c.center, turns),
+        })),
+        corridors: board.blueprint.corridors,
+      },
       tiles: board.land.size,
       targetTiles,
     },

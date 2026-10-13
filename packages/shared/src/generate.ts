@@ -1,15 +1,24 @@
 import { parseMatchConfig, tileRules, type MatchConfig } from './config.js';
 import { hexDistance, hexKey, hexNeighbors, hexagonalBoard, type Hex } from './hex.js';
 import { createRng, type Rng } from './rng.js';
-import { DUEL_TILES, TRIO_TILES, withDefaults, type GenerationParams } from './params.js';
+import {
+  DUEL_TILES,
+  QUAD_TILES,
+  TRIO_TILES,
+  withDefaults,
+  type GenerationParams,
+} from './params.js';
 import {
   generateDuelLayout,
   hexImage,
+  generateQuadLayout,
   generateTrioLayout,
+  quadHexImages,
   trioHexImages,
   type DuelAxis,
   type DuelReport,
   type DuelSymmetry,
+  type QuadReport,
   type TrioReport,
 } from './duel/index.js';
 import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
@@ -247,6 +256,54 @@ export function createTrioMatch(options: TrioMatchOptions): {
       hexes: trio.hexes,
       starts: trio.starts,
       images: trioHexImages,
+      config,
+      params,
+    }),
+  };
+}
+
+export interface QuadMatchOptions {
+  /** Exactly four players. */
+  readonly players: readonly PlayerId[];
+  readonly seed: number;
+  /** About how many tiles the board has; by default the normal size for four players. */
+  readonly tiles?: number;
+  /** How far the finished board is turned, in steps of 60 degrees (0 to 2); by default random. */
+  readonly turns?: number;
+  /** Overrides for the generation settings; anything left out uses its default. */
+  readonly params?: Partial<GenerationParams>;
+  /** Partial match settings; defaults fill the rest. */
+  readonly config?: unknown;
+}
+
+/**
+ * A fair board for four players: made of blobs (see `duel/`), and exactly symmetric under two
+ * mirrors at right angles and the half turn they make together. Every tile has three twins of the
+ * same type, one in each of the other quarters, and the four players start on twin cities, so each
+ * sees the same board from their side.
+ */
+export function createQuadMatch(options: QuadMatchOptions): {
+  state: GameState;
+  config: MatchConfig;
+  /** How the board was made (the blobs it is drawn from). */
+  quad: QuadReport;
+} {
+  const { players, seed, tiles = QUAD_TILES.normal } = options;
+  if (players.length !== 4) throw new Error('a four-player board is for exactly 4 players');
+  if (new Set(players).size !== 4) throw new Error('player ids must be unique');
+  if (tiles < 40) throw new Error('a four-player board needs at least 40 tiles');
+  const config = parseMatchConfig(options.config);
+  const params = withDefaults(options.params);
+  const quad = generateQuadLayout({ seed, targetTiles: tiles, turns: options.turns, params });
+  return {
+    config,
+    quad: quad.report,
+    state: symmetricState({
+      players,
+      seed,
+      hexes: quad.hexes,
+      starts: quad.starts,
+      images: quadHexImages(quad.report.turns),
       config,
       params,
     }),

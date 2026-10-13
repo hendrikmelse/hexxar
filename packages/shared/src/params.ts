@@ -85,9 +85,16 @@ export const DUEL_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
 
 /** The same for a board for three players, who get a little less each than in a duel. */
 export const TRIO_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 15,
+  small: 16,
   normal: 40,
   large: 70,
+};
+
+/** The same for a board for four players, who get less again. */
+export const QUAD_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
+  small: 15,
+  normal: 35,
+  large: 60,
 };
 
 /** About how many tiles a duel board has at each map size (two players' shares). */
@@ -102,6 +109,13 @@ export const TRIO_TILES: Readonly<Record<MapSize, number>> = {
   small: 3 * TRIO_TILES_PER_PLAYER.small,
   normal: 3 * TRIO_TILES_PER_PLAYER.normal,
   large: 3 * TRIO_TILES_PER_PLAYER.large,
+};
+
+/** About how many tiles a board for four players has at each map size (four players' shares). */
+export const QUAD_TILES: Readonly<Record<MapSize, number>> = {
+  small: 4 * QUAD_TILES_PER_PLAYER.small,
+  normal: 4 * QUAD_TILES_PER_PLAYER.normal,
+  large: 4 * QUAD_TILES_PER_PLAYER.large,
 };
 
 /**

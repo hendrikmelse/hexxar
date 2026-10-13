@@ -1,6 +1,6 @@
 # Map generation
 
-`packages/shared/src/generate.ts` builds boards in three flavors. `createDuelMatch` makes the fair two-player boards (games use it for duels); `createTrioMatch` makes the fair boards for three players (nothing in a room uses it yet); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
+`packages/shared/src/generate.ts` builds boards in four flavors. `createDuelMatch` makes the fair two-player boards (games use it for duels); `createTrioMatch` and `createQuadMatch` make the fair boards for three and four players (nothing in a room uses them yet); `createFreeForAllMatch` makes random boards for any number of players (battle royales). Given the same options and seed, both always produce the same board. Cities, villages and farmland follow the same rules in both (see Tile types), and the code for placing them is shared. Both draw their land the same way, from a **blueprint** of round chambers ("blobs") joined by corridors, which `royale/` and `duel/` lay out and rasterize onto hexes.
 
 ## Duel boards
 
@@ -21,7 +21,7 @@ The board is split into **orbits**: a tile and its twin (a tile on the line or p
 
 `createTrioMatch` makes a fair board for three players, in `packages/shared/src/duel/` next to the duel code, which it shares most of its drawing with. It is **exactly symmetric under turns of 120 and 240 degrees** about the middle of the board, so each player sees the same board from their side. There is no mirror version: a mirror cannot treat three players alike.
 
-- **Size:** `tiles` is about how many tiles the board has (`TRIO_TILES`: 45, 120 and 210 at small, normal and large), which is 15, 40 and 70 tiles for each player: a little less than in a duel (18, 50 and 80), which has fewer players on its board.
+- **Size:** `tiles` is about how many tiles the board has (`TRIO_TILES`: 48, 120 and 210 at small, normal and large), which is 16, 40 and 70 tiles for each player: a little less than in a duel (18, 50 and 80), which has fewer players on its board.
 - **Blobs:** one starting blob with two twins, a third of a turn round from one another, and **sets of three** extra blobs, one in each third (one set on normal boards, two on large, as far as they fit; small boards have no room for a set, so they have the three starts and perhaps the middle blob). A blob can also sit at the middle (on 40% of boards, decided first, with the starts put far enough out to leave it room); it has no twins. Blob sizes, the gap between blobs and the corridor widths are the same as for duels.
 - **Corridors** are made for one third of the board and turned twice onto the others, the way a duel's are made for one half and mirrored. One blob from each set (and the middle blob) are joined by a spanning tree and a few loops, with the lengths shaken up a little; the rest is copies.
 - **Crossovers** are corridors from a blob in one third to a twin of a blob in the next. If there is no middle blob, one has to cross over to join the thirds; a middle blob that has a corridor to a blob in one third has one to each of the others, so it can be the only link. After that a random number more cross over (none 40%, one 30%, two 20%, three 10%).
@@ -29,6 +29,18 @@ The board is split into **orbits**: a tile and its twin (a tile on the line or p
 - **No tail rule:** as with duels, tails and peninsulas can be any length.
 - **Drawing, area and symmetry** are exactly as for duels: the drawn land together with its two images, tidied by rules that look at the whole board before each step, then the layout is stretched and the land grown or shrunk a little until the tile count is within 3% of the target. Boards are not turned afterwards.
 - **Terrain:** a tile and its two twins are an orbit and always get the same type, so extra cities and villages come in threes and the starting cities are twins.
+
+## Four-player boards
+
+`createQuadMatch` makes a fair board for four players, in `duel/` beside the others (`quad.ts` lays out the blobs). It is **exactly symmetric under two mirrors at right angles**, and so under the half turn they make together. On a hex grid two mirror lines at right angles are always one of each kind: one through tile corners (up and down, as a duel's usual line) and one through the middles of tile edges (across). After the board is made it is **turned by a random multiple of 60 degrees**, so the lines can lie any of the three ways two such lines can (turning by 180 degrees changes nothing: `turns` is 0 to 2). Every tile has three twins, one in each of the other quarters, of the same type, and the four players start on twin cities.
+
+- **Size:** `tiles` is about how many tiles the board has (`QUAD_TILES`: 60, 140 and 240 at small, normal and large), which is 15, 35 and 60 tiles for each player.
+- **Blobs:** one starting blob in each quarter (the first, then its image across the vertical line, across the horizontal line, and through the middle). Extra blobs come in sets: four when off the lines (one in each quarter), two when on one of the two lines, and one when at the middle. One set on normal boards and, as far as they fit, two on large. A blob at the middle is decided first (40% of boards), with the starts put far enough out to leave it room. Small boards have no room for an extra set, so they have the four starts and perhaps the middle blob.
+- **Corridors** are made for one quarter of the board (with the blobs on the lines at its edges) and copied into the other three: a spanning tree and a few loops, with the lengths shaken up a little, then **crossovers**. A corridor that is its own mirror image runs dead straight, so a corridor between two blobs on one line is allowed on only 30% of boards, as with duels.
+- **Crossovers** are corridors from a blob in this quarter to an image of a blob in another. If the quarters are not already joined (through blobs on the lines, or the middle one), enough have to cross over to join them; after that a random number more do (none 40%, one 30%, two 20%, three 10%).
+- **The four starts are never joined by a corridor of their own**, unless they are the only blobs (small boards without a middle blob), where they have to be joined to one another.
+- **Narrow corridors, blobs well apart, no tail rule, drawing, area and symmetry** are as for duels and three-player boards.
+- **Terrain:** a tile and its three twins are an orbit and always get the same type, so extra cities and villages come in fours (or twos, for tiles on a line) and the starting cities are twins.
 
 ## Tile types
 
@@ -71,7 +83,7 @@ A battle royale board has no symmetry. It is drawn from a **blueprint** by the c
 
 Villages use the same placement as duel boards (see Tile types), with each tile its own group: a random pass over the interior tiles, then the edge tiles, each place getting a village with the village chance (40%) if it does not touch a city or another village. Nothing makes the villages even between players, only the evenness of the land itself.
 
-The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint`, which also gets back to a particular board. For duels it also takes `symmetry`, `axis`, `tiles` and `turns`; `mode=trio` shows the three-player boards (with `tiles`).
+The map previewer (`/?maps`) draws each board with the game's own board drawing (`Board` in the client), with a panel of generation settings beside it. The panel shows the numbers for each board, can draw the blueprint over it, and collects statistics over 100 seeds. The address can set where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint`, which also gets back to a particular board. For duels it also takes `symmetry`, `axis`, `tiles` and `turns`; `mode=trio` and `mode=quad` show the three- and four-player boards (with `tiles`; `turns` for the four-player boards).
 
 ## Settings
 

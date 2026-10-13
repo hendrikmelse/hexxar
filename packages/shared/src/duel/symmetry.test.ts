@@ -5,6 +5,7 @@ import {
   hexImage,
   mirrorFrame,
   pointImage,
+  quadHexImages,
   rotatePoint,
   trioHexImages,
   type DuelAxis,
@@ -119,5 +120,40 @@ describe('three-player symmetry', () => {
         expect(actual.y).toBeCloseTo(expected.y, 9);
       }
     }
+  });
+});
+
+describe('four-player symmetry', () => {
+  it.each([0, 1, 2, 3, 4, 5])(
+    'is two mirrors and their half turn, however far the board is turned (%i)',
+    (turns) => {
+      const [first, second, both] = quadHexImages(turns) as [
+        (h: Hex) => Hex,
+        (h: Hex) => Hex,
+        (h: Hex) => Hex,
+      ];
+      for (const hex of board) {
+        // Each undoes itself, they commute, and doing both is the third (a half turn).
+        for (const image of [first, second, both])
+          expect(hexKey(image(image(hex)))).toBe(hexKey(hex));
+        expect(hexKey(first(second(hex)))).toBe(hexKey(second(first(hex))));
+        expect(hexKey(first(second(hex)))).toBe(hexKey(both(hex)));
+        // The half turn is the same for every turn of the board.
+        expect(hexKey(both(hex))).toBe(hexKey(quadHexImages(0)[2]!(hex)));
+        // And neighbors stay neighbors.
+        const near = new Set(hexNeighbors(first(hex)).map(hexKey));
+        for (const n of hexNeighbors(hex)) expect(near.has(hexKey(first(n)))).toBe(true);
+      }
+    },
+  );
+
+  it('has one mirror line through tile corners and one through edge middles, at right angles', () => {
+    const [vertical, horizontal] = quadHexImages(0) as [(h: Hex) => Hex, (h: Hex) => Hex];
+    const fixedBy = (image: (h: Hex) => Hex): Hex[] =>
+      board.filter((hex) => hexKey(image(hex)) === hexKey(hex));
+    for (const hex of fixedBy(vertical)) expect(Math.abs(hexToPoint(hex).x)).toBeLessThan(1e-9);
+    for (const hex of fixedBy(horizontal)) expect(Math.abs(hexToPoint(hex).y)).toBeLessThan(1e-9);
+    expect(fixedBy(vertical).length).toBeGreaterThan(8);
+    expect(fixedBy(horizontal).length).toBeGreaterThan(8);
   });
 });
