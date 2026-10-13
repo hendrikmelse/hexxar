@@ -9,7 +9,7 @@ import {
   type Point,
 } from '../royale/blueprint.js';
 import { blocked, distance } from '../royale/archetypes/common.js';
-import { hexImage, pointImage, type DuelSymmetry } from './symmetry.js';
+import { hexImage, mirrorFrame, pointImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 /** How big the blobs are: a little bigger on bigger boards. */
 export const blobRadius = (size: number): number => Math.min(2.4, 1.2 + 0.1 * size);
@@ -55,6 +55,8 @@ const pickWeighted = (rng: Rng, options: readonly (readonly [number, number])[])
 
 export interface DuelBlueprintInput {
   readonly symmetry: DuelSymmetry;
+  /** Which line a mirror board is mirrored across (ignored by half-turn boards). */
+  readonly axis: DuelAxis;
   /**
    * Roughly the radius of a board with the wanted number of tiles. It decides how big the blobs
    * are and how many there are, so those stay the same as the layout is stretched to fit.
@@ -77,13 +79,20 @@ const between = (rng: Rng, low: number, high: number): number => low + rng.next(
  */
 export function buildDuelBlueprint({
   symmetry,
+  axis,
   size,
   scale,
   rng,
   minCityDistance,
 }: DuelBlueprintInput): Blueprint | null {
-  const imageOfPoint = pointImage(symmetry);
-  const imageOfHex = hexImage(symmetry);
+  const imageOfPoint = pointImage(symmetry, axis);
+  const imageOfHex = hexImage(symmetry, axis);
+  const { along, across: sideways } = mirrorFrame(axis);
+  /** A point at `distance` along the line of a mirror board and `offset` out from it. */
+  const fromLine = (distanceAlong: number, offset: number): Point => ({
+    x: along.x * distanceAlong + sideways.x * offset,
+    y: along.y * distanceAlong + sideways.y * offset,
+  });
   const radius = blobRadius(size);
   const chambers: Chamber[] = [];
   /** For each chamber, the one it is the twin of (itself, if it is on the line or point). */
@@ -115,7 +124,7 @@ export function buildDuelBlueprint({
   for (let attempt = 0; attempt < 50 && !started; attempt++) {
     let spot: Point;
     if (symmetry === 'mirror') {
-      spot = { x: scale * between(rng, 0.45, 0.85), y: scale * between(rng, -0.5, 0.5) };
+      spot = fromLine(scale * between(rng, -0.5, 0.5), scale * between(rng, 0.45, 0.85));
     } else {
       const angle = rng.next() * Math.PI * 2;
       const out = Math.max(
@@ -145,7 +154,7 @@ export function buildDuelBlueprint({
       let center: Point;
       if (onAxis) {
         center =
-          symmetry === 'mirror' ? { x: 0, y: scale * between(rng, -1.1, 1.1) } : { x: 0, y: 0 };
+          symmetry === 'mirror' ? fromLine(scale * between(rng, -1.1, 1.1), 0) : { x: 0, y: 0 };
       } else {
         const angle = rng.next() * Math.PI * 2;
         const out = scale * 1.2 * Math.sqrt(rng.next());
@@ -198,7 +207,8 @@ export function buildDuelBlueprint({
   const keepSide = rng.next() < 0.5 ? 1 : -1;
   const sideOf = (i: number): number => {
     const { x, y } = chambers[i]!.center;
-    return Math.sign(symmetry === 'mirror' || y === 0 ? x : y);
+    if (symmetry === 'mirror') return Math.sign(x * sideways.x + y * sideways.y);
+    return Math.sign(y === 0 ? x : y);
   };
   const half = chambers.map((_, i) => i).filter((i) => twin[i] === i || sideOf(i) === keepSide);
   // Lengths are shaken up a little, so the nearest blob is not always the one that gets joined.

@@ -4,7 +4,7 @@
 
 ## Duel boards
 
-A duel board is **exactly symmetric**, in one of two ways, picked by the seed (or by the `symmetry` option): a **mirror** (left to right), or a **half turn** (180 degrees about the middle). The code is in `packages/shared/src/duel/`.
+A duel board is **exactly symmetric**, in one of two ways, picked by the seed (or by the `symmetry` option): a **mirror**, or a **half turn** (180 degrees about the middle). A mirror board is mirrored across one of two lines, picked by the seed (half each, or by the `axis` option): a vertical line through the middle of the board, which runs through tile corners (the line goes through the "points" of the center tile), or a line turned 30 degrees from that, which runs through the middles of tile edges. Both are exact on hexes: the second is a flip followed by a 120 degree turn. The code is in `packages/shared/src/duel/`.
 
 The board is split into **orbits**: a tile and its twin (a tile on the line or point of symmetry is alone). Every tile in an orbit gets the same type, so each player sees the same surroundings, mirrored or turned. The two players start on twin cities.
 

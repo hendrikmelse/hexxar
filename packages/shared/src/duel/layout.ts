@@ -6,13 +6,15 @@ import { components, landNeighborCount, type Land } from '../royale/grid.js';
 import { createNoise, type Noise } from '../royale/noise.js';
 import { rasterize } from '../royale/rasterize.js';
 import { buildDuelBlueprint } from './blueprint.js';
-import { hexImage, type DuelSymmetry } from './symmetry.js';
+import { hexImage, type DuelAxis, type DuelSymmetry } from './symmetry.js';
 
 /** Why a board that was drawn was thrown away. */
 export type DuelRejection = 'blueprint' | 'split' | 'area' | 'symmetry' | 'starts';
 
 export interface DuelReport {
   readonly symmetry: DuelSymmetry;
+  /** The line of a mirror board (`points` for half-turn boards, which have none). */
+  readonly axis: DuelAxis;
   /** How many boards were drawn before one passed (1 means the first did). */
   readonly attempts: number;
   /** How many boards were thrown away, and why. */
@@ -73,11 +75,12 @@ interface Rendered {
 function render(
   blueprint: Blueprint,
   symmetry: DuelSymmetry,
+  axis: DuelAxis,
   noise: Noise,
   params: GenerationParams,
   offset: number,
 ): Rendered | null {
-  const imageOfHex = hexImage(symmetry);
+  const imageOfHex = hexImage(symmetry, axis);
   const raster = rasterize(blueprint, {
     noise,
     coastRoughness: params.coastRoughness,
@@ -106,11 +109,12 @@ function render(
 
 function drawBoard(
   symmetry: DuelSymmetry,
+  axis: DuelAxis,
   targetTiles: number,
   params: GenerationParams,
   seed: number,
 ): { land: Land; blueprint: Blueprint; starts: [Hex, Hex] } | DuelRejection {
-  const imageOfHex = hexImage(symmetry);
+  const imageOfHex = hexImage(symmetry, axis);
   const rng = createRng(seed);
   const noise = createNoise(rng.int(0x7fffffff));
   const layoutSeed = rng.int(0x7fffffff);
@@ -125,6 +129,7 @@ function drawBoard(
   for (let i = 0; i < SCALE_ITERATIONS; i++) {
     const blueprint = buildDuelBlueprint({
       symmetry,
+      axis,
       size,
       scale,
       rng: createRng(layoutSeed),
@@ -135,7 +140,7 @@ function drawBoard(
       scale *= 1.1;
       continue;
     }
-    const rendered = render(blueprint, symmetry, noise, params, 0);
+    const rendered = render(blueprint, symmetry, axis, noise, params, 0);
     if (!rendered) {
       failure = 'split';
       scale *= 1.1;
@@ -154,7 +159,7 @@ function drawBoard(
   let high = OFFSET_LIMIT;
   for (let step = 0; step < OFFSET_STEPS && off(best) > AREA_TOLERANCE; step++) {
     const middle = (low + high) / 2;
-    const rendered = render(blueprint, symmetry, noise, params, middle);
+    const rendered = render(blueprint, symmetry, axis, noise, params, middle);
     if (!rendered || rendered.land.size < targetTiles) low = middle;
     else high = middle;
     if (rendered && off(rendered) < off(best)) best = rendered;
@@ -181,15 +186,24 @@ function drawBoard(
 export function generateDuelLayout(input: {
   seed: number;
   symmetry: DuelSymmetry;
+  /** The line of a mirror board; by default one of the two, picked by the seed. */
+  axis?: DuelAxis;
   /** About how many tiles the board should have. */
   targetTiles: number;
   params: GenerationParams;
 }): DuelLayout {
   const { seed, symmetry, targetTiles, params } = input;
+  // Half the mirror boards are mirrored across a line through tile corners, half across one
+  // through the middles of tile edges (30 degrees round from the first).
+  const axis: DuelAxis =
+    symmetry === 'rotational'
+      ? 'points'
+      : (input.axis ?? (createRng(seed ^ 0x6a09).next() < 0.5 ? 'points' : 'edges'));
   const rejections: Partial<Record<DuelRejection, number>> = {};
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const board = drawBoard(
       symmetry,
+      axis,
       targetTiles,
       params,
       (seed + Math.imul(attempt, 0x9e3779b1)) >>> 0,
@@ -203,6 +217,7 @@ export function generateDuelLayout(input: {
       starts: board.starts,
       report: {
         symmetry,
+        axis,
         attempts: attempt,
         rejections,
         blueprint: board.blueprint,

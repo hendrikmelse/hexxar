@@ -2,7 +2,13 @@ import { parseMatchConfig, tileRules, type MatchConfig } from './config.js';
 import { hexDistance, hexKey, hexNeighbors, hexagonalBoard, type Hex } from './hex.js';
 import { createRng, type Rng } from './rng.js';
 import { DUEL_TILES, withDefaults, type GenerationParams } from './params.js';
-import { generateDuelLayout, hexImage, type DuelReport, type DuelSymmetry } from './duel/index.js';
+import {
+  generateDuelLayout,
+  hexImage,
+  type DuelAxis,
+  type DuelReport,
+  type DuelSymmetry,
+} from './duel/index.js';
 import { generateRoyaleLayout, type ArchetypeId, type RoyaleReport } from './royale/index.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
@@ -144,6 +150,8 @@ export interface DuelMatchOptions {
   readonly tiles?: number;
   /** Defaults to one of the two, picked by the seed. */
   readonly symmetry?: DuelSymmetry;
+  /** Which line a mirror board is mirrored across; by default one of the two, picked by the seed. */
+  readonly axis?: DuelAxis;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
@@ -171,8 +179,14 @@ export function createDuelMatch(options: DuelMatchOptions): {
   const config = parseMatchConfig(options.config);
   const params = withDefaults(options.params);
 
-  const duel = generateDuelLayout({ seed, symmetry, targetTiles: tiles, params });
-  const image = hexImage(symmetry);
+  const duel = generateDuelLayout({
+    seed,
+    symmetry,
+    axis: options.axis,
+    targetTiles: tiles,
+    params,
+  });
+  const image = hexImage(symmetry, duel.report.axis);
   const startOwners = new Map<string, PlayerId>();
   duel.starts.forEach((hex, i) => startOwners.set(hexKey(hex), players[i]!));
   // Every twin of a start tile is a starting city.

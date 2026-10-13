@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  hexDistance,
-  hexFlipHorizontal,
-  hexKey,
-  hexNeighbors,
-  hexRotate,
-  type Hex,
-} from './hex.js';
+import { hexDistance, hexKey, hexNeighbors, type Hex } from './hex.js';
 import { createDuelMatch, createFreeForAllMatch } from './generate.js';
-import type { DuelSymmetry } from './duel/index.js';
+import { hexImage, pointImage, type DuelAxis, type DuelSymmetry } from './duel/index.js';
 import { TILE_TYPES } from './tiles.js';
 import { DEFAULT_GENERATION_PARAMS, DUEL_TILES, MAP_SIZES } from './params.js';
 import { createRng } from './rng.js';
@@ -32,8 +25,8 @@ describe('match config', () => {
 });
 
 const pair = ['A', 'B'];
-const image = (symmetry: DuelSymmetry): ((hex: Hex) => Hex) =>
-  symmetry === 'mirror' ? hexFlipHorizontal : (hex) => hexRotate(hex, 3);
+const image = (symmetry: DuelSymmetry, axis: DuelAxis): ((hex: Hex) => Hex) =>
+  hexImage(symmetry, axis);
 
 describe('createDuelMatch', () => {
   it('is deterministic for a seed', () => {
@@ -46,9 +39,9 @@ describe('createDuelMatch', () => {
 
   it.each(['mirror', 'rotational'] as const)('is exactly %s symmetric', (symmetry) => {
     for (let seed = 1; seed <= 20; seed++) {
-      const { state } = createDuelMatch({ players: pair, seed, symmetry });
+      const { state, duel } = createDuelMatch({ players: pair, seed, symmetry });
       for (const tile of Object.values(state.tiles)) {
-        const twin = state.tiles[hexKey(image(symmetry)(tile))];
+        const twin = state.tiles[hexKey(image(symmetry, duel.axis)(tile))];
         expect(twin).toBeDefined();
         expect(twin!.type).toBe(tile.type);
         // Neutral tiles match in garrison too; the starting cities are checked below.
@@ -69,13 +62,40 @@ describe('createDuelMatch', () => {
   it('gives each player one starting city, and the two are twins', () => {
     for (const symmetry of ['mirror', 'rotational'] as const) {
       for (let seed = 1; seed <= 10; seed++) {
-        const { state, config } = createDuelMatch({ players: pair, seed, symmetry });
+        const { state, config, duel } = createDuelMatch({ players: pair, seed, symmetry });
         const [a, b] = pair.map((p) => Object.values(state.tiles).filter((t) => t.owner === p));
         expect(a).toHaveLength(1);
         expect(b).toHaveLength(1);
         expect(a![0]).toMatchObject({ type: 'city', troops: config.startingTroops });
         expect(b![0]).toMatchObject({ type: 'city', troops: config.startingTroops });
-        expect(hexKey(image(symmetry)(a![0]!))).toBe(hexKey(b![0]!));
+        expect(hexKey(image(symmetry, duel.axis)(a![0]!))).toBe(hexKey(b![0]!));
+      }
+    }
+  });
+
+  it('mirrors half the mirror boards across a line through tile corners and half through edge middles', () => {
+    const axes = new Map<string, number>();
+    for (let seed = 1; seed <= 60; seed++) {
+      const { state, duel } = createDuelMatch({ players: pair, seed, symmetry: 'mirror' });
+      axes.set(duel.axis, (axes.get(duel.axis) ?? 0) + 1);
+      // Half-turn boards have no line, and are not told otherwise.
+      expect(createDuelMatch({ players: pair, seed, symmetry: 'rotational' }).duel.axis).toBe(
+        'points',
+      );
+      void state;
+    }
+    expect(axes.get('points')).toBeGreaterThan(15);
+    expect(axes.get('edges')).toBeGreaterThan(15);
+  });
+
+  it('can be told which line to mirror across', () => {
+    for (const axis of ['points', 'edges'] as const) {
+      for (let seed = 1; seed <= 5; seed++) {
+        const { state, duel } = createDuelMatch({ players: pair, seed, symmetry: 'mirror', axis });
+        expect(duel.axis).toBe(axis);
+        for (const tile of Object.values(state.tiles)) {
+          expect(state.tiles[hexKey(hexImage('mirror', axis)(tile))]?.type).toBe(tile.type);
+        }
       }
     }
   });
@@ -129,7 +149,8 @@ describe('createDuelMatch', () => {
         });
         for (const chamber of duel.blueprint.chambers.filter((c) => !c.spawn)) {
           const { x, y } = chamber.center;
-          const middle = symmetry === 'mirror' ? x === 0 : x === 0 && y === 0;
+          const twin = pointImage(symmetry, duel.axis)(chamber.center);
+          const middle = Math.abs(twin.x - x) < 1e-9 && Math.abs(twin.y - y) < 1e-9;
           if (middle) onAxis++;
           else offAxis++;
         }
@@ -164,7 +185,7 @@ describe('terrain rules', () => {
 
   const boardFor = (symmetry: DuelSymmetry, tiles: number, seed: number) => {
     // Fully packed with villages, so the "nowhere legal is left" check means something.
-    const { state } = createDuelMatch({
+    const { state, duel } = createDuelMatch({
       players: pair,
       seed,
       tiles,
@@ -173,6 +194,7 @@ describe('terrain rules', () => {
     });
     const all = Object.values(state.tiles);
     return {
+      axis: duel.axis,
       tiles: all,
       byKey: state.tiles,
       cities: all.filter((t) => t.type === 'city'),
@@ -229,9 +251,9 @@ describe('terrain rules', () => {
   });
 
   it('places villages until nowhere legal is left', () => {
-    forEachBoard(({ tiles, byKey }, symmetry) => {
+    forEachBoard(({ tiles, byKey, axis }, symmetry) => {
       for (const tile of tiles.filter((t) => t.type === 'farmland')) {
-        const orbit: Hex[] = [tile, image(symmetry)(tile)];
+        const orbit: Hex[] = [tile, image(symmetry, axis)(tile)];
         const blocked = orbit.some(
           (hex, i) =>
             hexNeighbors(hex).some((n) => {

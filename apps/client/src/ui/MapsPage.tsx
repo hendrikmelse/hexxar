@@ -19,6 +19,7 @@ import {
   type GameState,
   type GenerationParams,
   type MapSize,
+  type DuelAxis,
   type DuelReport,
   type DuelSymmetry,
   type RoomMode,
@@ -103,6 +104,7 @@ function generate(
   params: GenerationParams,
   archetype: ArchetypeId | 'random',
   symmetry: DuelSymmetry | 'random',
+  axis: DuelAxis | 'random',
 ): Generated {
   const ids = Array.from({ length: players }, (_, i) => `p${i}`);
   try {
@@ -115,6 +117,7 @@ function generate(
       seed,
       tiles,
       symmetry: symmetry === 'random' ? undefined : symmetry,
+      axis: axis === 'random' ? undefined : axis,
       params,
     });
     return { state, report: null, duel };
@@ -297,6 +300,11 @@ export function MapsPage() {
   const [players, setPlayers] = useState(
     Math.min(FFA_MAX_PLAYERS, Math.max(FFA_MIN_PLAYERS, queryNumber('players') ?? 4)),
   );
+  const [duelAxis, setDuelAxis] = useState<DuelAxis | 'random'>(
+    query.get('axis') === 'points' || query.get('axis') === 'edges'
+      ? (query.get('axis') as DuelAxis)
+      : 'random',
+  );
   const [duelSymmetry, setDuelSymmetry] = useState<DuelSymmetry | 'random'>(
     query.get('symmetry') === 'mirror' || query.get('symmetry') === 'rotational'
       ? (query.get('symmetry') as DuelSymmetry)
@@ -343,8 +351,8 @@ export function MapsPage() {
 
   const count = mode === 'duel' ? 2 : players;
   const result = useMemo(
-    () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry),
-    [mode, tiles, count, seed, params, archetype, duelSymmetry],
+    () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis),
+    [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis],
   );
 
   /** Make many boards one slice at a time, so the page stays usable while it works. */
@@ -369,7 +377,16 @@ export function MapsPage() {
     const step = (done: number): void => {
       const started = performance.now();
       for (let i = done; i < Math.min(done + 5, STATS_RUNS); i++) {
-        const board = generate('ffa', tiles, players, first + i, params, archetype, duelSymmetry);
+        const board = generate(
+          'ffa',
+          tiles,
+          players,
+          first + i,
+          params,
+          archetype,
+          duelSymmetry,
+          duelAxis,
+        );
         total.runs++;
         if (typeof board === 'string' || !board.report) {
           total.failures++;
@@ -455,18 +472,40 @@ export function MapsPage() {
             ))}
           </div>
           {mode === 'duel' ? (
-            <div className="maps-choice">
-              {(['random', 'mirror', 'rotational'] as const).map((value) => (
-                <button
-                  key={value}
-                  className={duelSymmetry === value ? 'primary' : ''}
-                  data-sound="none"
-                  onClick={() => setDuelSymmetry(value)}
-                >
-                  {value[0]!.toUpperCase() + value.slice(1)}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="maps-choice">
+                {(['random', 'mirror', 'rotational'] as const).map((value) => (
+                  <button
+                    key={value}
+                    className={duelSymmetry === value ? 'primary' : ''}
+                    data-sound="none"
+                    onClick={() => setDuelSymmetry(value)}
+                  >
+                    {value[0]!.toUpperCase() + value.slice(1)}
+                  </button>
+                ))}
+              </div>
+              {duelSymmetry !== 'rotational' && (
+                <div className="maps-choice" title="Which line a mirror board is mirrored across">
+                  {(
+                    [
+                      ['random', 'Any line'],
+                      ['points', 'Through tile points'],
+                      ['edges', 'Through tile edges'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={duelAxis === value ? 'primary' : ''}
+                      data-sound="none"
+                      onClick={() => setDuelAxis(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <label className="maps-players">
               Players: {players}
@@ -580,7 +619,7 @@ export function MapsPage() {
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
           {duel &&
-            ` · ${duel.symmetry}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
+            ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis})` : ''}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
               ` · ${duel.blueprint.chambers.length} blobs`}
           {report &&
             ` · ${report.archetype}, ${report.attempts} ${report.attempts === 1 ? 'attempt' : 'attempts'}` +
