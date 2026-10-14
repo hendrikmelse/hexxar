@@ -24,6 +24,12 @@ export interface GenerationParams {
    * spacing between them come to.
    */
   bowlRadius: number;
+  /**
+   * Fair boards: how many sets of extra blobs (a set is one blob for each symmetry, fewer if it is
+   * on a mirror line) the board has, besides the starts. Rooms set it from the map size
+   * (`extraSetsFor`). Without it, the radius decides: `round(2 × radius / the number of symmetries)`.
+   */
+  extraSets?: number;
 
   // -- Coast (battle royale and duel boards) -------------------------------------------
 
@@ -60,76 +66,43 @@ export const MAP_SIZES = ['small', 'normal', 'large'] as const;
 export type MapSize = (typeof MAP_SIZES)[number];
 
 /**
- * About how many tiles each player gets on a duel board at each map size. Normal is what quick
- * play uses.
+ * The radius of a player's starting bowl at each map size with 6 players, which is what tells the
+ * map sizes apart on every board (battle royales and fair boards). Normal is what quick play uses.
+ * See `bowlRadiusFor` for other player counts.
  */
-export const DUEL_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 18,
-  normal: 50,
-  large: 80,
-};
-
-/** The same for a board for three players, who get a little less each than in a duel. */
-export const TRIO_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 16,
-  normal: 40,
-  large: 70,
-};
-
-/** The same for a board for four players, who get less again. */
-export const QUAD_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 15,
-  normal: 35,
-  large: 60,
-};
-
-/** The same for a board for six players, who get less again. */
-export const SEXTET_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 15,
-  normal: 30,
-  large: 50,
-};
-
-/** About how many tiles a duel board has at each map size (two players' shares). */
-export const DUEL_TILES: Readonly<Record<MapSize, number>> = {
-  small: 2 * DUEL_TILES_PER_PLAYER.small,
-  normal: 2 * DUEL_TILES_PER_PLAYER.normal,
-  large: 2 * DUEL_TILES_PER_PLAYER.large,
-};
-
-/** About how many tiles a board for three players has at each map size (three players' shares). */
-export const TRIO_TILES: Readonly<Record<MapSize, number>> = {
-  small: 3 * TRIO_TILES_PER_PLAYER.small,
-  normal: 3 * TRIO_TILES_PER_PLAYER.normal,
-  large: 3 * TRIO_TILES_PER_PLAYER.large,
-};
-
-/** About how many tiles a board for four players has at each map size (four players' shares). */
-export const QUAD_TILES: Readonly<Record<MapSize, number>> = {
-  small: 4 * QUAD_TILES_PER_PLAYER.small,
-  normal: 4 * QUAD_TILES_PER_PLAYER.normal,
-  large: 4 * QUAD_TILES_PER_PLAYER.large,
-};
-
-/** About how many tiles a board for six players has at each map size (six players' shares). */
-export const SEXTET_TILES: Readonly<Record<MapSize, number>> = {
-  small: 6 * SEXTET_TILES_PER_PLAYER.small,
-  normal: 6 * SEXTET_TILES_PER_PLAYER.normal,
-  large: 6 * SEXTET_TILES_PER_PLAYER.large,
-};
-
-/**
- * The radius of a player's starting bowl in a battle royale at each map size with 6 players, which
- * is what tells the map sizes apart. Normal is what quick play uses. See `royaleBowlRadius` for
- * other player counts.
- */
-export const ROYALE_BOWL_RADIUS: Readonly<Record<MapSize, number>> = {
+export const BOWL_RADIUS: Readonly<Record<MapSize, number>> = {
   small: 0.8,
   normal: 1.5,
   large: 2.8,
 };
 
-/** The bowl radius in a battle royale: smaller for each player when there are many of them. */
-export function royaleBowlRadius(size: MapSize, players: number): number {
-  return ROYALE_BOWL_RADIUS[size] * (6 / Math.max(players, 2)) ** 0.27;
+/** The bowl radius of a board: smaller for each player when there are many of them. */
+export function bowlRadiusFor(size: MapSize, players: number): number {
+  return BOWL_RADIUS[size] * (6 / Math.max(players, 2)) ** 0.27;
 }
+
+/**
+ * The radius of every start bowl on a fair board (duel, trio, quad, sextet) at each map size. The
+ * same whatever the number of players: what makes a bigger board for more players is that there
+ * are more bowls (and more blobs in each set of extras).
+ */
+export const FAIR_BOWL_RADIUS: Readonly<Record<MapSize, number>> = {
+  small: 1.05,
+  normal: 1.3,
+  large: 1.5,
+};
+
+/**
+ * How many sets of extra blobs a fair board for this many players has at a map size, besides the
+ * starts: small, normal and large. A set is as many blobs as there are players (one for each
+ * symmetry), so the more players, the fewer sets keep a board about the same size per player.
+ */
+const EXTRA_SETS: Readonly<Record<number, readonly [number, number, number]>> = {
+  2: [0, 1, 2],
+  3: [0, 1, 1],
+  4: [0, 0, 1],
+  6: [0, 0, 1],
+};
+
+export const extraSetsFor = (size: MapSize, players: number): number =>
+  (EXTRA_SETS[players] ?? [0, 1, 2])[MAP_SIZES.indexOf(size)]!;

@@ -1,7 +1,8 @@
 import {
-  DUEL_TILES,
-  royaleBowlRadius,
+  bowlRadiusFor,
   createFreeForAllMatch,
+  extraSetsFor,
+  FAIR_BOWL_RADIUS,
   createRng,
   createDuelMatch,
   diffTiles,
@@ -684,10 +685,15 @@ export class Room {
           seed,
           config,
           params: {
-            bowlRadius: royaleBowlRadius(mapSize, players.length),
+            bowlRadius: bowlRadiusFor(mapSize, players.length),
           },
         })
-      : createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize], config });
+      : createDuelMatch({
+          players,
+          seed,
+          config,
+          params: { bowlRadius: FAIR_BOWL_RADIUS[mapSize], extraSets: extraSetsFor(mapSize, 2) },
+        });
   }
 
   private scheduleTick(): void {

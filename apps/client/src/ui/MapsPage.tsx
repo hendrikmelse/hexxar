@@ -3,10 +3,8 @@ import type { Graphics } from 'pixi.js';
 import {
   ARCHETYPE_IDS,
   DEFAULT_GENERATION_PARAMS,
-  DUEL_TILES,
-  QUAD_TILES,
-  SEXTET_TILES,
-  TRIO_TILES,
+  extraSetsFor,
+  FAIR_BOWL_RADIUS,
   createQuadMatch,
   createSextetMatch,
   createTrioMatch,
@@ -18,7 +16,7 @@ import {
   createRng,
   createDuelMatch,
   parseMatchConfig,
-  royaleBowlRadius,
+  bowlRadiusFor,
   type ArchetypeId,
   type GameState,
   type GenerationParams,
@@ -52,6 +50,18 @@ function toGameView(state: GameState, viewer: string | null): GameView {
     players: [...state.players],
   };
 }
+
+/** How many players a board of this mode is for (a battle royale has as many as were chosen). */
+const playersOf = (mode: PreviewMode, royalePlayers: number): number =>
+  mode === 'duel'
+    ? 2
+    : mode === 'trio'
+      ? 3
+      : mode === 'quad'
+        ? 4
+        : mode === 'six'
+          ? 6
+          : royalePlayers;
 
 /** The blueprint is drawn in tile units; one unit is the distance between neighboring hex centers. */
 const UNIT = HEX_SIZE * Math.sqrt(3);
@@ -102,7 +112,6 @@ type Generated =
 /** Make a board the way a room would for these settings. */
 function generate(
   mode: PreviewMode,
-  tiles: number,
   players: number,
   seed: number,
   params: GenerationParams,
@@ -118,18 +127,17 @@ function generate(
       return { state, report, duel: null, trio: null, quad: null, sextet: null };
     }
     if (mode === 'trio') {
-      const { state, trio } = createTrioMatch({ players: ids, seed, tiles, params });
+      const { state, trio } = createTrioMatch({ players: ids, seed, params });
       return { state, report: null, duel: null, trio, quad: null, sextet: null };
     }
     if (mode === 'quad') {
-      const { state, quad } = createQuadMatch({ players: ids, seed, tiles, params, turns });
+      const { state, quad } = createQuadMatch({ players: ids, seed, params, turns });
       return { state, report: null, duel: null, trio: null, quad, sextet: null };
     }
     if (mode === 'six') {
       const { state, sextet } = createSextetMatch({
         players: ids,
         seed,
-        tiles,
         symmetry: symmetry === 'random' ? undefined : symmetry,
         axis: axis === 'random' ? undefined : axis,
         params,
@@ -139,7 +147,6 @@ function generate(
     const { state, duel } = createDuelMatch({
       players: ids,
       seed,
-      tiles,
       symmetry: symmetry === 'random' ? undefined : symmetry,
       axis: axis === 'random' ? undefined : axis,
       turns,
@@ -152,15 +159,21 @@ function generate(
 }
 
 type NumberKey = {
-  [K in keyof GenerationParams]: GenerationParams[K] extends number ? K : never;
+  [K in keyof GenerationParams]-?: Exclude<GenerationParams[K], undefined> extends number
+    ? K
+    : never;
 }[keyof GenerationParams];
 
 /** The generation parameters, in the groups `params.ts` keeps them in, with what each one does. */
 const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] }[] = [
   {
-    title: 'Battle royale terrain',
+    title: 'Board size',
     fields: [
       { key: 'bowlRadius', hint: 'Radius of every start bowl, which decides the board size' },
+      {
+        key: 'extraSets',
+        hint: 'Fair boards: sets of extra blobs besides the starts (battle royales have none)',
+      },
     ],
   },
   {
@@ -279,51 +292,47 @@ export function MapsPage() {
 
   // What a room would use for this map size and number of players; anything changed by hand is
   // shown against it.
-  const sizeDefaults = (size: MapSize, royalePlayers: number): GenerationParams => ({
-    ...DEFAULT_GENERATION_PARAMS,
-    bowlRadius: royaleBowlRadius(size, royalePlayers),
-  });
-  const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
-  /** About how many tiles a fair board has at a map size, for as many players as the mode has. */
-  const tilesFor = (forMode: PreviewMode, size: MapSize): number =>
-    forMode === 'trio'
-      ? TRIO_TILES[size]
-      : forMode === 'quad'
-        ? QUAD_TILES[size]
-        : forMode === 'six'
-          ? SEXTET_TILES[size]
-          : DUEL_TILES[size];
-  const [tiles, setTiles] = useState<number>(queryNumber('tiles') ?? tilesFor(mode, mapSize));
-
-  const defaultTiles = tilesFor(mode, mapSize);
+  const sizeDefaults = (
+    size: MapSize,
+    forMode: PreviewMode,
+    royalePlayers: number,
+  ): GenerationParams =>
+    forMode === 'ffa'
+      ? { ...DEFAULT_GENERATION_PARAMS, bowlRadius: bowlRadiusFor(size, royalePlayers) }
+      : {
+          ...DEFAULT_GENERATION_PARAMS,
+          bowlRadius: FAIR_BOWL_RADIUS[size],
+          extraSets: extraSetsFor(size, playersOf(forMode, royalePlayers)),
+        };
+  const [params, setParams] = useState<GenerationParams>(() =>
+    sizeDefaults(mapSize, mode, players),
+  );
   const chooseMode = (next: PreviewMode): void => {
     setMode(next);
-    setTiles(tilesFor(next, mapSize));
+    setParams(sizeDefaults(mapSize, next, players));
   };
   const chooseSize = (size: MapSize): void => {
     setMapSize(size);
-    setParams(sizeDefaults(size, players));
-    setTiles(tilesFor(mode, size));
+    setParams(sizeDefaults(size, mode, players));
   };
   const chooseRoyalePlayers = (count: number): void => {
     setPlayers(count);
     setParams((current) => ({
       ...current,
-      bowlRadius: royaleBowlRadius(mapSize, count),
+      bowlRadius: bowlRadiusFor(mapSize, count),
     }));
   };
-  const baseline = sizeDefaults(mapSize, players);
+  const baseline = sizeDefaults(mapSize, mode, players);
   const changes: Record<string, number | boolean> = {};
   for (const key of Object.keys(params) as (keyof GenerationParams)[]) {
-    if (params[key] !== baseline[key]) changes[key] = params[key];
+    const value = params[key];
+    if (value !== undefined && value !== baseline[key]) changes[key] = value;
   }
-  if (mode !== 'ffa' && tiles !== defaultTiles) changes.tiles = tiles;
 
-  const count =
-    mode === 'duel' ? 2 : mode === 'trio' ? 3 : mode === 'quad' ? 4 : mode === 'six' ? 6 : players;
+  const count = playersOf(mode, players);
   const result = useMemo(
-    () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
-    [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
+    () => generate(mode, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
+    [mode, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
   );
 
   const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
@@ -460,44 +469,23 @@ export function MapsPage() {
           <summary>
             Generation parameters{Object.keys(changes).length > 0 ? ' (changed)' : ''}
           </summary>
-          {mode !== 'ffa' && (
-            <div className="maps-group">
-              <h4>
-                {mode === 'trio'
-                  ? 'Three-player board'
-                  : mode === 'quad'
-                    ? 'Four-player board'
-                    : mode === 'six'
-                      ? 'Six-player board'
-                      : 'Duel board'}
-              </h4>
-              <div className="maps-fields">
-                <NumberField
-                  label="tiles"
-                  hint="About how many tiles the board has"
-                  value={tiles}
-                  step={1}
-                  changed={tiles !== defaultTiles}
-                  onChange={setTiles}
-                />
-              </div>
-            </div>
-          )}
           {PARAM_GROUPS.map((group) => (
             <div key={group.title} className="maps-group">
               <h4>{group.title}</h4>
               <div className="maps-fields">
-                {group.fields.map(({ key, hint }) => (
-                  <NumberField
-                    key={key}
-                    label={key}
-                    hint={hint}
-                    value={params[key]}
-                    step={Number.isInteger(DEFAULT_GENERATION_PARAMS[key]) ? 1 : 0.05}
-                    changed={params[key] !== baseline[key]}
-                    onChange={(value) => setParams({ ...params, [key]: value })}
-                  />
-                ))}
+                {group.fields
+                  .filter(({ key }) => !(key === 'extraSets' && mode === 'ffa'))
+                  .map(({ key, hint }) => (
+                    <NumberField
+                      key={key}
+                      label={key}
+                      hint={hint}
+                      value={params[key] ?? 0}
+                      step={Number.isInteger(DEFAULT_GENERATION_PARAMS[key]) ? 1 : 0.05}
+                      changed={params[key] !== baseline[key]}
+                      onChange={(value) => setParams({ ...params, [key]: value })}
+                    />
+                  ))}
                 {FLAGS.filter((flag) => flag.group === group.title).map(({ key, label }) => (
                   <label key={key} className="maps-flag">
                     <input
@@ -516,7 +504,6 @@ export function MapsPage() {
               data-sound="none"
               onClick={() => {
                 setParams(baseline);
-                setTiles(defaultTiles);
               }}
             >
               Reset to this size&apos;s defaults
@@ -529,13 +516,12 @@ export function MapsPage() {
         <p className="muted">
           {typeof result === 'string' ? result : `${tileCount} tiles`} · seed {seed}
           {sextet &&
-            ` · ${sextet.symmetry === 'rotational' ? 'turns of 60°' : `turns of 120° and mirrors (through tile ${sextet.axis})`}, ${sextet.attempts} ${sextet.attempts === 1 ? 'attempt' : 'attempts'} · ${sextet.blueprint.chambers.length} blobs`}
+            ` · ${sextet.symmetry === 'rotational' ? 'turns of 60°' : `turns of 120° and mirrors (through tile ${sextet.axis})`} · ${sextet.blueprint.chambers.length} blobs`}
           {quad &&
-            ` · two mirror lines, turned ${quad.turns * 60}°, ${quad.attempts} ${quad.attempts === 1 ? 'attempt' : 'attempts'} · ${quad.blueprint.chambers.length} blobs`}
-          {trio &&
-            ` · turns of 120°, ${trio.attempts} ${trio.attempts === 1 ? 'attempt' : 'attempts'} · ${trio.blueprint.chambers.length} blobs`}
+            ` · two mirror lines, turned ${quad.turns * 60}° · ${quad.blueprint.chambers.length} blobs`}
+          {trio && ` · turns of 120° · ${trio.blueprint.chambers.length} blobs`}
           {duel &&
-            ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis}, turned ${duel.turns * 60}°)` : ''}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
+            ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis}, turned ${duel.turns * 60}°)` : ''}` +
               ` · ${duel.blueprint.chambers.length} blobs`}
           {report && ` · ${report.archetype} · bowl radius ${params.bowlRadius.toFixed(2)}`}
         </p>

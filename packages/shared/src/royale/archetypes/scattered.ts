@@ -11,9 +11,9 @@ import { topologyIssues } from '../topology.js';
 import {
   assignWidths,
   blocked,
+  bridgeLengths,
   distance,
   MIN_GAP,
-  shuffleInPlace,
   SPAWN_GAP,
   SPAWN_START_RADIUS,
 } from './common.js';
@@ -93,23 +93,6 @@ function spanningTree(points: readonly Point[]): [number, number][] {
     linked.add(best[1]);
   }
   return tree;
-}
-
-/**
- * How long each tree corridor's bridge is meant to be, in tiles of open ground between the two
- * bowls. The lengths follow the sum of two random numbers, `4 + (U₁ + U₂ − 1) × 2` (so most are
- * between 3 and 5, about 3 in 4, and a few are shorter or longer, from 2 to 6), but are not drawn
- * independently: they are the evenly spaced quantiles of that distribution, shuffled among the
- * corridors, so the average length of a board's bridges is always the same.
- */
-function bridgeLengths(count: number, rng: Rng): number[] {
-  const lengths = Array.from({ length: count }, (_, i) => {
-    const u = (i + 0.5) / count;
-    // The inverse of the distribution of U₁ + U₂ (a triangle between 0 and 2).
-    const sum = u < 0.5 ? Math.sqrt(2 * u) : 2 - Math.sqrt(2 * (1 - u));
-    return 4 + (sum - 1) * 2;
-  });
-  return shuffleInPlace(lengths, rng);
 }
 
 /**

@@ -25,15 +25,15 @@ All the generators live in `packages/shared/src/`. `generate.ts` has the entry p
 | `createQuadMatch`       | symmetric under two mirrors at right angles            | exactly 4                  | no (previewer only) |
 | `createSextetMatch`     | symmetric: turns of 60°, or turns of 120° plus mirrors | exactly 6                  | no (previewer only) |
 
-Every board is made the same way, in three stages:
+Every board is made the same way, in three stages (the same recipe for all five kinds: see below):
 
 1. **Blueprint:** a layout of round **chambers** ("blobs") joined by **corridors**, in "tile units" (never touching hexes). Battle royale blueprints come from `royale/archetypes/`; fair board blueprints from `duel/`.
-2. **Drawing:** the blueprint is drawn onto hexes with noise (`royale/rasterize.ts`) and tidied. Fair boards are also checked against a target size and drawn again until they pass; battle royale boards have no target size and no checks, and are drawn once.
+2. **Drawing:** the blueprint is drawn onto hexes with noise (`royale/rasterize.ts`) and tidied. There is no target size, no check and no retry for any kind of board: a board is drawn once, and its area is whatever the settings come to.
 3. **Terrain:** every land tile becomes a city, a village or farmland (`placeTerrain` in `generate.ts`), shared by all five kinds of board.
 
-**Determinism.** Given the same options and seed, a generator always makes the same board. All randomness comes from `createRng(seed)` (`rng.ts`, mulberry32), and from `createNoise(seed)` (`royale/noise.ts`) for the coast. Fair boards are drawn again when a candidate fails; attempt `k` uses the seed `seed + k × 0x9e3779b1` (as an unsigned 32-bit number). Battle royale boards are drawn once, from the seed itself.
+**Determinism.** Given the same options and seed, a generator always makes the same board. All randomness comes from `createRng(seed)` (`rng.ts`, mulberry32), and from `createNoise(seed)` (`royale/noise.ts`) for the coast. Every board is drawn once, from the seed itself.
 
-**Rooms** (`apps/server/src/room.ts`): a duel room calls `createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize] })`; a battle royale room calls `createFreeForAllMatch` with `bowlRadius = royaleBowlRadius(mapSize, players)` and nothing else overridden. The seed is random per match. If generation throws, the room tries up to 100 more seeds (`seed + attempt`), for at most 2 seconds; if none works the room is closed with "the game could not be set up, please try again". Players are shuffled before being given ids `P1 … Pn` (so who starts where is random), and board generation then gives the player with id `Pk` the k-th start.
+**Rooms** (`apps/server/src/room.ts`): a duel room calls `createDuelMatch` with `bowlRadius = FAIR_BOWL_RADIUS[mapSize]` and `extraSets = extraSetsFor(mapSize, 2)`; a battle royale room calls `createFreeForAllMatch` with `bowlRadius = bowlRadiusFor(mapSize, players)` and nothing else overridden. The seed is random per match. If generation throws, the room tries up to 100 more seeds (`seed + attempt`), for at most 2 seconds; if none works the room is closed with "the game could not be set up, please try again". Players are shuffled before being given ids `P1 … Pn` (so who starts where is random), and board generation then gives the player with id `Pk` the k-th start.
 
 ## Shared machinery
 
@@ -48,18 +48,16 @@ Hexes are pointy-top, in axial coordinates `(q, r)`. Blueprints are drawn in **t
 
 ### Drawing a blueprint onto hexes (`royale/rasterize.ts`)
 
-`rasterize(blueprint, { noise, coastRoughness, coastDetail, warpStrength, offset })` tests the center of every hex in the blueprint's bounding box (each chamber's circle, plus a margin of `warpStrength + coastRoughness + 2`):
+`rasterize(blueprint, { noise, coastRoughness, coastDetail, warpStrength })` tests the center of every hex in the blueprint's bounding box (each chamber's circle, plus a margin of `warpStrength + coastRoughness + 2`):
 
 1. **Corridor core:** if the point is within **0.58** of any corridor centerline, it is land, whatever the noise says. A corridor therefore never has a gap in it.
-2. Otherwise a field is computed and the hex is land if `field + offset > 0`:
+2. Otherwise a field is computed and the hex is land if `field > 0`:
    - `bump = fbm(noise, x / coastDetail, y / coastDetail)`.
    - The point is **warped** for chambers only: `(wx, wy) = (x + warpStrength·n₁, y + warpStrength·n₂)`, where `n₁`, `n₂` are two other noise samples at lattice scale `1.7 × coastDetail` (with different offsets). This bends round rooms out of round.
    - Each chamber gives a term `radius − |(wx, wy) − center| + coastRoughness · bump`.
    - Each corridor gives a term `width/2 − distance(point, centerline) + coastRoughness · 0.4 · bump` (corridors follow the blueprint closer than rooms do).
    - The terms are combined with a **smooth max** with blend 1.5: `smoothMax(a, b) = max(a, b) + h² · 1.5 / 4` where `h = max(1.5 − |a − b|, 0) / 1.5`. Where two shapes meet they merge smoothly instead of leaving a crease.
 3. **Protected hexes:** the city hex of every start chamber and its six neighbors are land whatever the field says, and are returned as `protectedKeys` so nothing removes them.
-
-`offset` (default 0) grows (positive) or shrinks (negative) the land by that many tiles everywhere. Fair boards use it to tune the area; battle royale boards do not.
 
 **Noise** (`royale/noise.ts`): smooth 2D value noise in roughly [−1, 1] (a hash of integer lattice points, blended with smoothstep), seeded. `fbm` is two octaves: `(noise(x, y) + 0.5·noise(2x + 17.3, 2y − 9.1)) / 1.5`.
 
@@ -72,20 +70,11 @@ Two rules, applied for 3 passes (`royale/rasterize.ts: cleanup`, `duel/layout.ts
 
 In each pass both rules look at the board as it was before the step, never hex by hex, so the result does not depend on the order hexes are visited in. That is what keeps a symmetric board exactly symmetric.
 
-Then only one connected piece is kept: for battle royale boards the biggest (always the whole board, see below); for fair boards the one holding the starts (all starts must be in it). An **edge** tile is a land tile with a neighbor that is not on the board; cities never stand on edge tiles.
+Then only one connected piece is kept: for battle royale and fair boards alike the biggest (always the whole board, see below). An **edge** tile is a land tile with a neighbor that is not on the board; cities never stand on edge tiles.
 
 ### Map sizes (`params.ts`)
 
-`MAP_SIZES` are `small`, `normal` and `large`. Fair boards are asked for a number of tiles; each kind of board has a table:
-
-| Board      | Tiles per player (small / normal / large) | Whole board (small / normal / large) |
-| ---------- | ----------------------------------------- | ------------------------------------ |
-| Duel (2)   | 18 / 50 / 80                              | 36 / 100 / 160                       |
-| Trio (3)   | 16 / 40 / 70                              | 48 / 120 / 210                       |
-| Quad (4)   | 15 / 35 / 60                              | 60 / 140 / 240                       |
-| Sextet (6) | 15 / 30 / 50                              | 90 / 180 / 300                       |
-
-Battle royale boards are not asked for any number of tiles: the map size sets the size of the players' starting bowls instead (see below), and the area is whatever comes out.
+`MAP_SIZES` are `small`, `normal` and `large`. No board is asked for a number of tiles: the map size sets the size of the players' starting bowls instead, and the area is whatever comes out. Battle royale boards use `bowlRadiusFor(size, players)` (below); fair boards use `FAIR_BOWL_RADIUS[size]` and `extraSetsFor(size, players)` (see Fair boards).
 
 ## Battle royale boards
 
@@ -95,7 +84,7 @@ A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRo
 
 | Setting                                                            | Value                                                                                          | Where                                          |
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Start bowl radius                                                  | `bowlRadius`: 1.6 by default; rooms use `royaleBowlRadius(size, players)` (below)              | `params.ts`                                    |
+| Start bowl radius                                                  | `bowlRadius`: 1.6 by default; rooms use `bowlRadiusFor(size, players)` (below)                 | `params.ts`                                    |
 | Start bowls are first placed inside a disc of radius               | 4 tiles                                                                                        | `SPAWN_START_RADIUS` in `archetypes/common.ts` |
 | First relaxing: start bowl centers pushed apart to                 | `4 × radius + 1.4` tiles                                                                       | `SPAWN_GAP`, `spreadSpawns` in `scattered.ts`  |
 | Tree corridor bridge (open ground between two bowls)               | `4 + (U + U − 1) × 2`: 2 to 6, about 3 in 4 between 3 and 5; evenly spaced quantiles, shuffled | `bridgeLengths` in `scattered.ts`              |
@@ -111,7 +100,7 @@ There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the 
 
 ### The bowl radius, which sets the size
 
-`royaleBowlRadius(size, players) = ROYALE_BOWL_RADIUS[size] × (6 / max(players, 2)) ^ 0.27`, with `ROYALE_BOWL_RADIUS` = small 0.8, normal 1.5, large 2.8 (the radius at 6 players). It has the same form as the tiles-per-player formula it replaced (a base per map size, times a power of `6 / players`). The numbers were fitted so that boards come out about as big as the old targets did, which were 15, 25 and 45 tiles per player at 6 players, falling with the player count as `(6 / players) ^ 0.25`. How the fit went:
+`bowlRadiusFor(size, players) = BOWL_RADIUS[size] × (6 / max(players, 2)) ^ 0.27`, with `BOWL_RADIUS` = small 0.8, normal 1.5, large 2.8 (the radius at 6 players). It has the same form as the tiles-per-player formula it replaced (a base per map size, times a power of `6 / players`). The numbers were fitted so that boards come out about as big as the old targets did, which were 15, 25 and 45 tiles per player at 6 players, falling with the player count as `(6 / players) ^ 0.25`. How the fit went:
 
 - **Normal and large** came out within about 10% of the old numbers at every player count. The best exponent for normal alone is about 0.4 and for large about 0.23 (the corridors cover the same land whatever the bowl radius, so the radius matters less on big boards); 0.27 is a compromise.
 - **Small cannot reach the old numbers.** The corridors alone (bridges of 2 to 6 tiles) cover about 15 tiles per player, whatever the bowls, so small boards come out 10% to 25% above the old targets even with small bowls. The small base of 0.8 is about the smallest that still makes sense: the city and the ring of six land hexes around it are always land, so a bowl is never really smaller than about 1.
@@ -178,7 +167,7 @@ The tree corridors average 4 by construction; the rest of the average is the loo
 
 ## Fair boards
 
-Fair boards are **exactly symmetric**, so every player sees the same board from their side. They are drawn from blueprints made of blobs and corridors, like battle royale boards, but laid out by `duel/` and with different rules: blob size and count come from the tile target, only the spacing is stretched to fit, and the land is finally grown or shrunk a fraction of a tile to hit the target within 3%.
+Fair boards are **exactly symmetric**, so every player sees the same board from their side. They are made with the same recipe as battle royale boards (see above), in a symmetric form: **no target size, no checks and no retries**. A board is drawn once, from the seed, and its area is whatever the settings come to. One generic builder (`buildGroupBlueprint` in `duel/group.ts`) makes all of them: a **group** describes the symmetries, and everything else is the same whatever the group is. `duel/layout.ts` draws the blueprint onto hexes.
 
 ### Symmetry groups (`duel/symmetry.ts`, `duel/group.ts`)
 
@@ -191,86 +180,79 @@ Fair boards are **exactly symmetric**, so every player sees the same board from 
 | Sextet, `rotational` | the five turns by 60°                                                                                                                               | 6      |
 | Sextet, `mirror`     | turns by 120° and 240°, and three mirrors (three lines 60° apart)                                                                                   | 6      |
 
+A `FairGroup` has: its **elements** (each a map on points, with whether it is a mirror; the one that does nothing first), the same maps on **hexes** (`hexMaps`), and the **lines** (the direction of each mirror line, through the middle; none for turns alone). `duelGroup(symmetry, axis)`, `TRIO_GROUP`, `QUAD_GROUP`, `SIXFOLD_GROUP` and `mirroredThirdsGroup(axis)` (`sextetGroup(symmetry, axis)` picks one of the last two) are the groups.
+
 A hex has two kinds of mirror line through its center: through tile corners and along tile edges (**`points`**: up and down, the "points" of the center tile), and through the middles of tile edges (**`edges`**, 30° round from the first). Any two perpendicular lines are one of each kind. The three lines of a sextet mirror board are all the same kind. Mirrors and turns map hex centers to hex centers exactly (`hexFlipHorizontal`, `hexFlipVertical`, `hexRotate`). The `edges` mirror is a flip followed by a 120° turn.
 
 **Turning afterwards.** So the lines can lie any of the ways a hex mirror line can, a finished board is turned by a random number of 60° steps: duel mirror boards by 0 to 5 (`turns`, picked by the seed); quad boards by 0 to 2 (a turn by 180° changes nothing). The blueprint is turned with it. Half-turn duels, trios and sextets are not turned, because their symmetry looks the same whichever way they are turned.
 
-**Picking the kind.** If not given: a duel is `mirror` or `rotational` by `createRng(seed ^ 0x2b1d)` (below 0.5 is mirror); a sextet is `rotational` or `mirror` by the same rng (below 0.5 is rotational); the mirror line kind is `points` or `edges` by `createRng(seed ^ 0x6a09)` (below 0.5 is points); duel turns from `createRng(seed ^ 0x5bd1).int(6)`, quad turns from `createRng(seed ^ 0x51ad).int(3)`.
+**Picking the kind.** If not given: a duel is `mirror` or `rotational` by `createRng(seed ^ 0x2b1d)` (below 0.5 is mirror); a sextet is `rotational` or `mirror` by the same rng (below 0.5 is rotational); the mirror line kind is `points` or `edges` by `createRng(seed ^ 0x6a09)` (below 0.5 is points); duel turns come from `createRng(seed ^ 0x5bd1).int(6)`, quad turns from `createRng(seed ^ 0x51ad).int(3)`.
 
-### The target and the sizes of things
+### The size
 
-Common constants are in `duel/common.ts`.
+- **Bowl radius:** the same for every kind of fair board, set by the map size: `FAIR_BOWL_RADIUS` = small 1.05, normal 1.3, large 1.5 (`params.bowlRadius`). Every start blob has this radius; extra blobs have it times a random 0.8 to 1.25, and a blob at the middle times 0.8 to 1.1.
+- **Extra sets:** `extraSetsFor(size, players)` (`params.extraSets`). A **set** is as many extra blobs as there are symmetries, so on a duel it is a pair of blobs and on a sextet six. The number of sets is a small table by number of players and map size (small / normal / large): duels 0 / 1 / 2; trios 0 / 1 / 1; quads 0 / 0 / 1; sextets 0 / 0 / 1. More players mean fewer sets, so boards stay about the size they were. Without the setting, the builder uses `round(2 × radius / symmetries)`.
+- **The size is the result.** Bigger bowls, more sets and the corridors between them decide how much land there is. Measured over 100 seeds each (mean tiles for the whole board, the old targets in brackets, the standard deviation as a share of the mean):
 
-- **Size:** `size = sqrt(tiles × (√3/2) / π)`: the radius of a disc with the target's area. For example a duel on a normal board (100 tiles) has `size` 5.25.
-- **Blob radius:** `min(2.4, 1.2 + 0.1 × size)`: 1.73 for that duel and 1.52 for a 36-tile small duel, at most 2.4 on the biggest boards. Bigger boards have somewhat bigger blobs. An extra blob's radius is the blob radius × a random 0.8 to 1.25; a blob at the middle is × 0.8 to 1.1.
-- **Blob count:** how many sets of extra blobs depends on `size`: duel `max(1, round(size / 2.2))`; trio `max(1, round(size / 4.4))`; quad `max(1, round(size / 5))`; sextet `max(1, round(size / 9))`. A _set_ is the blob together with its images (so a duel "set" is a pair).
-- **Gap:** blobs are never closer than 2.2 tiles of open ground (`GAP`).
-- **Corridor widths:** 1, 2 or 3 hexes, weights 5, 3, 1 (56%, 33%, 11%).
-- **Corridor bend:** uniform in ±0.15 × the length; a corridor that is its own image under some symmetry has to run dead straight (bend 0).
-- **Crossovers** (corridors from one part of the board to another, beyond the ones that have to): 0, 1, 2 or 3 extra, weights 4, 3, 2, 1 (40%, 30%, 20%, 10%).
-- **Spine chance:** a corridor between two blobs on the same mirror line runs straight along the line, so it is allowed on only 30% of boards (`SPINE_CHANCE`).
-- **Middle blob chance:** 40% (`ON_AXIS_CHANCE`). It sits at the center, has no images, and is decided first, because the starts are then pushed out far enough to leave it room (`middle radius + blob radius + 2.2 + 0.3`).
+| Board           | small            | normal            | large             |
+| --------------- | ---------------- | ----------------- | ----------------- |
+| Duel, mirror    | 38 (36), sd 29%  | 105 (100), sd 22% | 177 (160), sd 15% |
+| Duel, half turn | 38 (36), sd 33%  | 108 (100), sd 19% | 174 (160), sd 13% |
+| Trio            | 67 (48), sd 15%  | 168 (120), sd 17% | 186 (210), sd 17% |
+| Quad            | 102 (60), sd 13% | 111 (140), sd 11% | 251 (240), sd 16% |
+| Sextet, turns   | 142 (90), sd 12% | 161 (180), sd 12% | 409 (300), sd 14% |
+| Sextet, mirrors | 132 (90), sd 14% | 159 (180), sd 13% | 395 (300), sd 14% |
+
+Duels (the only fair board in rooms) are close to the old sizes. The others come out bigger on small boards and some large ones: with 4-tile bridges, even a board of just the starts has the corridors of its starts to cover. **The spread is larger than for battle royale boards**, mostly because of the blob at the middle: a board with one is about a third bigger than one without (a duel on a normal board averages 90 tiles with 4 blobs and 123 with 5; each group has a spread of 10% to 19% on its own). The number of blobs is otherwise fixed (see below).
 
 ### Making the blueprint
 
-Common to all, in order:
+`buildGroupBlueprint(group, { radius, extraSets, rng })`. Only one blob of each set is placed, and the group makes its images from it, so everything moves in step and the board stays exactly symmetric all the way through. A blob that stands for its images is a **rep**; it is free to move anywhere, kept on a mirror line (a "line" rep), or fixed at the middle.
 
-1. **Middle blob** decision (above), where the symmetry has a middle.
-2. **The first start**, then its images. A random place in the part of the board the layout builder is told to use (below), snapped to a hex. It must be at least `minCityDistance` (3) hexes from each of its own images, and have room: its blob and each image of it are at least `2 × radius + 2.2` apart. Up to 50 tries (groups: each try looks a little further out, `scale × (1 + 0.03 × try)`). The images are the other starts, in the order of the symmetries.
-3. **Extra sets.** Up to 200 random places per set. A blob needs open ground of `radius + other.radius + 2.2` to every existing blob (and the existing blobs map onto themselves, so that is room for its images too), and a blob with images needs `2 × radius + 2.2` between it and each image (blobs on a mirror line or at the middle coincide with their image, which is allowed). Blobs may be on a mirror line (40% of sets, where the symmetry has lines) or off it.
-4. If a board that is not small (`size ≥ 5`) has only the starts, the layout is rejected so that it is stretched (small boards may be only starts).
-5. **Corridors** are made for one **domain**: the part of the board that holds exactly one blob from each set (a half of a duel, a third of a trio, a quarter of a quad, a sixth of a sextet; blobs on a line or at the middle are included in every domain they touch), then copied by every symmetry:
-   - Candidate pairs in the domain are sorted by `distance × U(0.8, 1.3)` ("shaken", so the nearest blob is not always the one joined). A pair of blobs both on the same mirror line is excluded unless the 30% spine chance came up. A **start-to-start pair is excluded** (below).
-   - A spanning tree over the domain (Kruskal on the sorted pairs), first without pairs whose line runs through another blob, then, if that did not join everything, allowing them. If still not joined, the layout fails.
-   - Then loops: the next `round(0.35 × blobs in the domain)` shortest remaining pairs whose line does not run through another blob.
-   - Every corridor is added together with its images: same width, bend flipped by a mirror (a mirror turns a bend the other way; a turn leaves it as it is). If a corridor is its own image, it is straight.
-6. **Crossovers.** Pairs from a blob in the domain to an image of a blob in the domain (so, in another part of the board), also shaken and sorted. The first pass skips pairs that run through other blobs. While the parts of the board are not all joined, crossovers are added as needed (these are the "required" ones; a blob on a line or at the middle can do the joining instead, so none may be required). When all is joined, up to the random extra count (0 to 3) more are added, each with its images. The second pass (pairs through another blob) is only for a corridor that is still needed to join the board. If the board is still not joined, the layout fails.
-7. **Starts never joined directly.** A corridor whose two ends are both starts is never added, so starts join the rest of the board only through other blobs (the land may still happen to run together, which is fine). The exception is a board with no other blobs (only small boards can be), where the starts have no other way to be joined, so they are joined to each other.
+**1. The blobs.**
 
-The blueprint is then drawn: see below.
+- **The start** rep: the starts are its images, one for each element, in the order of the group's elements. Radius = the bowl radius.
+- **The middle blob**, with chance 40% (`ON_AXIS_CHANCE`): a blob at the origin, which every symmetry leaves where it is.
+- **The sets of extra blobs.** Each set is, with chance 40% when the group has mirror lines, two line reps (a blob on a line has half as many images as one off the lines, so two make a set; each picks one of the lines at random and a place along it), and otherwise one free rep. So every set is exactly as many blobs as there are symmetries, whether it is on the lines or not.
+- Each rep starts at a random place inside a disc of radius 4 (`SPAWN_START_RADIUS`), or along its line within 4 of the middle.
+- A blob that is the same under several elements (on a line, or at the middle) is one blob, not several.
 
-### Duel (`duel/blueprint.ts`)
+**2. Spread far apart** (relaxing, stage one). Rounds, up to 2000: every rep is moved by the sum of pushes from every other blob it is too close to, and the others are the images too, including its own. Two blobs are "too close" if they are less than `2 × (radius of one + radius of the other) + 1.4` apart (`SPAWN_GAP`), and for two starts also if they are less than the radii plus 4 (`START_BRIDGE`): the starts are never nearer than one typical bridge, whichever is more. A blob is pushed away by half the shortfall (plus 0.01) from each one; the sum for a rep is multiplied by 0.5 (`RELAX_STEP`) and applied to the rep only; a line rep only moves along its line, and the middle blob does not move. All reps move at once (from the positions at the start of the round), so the images follow exactly. Stops when no pair is more than 0.02 too close.
 
-Chambers 0 and 1 are the two starts. Mirror starts: a point at `scale × U(−0.5, 0.5)` along the line and `scale × U(0.45, 0.85)` out from it; half-turn starts: a random angle, `scale × U(0.5, 0.85)` from the middle (or, if there is a middle blob, at least `middle radius + blob radius + 2.5 + scale × U(0, 0.2)` out, whichever is more). Extra blobs: for a mirror board, 40% of them are on the line (at `scale × U(−1.1, 1.1)` along it, so several can be on the line); the others are anywhere in a disc of radius `1.2 × scale`, with a twin across the line. A half-turn board has no extra blob on its point except the middle blob decided first; the others come with a twin. A mirror board's domain is one side of the line (chosen at random, `keepSide`), plus the blobs on it. A half-turn board's domain is one half-plane (the blobs with `y > 0`, or `y < 0`, chosen at random; by `x` for a blob exactly on `y = 0`), plus the middle blob.
+**3. The joining** (a symmetric spanning structure over the far apart blobs). Every pair of blobs is a possible corridor, and a corridor comes with all its copies under the group (its **orbit**: a corridor and its images; one that the group maps onto itself is just one corridor and has to run straight). Candidates are sorted by length (true distances). Three passes, each adding an orbit if one of its copies joins two pieces that are not yet joined (and then adding all its copies):
 
-### Trio (`duel/trio.ts`)
+1. corridors that do not run through another blob (within that blob's radius + 0.5), leaving out the corridors the rules rule out;
+2. the same, also allowing the ones that do run through another blob;
+3. if the board is still not in one piece, everything, rules or not.
 
-Its own builder (slot-based, not the generic one), with turns of 120°. Start: random angle, `scale × U(0.5, 0.85)` out (more if there is a middle blob), snapped to a hex at least 3 from its image under the turn, with blob and image at least `2 × radius + 2.2` apart. Sets of three extra blobs are anywhere in a disc of radius `1.2 × scale` (`out = 1.2 × scale × sqrt(U)`). Domain: one blob from each set (the first of each three, "slot 0") and the middle blob. Corridors in the domain: tree and loops as above, then **crossovers** are corridors from a blob in one third to the twin of a blob in the next third (one or two turns on): never to the middle blob, and not from a start to a start unless they are the only blobs (which makes a triangle of three corridors). A bend is the same for all three copies.
+The rules: **the starts are never joined by a corridor of their own** unless there are no other blobs (then the starts have no other way to be joined); and **two blobs on the same mirror line are joined only on 30% of boards** (`SPINE_CHANCE`), since the corridor between them would run dead straight along the line. A blob on a line or at the middle joins the parts of the board together where it has to, and where nothing does, a corridor to an image of a blob does (a "crossover"). These are the **tree** corridors.
 
-### Quad and sextet (`duel/group.ts`)
+**4. Pulled together** (relaxing, stages two and three).
 
-A generic builder. A group (`FairGroup`) says: its symmetries (as maps on points, and whether each is a mirror, and the same maps on hexes), which part of the board is the domain, where to try to put the first start and extra sets, when two points are on one mirror line, and how many extra sets a board has. `QUAD_GROUP`, `SIXFOLD_GROUP` and `mirroredThirdsGroup(axis)` are the three.
+- Every tree orbit is given a target bridge, the same for all its copies: `bridgeLengths` is the same as for battle royales, `4 + (U₁ + U₂ − 1) × 2` as evenly spaced quantiles, shuffled over the orbits (so the average is always 4 and 3 in 4 are between 3 and 5). A corridor's target length is the two radii plus its bridge.
+- **Stage two:** up to 2000 rounds. Each rep is moved as before, plus each tree corridor that ends at it pulls it a quarter of its error toward (or away from) its target length. Pairs that are not joined by a tree corridor are pushed to at least the two radii plus 1.4 apart (and for starts, plus 4). Stops when nothing is more than 0.02 off.
+- **Stage three:** the corridors of a symmetric board go through the copies, so they can ask for lengths that cannot all be had at once, and the pulling can leave blobs too close. So the spacing is made a hard rule: a last relaxing with no corridors pulling, up to 2000 rounds, pushes apart whatever is too close.
+- **Snapping.** The start rep is snapped to the nearest hex, so its city is exactly on a hex center; every other start is the hex the group's hex map takes it to (so they are exact). The other blobs keep their places.
 
-|                      | Quad                                                                                | Sextet `rotational`                                     | Sextet `mirror`                                                                                       |
-| -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Domain               | the quarter `x ≥ 0, y ≥ 0`                                                          | the sixth from angle 0 (counted in) to 60° (not)        | the sixth between two neighbouring mirror lines (both counted in)                                     |
-| First start          | `x = max(least, scale × U(0.3, 0.85))`, same for `y` (`least = radius + 1.1 + 0.2`) | angle `U(0.15, 0.85) × 60°`, `scale × U(0.5, 0.85)` out | angle `lineAngle + U(0.15, 0.85) × 60°`, `scale × U(0.5, 0.85)` out                                   |
-| Extra set candidates | 20% on the `y` axis, 20% on the `x` axis, 60% in the quadrant                       | anywhere in a disc of radius `1.2 × scale`              | 40% on one of the three lines (either side of the middle, `scale × U(0.2, 1.1)` out), 60% in the disc |
-| Blobs in a set       | 4 off the lines, 2 on one, 1 at the middle                                          | 6 (1 at the middle)                                     | 6 off the lines, 3 on a line, 1 at the middle                                                         |
-| Extra sets           | `max(1, round(size / 5))`                                                           | `max(1, round(size / 9))`                               | `max(1, round(size / 9))`                                                                             |
-| Spine                | corridors along an axis                                                             | none (no mirror lines)                                  | corridors along a line                                                                                |
+**5. The loops and the widths.**
 
-`lineAngle` is 90° for `points` and 60° for `edges`. A middle blob counts as a set of one. After placing blobs, the builder works out where every blob goes under every symmetry and fails if some image does not land on a blob of the same size (a rounding guard); it also fails if the number of blobs in the domain is not the number of sets.
+- **Loops:** every other pair, grouped in orbits as before, that is at most `1.4 ×` the median tree corridor length long, not ruled out, and not through another blob, sorted by length (ties broken randomly). Whole orbits are added, shortest first, until the number of loop corridors reaches `round(0.3 × the number of blobs)`.
+- **Widths** (`assignWidths`, the same as for battle royales), one for each orbit, counted by its number of copies: a fixed set in exactly the proportions 30% 1-wide, 45% 2-wide, 25% 3-wide, shuffled and then swapped (a pair of orbits of different widths at a time) while that brings the area the corridors cover, bridge length × width × copies, closer to its budget (the total length times the average width 1.95).
+- **Bend:** each orbit gets a random bend, uniform in ±0.15 of its length, the same for all its copies except that a mirror flips it (a mirror turns a bend the other way; a turn leaves it); a corridor the group maps onto itself is straight.
 
-Quad boards are turned by `turns` (0 to 2) afterwards; sextets are not.
+The first chambers are the starts (the first start, then its image under each element in order), then the middle blob if there is one, then the extras.
 
-### Drawing and checking (`duel/layout.ts`)
+### Drawing (`duel/layout.ts`)
 
-For one attempt (`drawBoard`):
+Once: the blueprint is rasterized (see Shared machinery), and because noise is not symmetric the land is the drawn land together with its images under every symmetry. Then it is tidied for 3 passes (rules that look at the board as it was before each step, so it stays exactly symmetric), and the biggest piece is kept (all of it, see below). There is no scale loop, no area bisection and no checks. Mirror duel and quad boards are then turned (see above).
 
-1. **Scale loop** (up to 8 passes): build the blueprint at the current `scale` (starting at `size`), rasterize with `offset 0`, and **symmetrize**: the land is the drawn land together with its images under every symmetry (noise is not symmetric), then tidied (3 passes) and the piece with all the starts kept. If the blueprint cannot be made, or the starts are not in one piece, `scale *= 1.1` and try again. Otherwise the best pass so far (closest to the target) is kept; if it is within 20% of the target, the loop stops; if not, `scale *= clamp(sqrt(target / area), 0.8, 1.25)`.
-2. **Fine tune** (up to 9 steps, until within 3%): bisect `offset` in [−1.5, 1.5] (grow or shrink the land by a fraction of a tile everywhere), keeping the closest result.
-3. **Checks**, rejecting the attempt if one fails (the reason names the check):
+### Why the starts are always safe
 
-| Reason      | Check                                                                                      |
-| ----------- | ------------------------------------------------------------------------------------------ |
-| `blueprint` | no blueprint could be built in any pass                                                    |
-| `split`     | the starts were never all in one piece                                                     |
-| `area`      | the best board is more than 8% from the target                                             |
-| `symmetry`  | some hex's image is not land (never seen)                                                  |
-| `starts`    | a start is not the first start moved by the symmetry, or a start hex lacks a land neighbor |
+As for battle royale boards, nothing checks the starts:
 
-Up to 200 attempts (`seed + attempt × 0x9e3779b1`); if none passes the generator throws ("could not make a … board of about N tiles"). In testing 100% of boards succeed, almost always on the first or second attempt, with areas within about 3%. Minimum sizes: a duel needs at least 20 tiles, a trio 30, a quad 40, a sextet 60 (`createXMatch` throws below that).
+- **The city and its six neighbors are land** in every start (the rasterizer protects them), and the images of land are land, so the board stays exactly symmetric with them in place. Tidying never removes a protected hex.
+- **It is all one piece**, because the tree joins every blob (pass three allows any corridor if nothing else will), and every corridor's core is land.
+- **The starts are all different hexes, and none is on a mirror line**, because two starts are always at least the two radii plus 4 apart, and a blob is at least that far from its own mirror image: so it is at least 3 from the line, far more than the rounding to a hex can close.
 
 ## Terrain: cities, villages, farmland
 
@@ -285,21 +267,22 @@ Neutral tiles start with their type's base garrison: farmland 1, village 4, city
 
 ## Settings
 
-`GenerationParams` in `params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`. Matches use the defaults, except for the size, which follows the map size (the tile target `DUEL_TILES[size]` and so on, or `royaleBowlRadius(size, players)`). The generators take a `params` option with overrides, which the tests and the previewer use.
+`GenerationParams` in `params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`. Matches use the defaults, except for the size, which follows the map size (`bowlRadiusFor(size, players)` for battle royales; `FAIR_BOWL_RADIUS[size]` and `extraSetsFor(size, players)` for fair boards). The generators take a `params` option with overrides, which the tests and the previewer use.
 
-| Setting                | Default | Meaning                                                                                                             |
-| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
-| `tilesPerCity`         | 50      | about one extra city per this many tiles (fair boards)                                                              |
-| `minCityDistance`      | 3       | cities are never closer than this to each other; the starts of a fair board are at least this far from their images |
-| `villageChance`        | 40      | percent chance a village is placed where one fits                                                                   |
-| `minVillageDistance`   | 2       | villages are never closer than this (2: never touching)                                                             |
-| `villagesNextToCities` | false   | may villages touch cities                                                                                           |
-| `bowlRadius`           | 1.6     | battle royale start bowl radius, which sets the board size (rooms override it by map size and player count)         |
-| `coastRoughness`       | 1       | how far noise pushes the coast in and out, in tiles                                                                 |
-| `coastDetail`          | 5       | size of the coast's bumps, in tiles                                                                                 |
-| `warpStrength`         | 1.5     | how far noise bends the chambers out of round, in tiles                                                             |
+| Setting                | Default | Meaning                                                                                                                                                      |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tilesPerCity`         | 50      | about one extra city per this many tiles (fair boards)                                                                                                       |
+| `minCityDistance`      | 3       | cities are never closer than this to each other                                                                                                              |
+| `villageChance`        | 40      | percent chance a village is placed where one fits                                                                                                            |
+| `minVillageDistance`   | 2       | villages are never closer than this (2: never touching)                                                                                                      |
+| `villagesNextToCities` | false   | may villages touch cities                                                                                                                                    |
+| `bowlRadius`           | 1.6     | the radius of every start bowl, which sets the board size (rooms set it by map size: `bowlRadiusFor` for battle royales, `FAIR_BOWL_RADIUS` for fair boards) |
+| `extraSets`            | none    | fair boards: how many sets of extra blobs (rooms set it by map size: `extraSetsFor`); without it, `round(2 × radius / symmetries)`; battle royales have none |
+| `coastRoughness`       | 1       | how far noise pushes the coast in and out, in tiles                                                                                                          |
+| `coastDetail`          | 5       | size of the coast's bumps, in tiles                                                                                                                          |
+| `warpStrength`         | 1.5     | how far noise bends the chambers out of round, in tiles                                                                                                      |
 
-Constants that are not settings (blob size, spacing, corridor widths and weights, relaxing rounds, retry limits of fair boards, and so on) are named constants in the code, listed in the sections above.
+Constants that are not settings (blob size, spacing, corridor widths and weights, relaxing rounds, and so on) are named constants in the code, listed in the sections above.
 
 ## The map previewer
 
@@ -308,12 +291,14 @@ Constants that are not settings (blob size, spacing, corridor widths and weights
 - **Show blueprint** draws the chambers and corridors over the board.
 - **Show fog** draws the board as one random player sees it, covered in fog: the viewer is `players[floor(createRng(seed).next() × count)]`.
 - **Generation parameters** shows and edits the settings above. Changed ones are marked.
-- The report line under the controls says how the board was made: tiles, seed, symmetry, attempts, blobs for fair boards; for royale boards the archetype and the bowl radius.
+- The report line under the controls says how the board was made: tiles, seed, symmetry and blobs for fair boards; for royale boards the archetype and the bowl radius.
 
-The address sets where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint&fog`. `mode` is `duel`, `trio`, `quad`, `six` or `ffa`; fair boards also take `tiles`; duels and sextets take `symmetry` and `axis`; duels and quads take `turns`. A seed in the address reproduces a board exactly.
+The address sets where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint&fog`. `mode` is `duel`, `trio`, `quad`, `six` or `ffa`; duels and sextets take `symmetry` and `axis`; duels and quads take `turns`. A seed in the address reproduces a board exactly.
 
 ## Tests
 
 - `royale/royale.test.ts`: topology (the tail finder), royale layouts (determinism, one connected piece, every start city and its ring kept at every size and player count, the starts all different, about the old size per player at each map size, the bowl radius formula, peninsulas now and then).
-- `duel/duel.test.ts`, `duel/symmetry.test.ts`: the symmetry groups (closed, distinct, hex and point maps agree), blueprint rules (starts never joined directly, only small boards are only starts, middle blobs, blobs on lines).
-- `generate.test.ts`: the five match functions: determinism, exact symmetry of the finished boards, one start city per player and twin starts, about the right number of tiles, terrain rules (cities never too close or on the edge, villages never touching, villages placed until nowhere is left), and rejecting the wrong number of players.
+- `duel/duel.test.ts`: the blueprints of every kind of fair board (the eight kinds: duel mirror through corners or edges, duel half turn, trio, quad, and the three sextets): the blueprint maps onto itself under every symmetry, corridors and widths included; the starts come first and are never joined directly (unless they are the only blobs); it is all one piece with widths 1 to 3; a blob at the middle some of the time, and none beyond the starts on small boards; blobs on one mirror line joined only sometimes.
+- `duel/symmetry.test.ts`: the symmetry groups (closed, distinct, hex and point maps agree).
+- `fairMatches.test.ts`: the finished fair boards, for the same eight kinds: determinism, exact symmetry of the tiles under every symmetry, one start city per player (all twins, each with a full ring of land), base garrisons, more blobs and more land on bigger boards, and the terrain rules (cities never too close or on the edge, villages never touching, villages placed until nowhere is left); plus the duel's kinds and turns, the quad's turns, the sextet's groups, and the number of players.
+- `generate.test.ts`: battle royale matches: determinism, size with the number of players, one start city per player away from the edge, terrain rules.

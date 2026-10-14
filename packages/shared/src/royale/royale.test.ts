@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { hexKey, hexNeighbors } from '../hex.js';
-import {
-  DEFAULT_GENERATION_PARAMS,
-  MAP_SIZES,
-  ROYALE_BOWL_RADIUS,
-  royaleBowlRadius,
-} from '../params.js';
+import { DEFAULT_GENERATION_PARAMS, MAP_SIZES, BOWL_RADIUS, bowlRadiusFor } from '../params.js';
 import { createNoise, fbm } from './noise.js';
 import { ARCHETYPE_IDS } from './archetypes/index.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
@@ -100,7 +95,7 @@ describe('royale layouts', () => {
     for (const size of MAP_SIZES) {
       for (const players of [3, 7, 12]) {
         for (let seed = 1; seed <= 20; seed++) {
-          const sizeParams = { ...params, bowlRadius: royaleBowlRadius(size, players) };
+          const sizeParams = { ...params, bowlRadius: bowlRadiusFor(size, players) };
           const { hexes, starts } = generateRoyaleLayout({ players, seed, params: sizeParams });
           const land = new Set(hexes.map(hexKey));
           expect(starts).toHaveLength(players);
@@ -125,7 +120,7 @@ describe('royale layouts', () => {
         let tiles = 0;
         const runs = 12;
         for (let seed = 1; seed <= runs; seed++) {
-          const sizeParams = { ...params, bowlRadius: royaleBowlRadius(size, players) };
+          const sizeParams = { ...params, bowlRadius: bowlRadiusFor(size, players) };
           tiles += generateRoyaleLayout({ players, seed, params: sizeParams }).hexes.length;
         }
         const old = wanted[size] * (6 / players) ** 0.25;
@@ -139,12 +134,12 @@ describe('royale layouts', () => {
 
   it('has smaller bowls for more players and bigger bowls for bigger maps', () => {
     for (const size of MAP_SIZES) {
-      expect(royaleBowlRadius(size, 12)).toBeLessThan(royaleBowlRadius(size, 6));
-      expect(royaleBowlRadius(size, 6)).toBeLessThan(royaleBowlRadius(size, 3));
-      expect(royaleBowlRadius(size, 6)).toBe(ROYALE_BOWL_RADIUS[size]);
+      expect(bowlRadiusFor(size, 12)).toBeLessThan(bowlRadiusFor(size, 6));
+      expect(bowlRadiusFor(size, 6)).toBeLessThan(bowlRadiusFor(size, 3));
+      expect(bowlRadiusFor(size, 6)).toBe(BOWL_RADIUS[size]);
     }
-    expect(ROYALE_BOWL_RADIUS.small).toBeLessThan(ROYALE_BOWL_RADIUS.normal);
-    expect(ROYALE_BOWL_RADIUS.normal).toBeLessThan(ROYALE_BOWL_RADIUS.large);
+    expect(BOWL_RADIUS.small).toBeLessThan(BOWL_RADIUS.normal);
+    expect(BOWL_RADIUS.normal).toBeLessThan(BOWL_RADIUS.large);
   });
 
   it('can be told which archetype to draw', () => {

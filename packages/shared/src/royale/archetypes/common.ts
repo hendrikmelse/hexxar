@@ -33,10 +33,14 @@ export function shuffleInPlace<T>(items: T[], rng: Rng): T[] {
  * `CORRIDOR_WIDTHS` as far as whole corridors allow (the rounding goes to the likeliest widths), so
  * no board is all narrow or all wide. They start shuffled; then pairs are swapped (a wide corridor
  * with a narrow one) while that brings the total area of the corridors, the sum of length times
- * width, closer to what the average width would give: a long corridor tends to get a narrow
+ * width (each counted as many times as the corridor has copies), closer to what the average width would give: a long corridor tends to get a narrow
  * width, and a short one a wide width, so the land they cover does not depend on the luck of the draw.
  */
-export function assignWidths(lengths: readonly number[], rng: Rng): number[] {
+export function assignWidths(
+  lengths: readonly number[],
+  rng: Rng,
+  weights: readonly number[] = lengths.map(() => 1),
+): number[] {
   const count = lengths.length;
   const total = CORRIDOR_WIDTHS.reduce((sum, [, weight]) => sum + weight, 0);
   // Whole numbers of each width, the biggest remainders getting the spare corridors.
@@ -55,19 +59,38 @@ export function assignWidths(lengths: readonly number[], rng: Rng): number[] {
     exact.flatMap(({ width }, i) => Array.from({ length: counts[i]! }, () => width)),
     rng,
   );
-  const budget = lengths.reduce((sum, length) => sum + length, 0) * MEAN_WIDTH;
-  let area = widths.reduce((sum, width, i) => sum + width * lengths[i]!, 0);
+  // Corridors count `weights[i]` times (a symmetric board has copies of each one).
+  const weighted = lengths.map((length, i) => length * weights[i]!);
+  const budget = weighted.reduce((sum, length) => sum + length, 0) * MEAN_WIDTH;
+  let area = widths.reduce((sum, width, i) => sum + width * weighted[i]!, 0);
   for (let step = 0; step < 50 * count && count > 1; step++) {
     const i = rng.int(count);
     const j = rng.int(count);
     if (widths[i] === widths[j]) continue;
-    const next = area + (widths[j]! - widths[i]!) * (lengths[i]! - lengths[j]!);
+    const next = area + (widths[j]! - widths[i]!) * (weighted[i]! - weighted[j]!);
     if (Math.abs(next - budget) < Math.abs(area - budget)) {
       [widths[i], widths[j]] = [widths[j]!, widths[i]!];
       area = next;
     }
   }
   return widths;
+}
+
+/**
+ * How long each tree corridor's bridge is meant to be, in tiles of open ground between the two
+ * bowls. The lengths follow the sum of two random numbers, `4 + (U₁ + U₂ − 1) × 2` (so most are
+ * between 3 and 5, about 3 in 4, and a few are shorter or longer, from 2 to 6), but are not drawn
+ * independently: they are the evenly spaced quantiles of that distribution, shuffled among the
+ * corridors, so the average length of a board's bridges is always the same.
+ */
+export function bridgeLengths(count: number, rng: Rng): number[] {
+  const lengths = Array.from({ length: count }, (_, i) => {
+    const u = (i + 0.5) / count;
+    // The inverse of the distribution of U₁ + U₂ (a triangle between 0 and 2).
+    const sum = u < 0.5 ? Math.sqrt(2 * u) : 2 - Math.sqrt(2 * (1 - u));
+    return 4 + (sum - 1) * 2;
+  });
+  return shuffleInPlace(lengths, rng);
 }
 
 export const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
