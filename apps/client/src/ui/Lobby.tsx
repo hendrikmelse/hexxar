@@ -319,6 +319,45 @@ function meStyle(room: RoomView, player: RoomPlayer): CSSProperties | undefined 
   return { '--me': `${hex >> 16} ${(hex >> 8) & 255} ${hex & 255}` } as CSSProperties;
 }
 
+/**
+ * One player's box. A name too long for it is cut off with "...", and hovering the box shows the
+ * whole name.
+ */
+function PlayerBox({
+  room,
+  entry,
+  base,
+  max,
+  min,
+}: {
+  room: RoomView;
+  entry: ShownPlayer;
+  base: 'roster-slot' | 'slot';
+  max: number;
+  min: number;
+}) {
+  const [clipped, setClipped] = useState(false);
+  const { player } = entry;
+  return (
+    <div
+      data-flip={player.userId}
+      data-tip={clipped ? player.name : undefined}
+      style={meStyle(room, player)}
+      className={`${base} name-tip ${boxClass(entry, player.connected)} ${player.userId === room.you ? 'me' : ''}`}
+    >
+      <FitText
+        className="name"
+        text={player.name}
+        max={max}
+        min={min}
+        color={nameColor(room, player)}
+        onClip={setClipped}
+      />
+      {!player.connected && <em>disconnected</em>}
+    </div>
+  );
+}
+
 /** A grid of boxes, one per place in the game, filled in as players join and emptied as they leave. */
 function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const grid = useRef<HTMLDivElement>(null);
@@ -344,21 +383,14 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
           );
         }
         return (
-          <div
+          <PlayerBox
             key={entry.player.userId}
-            data-flip={entry.player.userId}
-            style={meStyle(room, entry.player)}
-            className={`roster-slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
-          >
-            <FitText
-              className="name"
-              text={entry.player.name}
-              max={14}
-              min={10}
-              color={nameColor(room, entry.player)}
-            />
-            {!entry.player.connected && <em>disconnected</em>}
-          </div>
+            room={room}
+            entry={entry}
+            base="roster-slot"
+            max={14}
+            min={10}
+          />
         );
       })}
     </div>
@@ -373,20 +405,14 @@ function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const armed = useArmed();
   const side = (entry: ShownPlayer | undefined) =>
     entry ? (
-      <div
+      <PlayerBox
         key={entry.player.userId}
-        style={meStyle(room, entry.player)}
-        className={`slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
-      >
-        <FitText
-          className="name"
-          text={entry.player.name}
-          max={15}
-          min={11}
-          color={nameColor(room, entry.player)}
-        />
-        {!entry.player.connected && <em>disconnected</em>}
-      </div>
+        room={room}
+        entry={entry}
+        base="slot"
+        max={15}
+        min={11}
+      />
     ) : (
       <EmptyBox base="slot" armed={armed}>
         <SearchingDots />

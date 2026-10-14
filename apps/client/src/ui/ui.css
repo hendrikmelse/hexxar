@@ -1213,7 +1213,9 @@
 /* The tooltip: the app's own raised dark panel, shown the instant the pointer arrives (or after a tap) */
 
 #ui .tip[data-tip]::after,
-#ui .tip[data-tip]::before {
+#ui .name-tip[data-tip]::after,
+#ui .tip[data-tip]::before,
+#ui .name-tip[data-tip]::before {
   position: absolute;
   left: 50%;
   opacity: 0;
@@ -1223,7 +1225,8 @@
     transform 0.08s ease-out;
 }
 
-#ui .tip[data-tip]::after {
+#ui .tip[data-tip]::after,
+#ui .name-tip[data-tip]::after {
   content: attr(data-tip);
   bottom: calc(100% + 11px);
   z-index: 30;
@@ -1244,7 +1247,8 @@
 
 /* A little arrow pointing down at the button */
 
-#ui .tip[data-tip]::before {
+#ui .tip[data-tip]::before,
+#ui .name-tip[data-tip]::before {
   content: '';
   bottom: calc(100% + 5px);
   z-index: 31;
@@ -1256,12 +1260,14 @@
   transform: translate(-50%, 4px) rotate(45deg);
 }
 
-#ui .tip[data-tip].tapped::after {
+#ui .tip[data-tip].tapped::after,
+#ui .name-tip[data-tip].tapped::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
 
-#ui .tip[data-tip].tapped::before {
+#ui .tip[data-tip].tapped::before,
+#ui .name-tip[data-tip].tapped::before {
   opacity: 1;
   transform: translate(-50%, 0) rotate(45deg);
 }
@@ -1272,12 +1278,14 @@
  */
 
 @media (hover: hover) and (pointer: fine) {
-  #ui .tip[data-tip]:hover::after {
+  #ui .tip[data-tip]:hover::after,
+  #ui .name-tip[data-tip]:hover::after {
     opacity: 1;
     transform: translate(-50%, 0);
   }
 
-  #ui .tip[data-tip]:hover::before {
+  #ui .tip[data-tip]:hover::before,
+  #ui .name-tip[data-tip]:hover::before {
     opacity: 1;
     transform: translate(-50%, 0) rotate(45deg);
   }
@@ -1285,9 +1293,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   #ui .tip[data-tip]::after,
-  #ui .tip[data-tip]::before {
+  #ui .name-tip[data-tip]::after,
+  #ui .tip[data-tip]::before,
+  #ui .name-tip[data-tip]::before {
     transition: none;
   }
+}
+
+/* A player's box, whose name may be cut off: it carries the same tooltip */
+
+#ui .name-tip {
+  position: relative;
 }
 
 /* Slider rows: the slider, with its value large on the right instead of small above it */

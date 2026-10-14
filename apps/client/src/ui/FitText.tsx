@@ -11,6 +11,7 @@ export function FitText({
   min,
   className,
   color,
+  onClip,
 }: {
   text: string;
   max: number;
@@ -18,6 +19,8 @@ export function FitText({
   className?: string;
   /** Overrides the text color. */
   color?: string;
+  /** Told after every fit whether the text is cut off with "..." at its smallest size. */
+  onClip?: (clipped: boolean) => void;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
 
@@ -33,6 +36,7 @@ export function FitText({
         const scaled = Math.floor(((max * available) / needed) * 2) / 2;
         el.style.fontSize = `${Math.max(min, scaled)}px`;
       }
+      onClip?.(el.scrollWidth > el.clientWidth);
     };
     fit();
     const observer = new ResizeObserver(fit);
