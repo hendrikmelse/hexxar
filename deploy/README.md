@@ -30,8 +30,20 @@ internet ─▶ Caddy (80/443, automatic HTTPS) ─▶ hexxar (Node, port 8080)
 - Games live in the server's memory. **A deploy ends every running match** (players land
   back in the menu), so prefer deploying when nobody is playing.
 
+- Feedback is kept in a Docker volume (`hexxar_data`, mounted at `/data`), so it survives
+  deploys. Back it up with
+  `docker run --rm -v hexxar_data:/data -v $PWD:/out alpine cp /data/feedback.json /out/`.
+
 Files in `deploy/server/` mirror what lives on the server and are copied there by hand;
 CI does not touch them.
+
+## Admin panel and the daily feedback email
+
+`/?admin` on the site opens the admin panel once `ADMIN_PASSWORD` (in `/srv/hexxar/.env`) is
+entered. The same `.env` holds `RESEND_API_KEY` and `FEEDBACK_TO` for the 7am email (Amsterdam
+time unless `DIGEST_TIMEZONE` says otherwise), which only goes out when something is unresolved.
+The first time, copy the new `compose.yaml` (it adds the data volume) and the new variables, then
+recreate the container as above. Put a long password in: it is the only thing protecting the panel.
 
 ## Beta access code
 

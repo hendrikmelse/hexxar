@@ -13,6 +13,7 @@ import {
   scoresOf,
   visibleMoves,
   visibleState,
+  type AdminRoom,
   type Order,
   type Rng,
   type RoomMode,
@@ -125,6 +126,7 @@ export class Room {
   readonly id: string;
   readonly code: string;
   readonly visibility: 'public' | 'private';
+  private readonly createdAt = Date.now();
   private host: Session;
   private settings: RoomSettings;
   private state: RoomState = 'lobby';
@@ -459,6 +461,21 @@ export class Room {
 
   get mode(): RoomMode {
     return this.settings.mode;
+  }
+
+  /** What the admin panel shows about this room. */
+  summary(): AdminRoom {
+    const here = this.members.filter((m) => !m.left && m.session.connection !== null);
+    return {
+      code: this.code,
+      visibility: this.visibility,
+      mode: this.mode,
+      state: this.state,
+      players: here.filter((m) => !m.spectator).length,
+      spectators: here.filter((m) => m.spectator).length,
+      names: here.map((m) => m.session.name),
+      createdAt: this.createdAt,
+    };
   }
 
   /** The most players the room takes. A battle royale never starts with more than 12. */

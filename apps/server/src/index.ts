@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
-import { createFeedbackSender } from './feedback.js';
+import { createDigest, createMailer } from './feedback.js';
+import { FeedbackStore } from './feedbackStore.js';
 import { createHttpHandler } from './http.js';
 import { Lobby } from './lobby.js';
 
@@ -19,23 +20,45 @@ const lobby = new Lobby({
   finishedLingerMs: Number(process.env.FINISHED_LINGER_MS ?? 10 * 60_000),
 });
 
-// One port serves the built client (when STATIC_DIR is set), a health check, and the game's
-// WebSocket at /ws.
-// Feedback is emailed through Resend, when it is set up (see the README).
-const feedbackKey = process.env.RESEND_API_KEY;
+// One port serves the built client (when STATIC_DIR is set), a health check, the feedback form,
+// the admin panel's API and the game's WebSocket at /ws.
+// Feedback is kept in DATA_DIR, and a daily email lists what is still open (through Resend).
+const store = new FeedbackStore(process.env.DATA_DIR ?? './data');
+const startedAt = Date.now();
+
+const adminPassword = process.env.ADMIN_PASSWORD;
+if (!adminPassword) console.warn('ADMIN_PASSWORD is not set: the admin panel is off');
+
+const resendKey = process.env.RESEND_API_KEY;
 const feedbackTo = process.env.FEEDBACK_TO;
-if (!feedbackKey || !feedbackTo)
-  console.warn('RESEND_API_KEY or FEEDBACK_TO is not set: feedback is off');
-const sendFeedback =
-  feedbackKey && feedbackTo
-    ? createFeedbackSender({
-        apiKey: feedbackKey,
-        to: feedbackTo,
-        from: process.env.FEEDBACK_FROM ?? 'Hexxar <onboarding@resend.dev>',
-        ...(process.env.RESEND_API_URL ? { endpoint: process.env.RESEND_API_URL } : {}),
-      })
-    : undefined;
-const handleHttp = createHttpHandler(process.env.STATIC_DIR, sendFeedback);
+if (resendKey && feedbackTo) {
+  createDigest({
+    store,
+    mail: createMailer({
+      apiKey: resendKey,
+      to: feedbackTo,
+      from: process.env.FEEDBACK_FROM ?? 'Hexxar <onboarding@resend.dev>',
+      ...(process.env.RESEND_API_URL ? { endpoint: process.env.RESEND_API_URL } : {}),
+    }),
+    hour: Number(process.env.DIGEST_HOUR ?? 7),
+    timeZone: process.env.DIGEST_TIMEZONE ?? 'Europe/Amsterdam',
+    adminUrl: `${process.env.PUBLIC_URL ?? 'https://hexxar.io'}/?admin`,
+  }).start();
+} else {
+  console.warn('RESEND_API_KEY or FEEDBACK_TO is not set: no daily feedback email');
+}
+const handleHttp = createHttpHandler({
+  ...(process.env.STATIC_DIR ? { staticDir: process.env.STATIC_DIR } : {}),
+  store,
+  ...(adminPassword
+    ? {
+        admin: {
+          password: adminPassword,
+          stats: () => ({ serverTime: Date.now(), startedAt, ...lobby.adminStats() }),
+        },
+      }
+    : {}),
+});
 const http = createServer((req, res) => void handleHttp(req, res));
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 16 * 1024 });
 

@@ -3,7 +3,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { FeedbackStore } from './feedbackStore.js';
 import { createHttpHandler } from './http.js';
 
 const listen = async (server: Server): Promise<string> => {
@@ -24,7 +25,7 @@ describe('http handler', () => {
     await writeFile(join(dir, 'index.html'), '<h1>hexxar</h1>');
     await writeFile(join(dir, 'assets', 'app-abc123.js'), 'console.log(1)');
     await writeFile(join(outer, 'secret.txt'), 'secret');
-    server = createServer(createHttpHandler(dir));
+    server = createServer(createHttpHandler({ staticDir: dir }));
     base = await listen(server);
   });
 
@@ -76,25 +77,32 @@ describe('feedback route', () => {
       body: typeof body === 'string' ? body : JSON.stringify(body),
     });
 
-  const serve = async (send?: (feedback: unknown) => Promise<void>) => {
-    const server = createServer(createHttpHandler(undefined, send as never));
-    return { server, base: await listen(server) };
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'hexxar-store-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const serve = async (withStore = true) => {
+    const store = new FeedbackStore(dir);
+    const server = createServer(createHttpHandler(withStore ? { store } : {}));
+    return { server, store, base: await listen(server) };
   };
 
-  it('emails a good submission', async () => {
-    const send = vi.fn(async () => undefined);
-    const { server, base } = await serve(send);
+  it('keeps a good submission', async () => {
+    const { server, store, base } = await serve();
     const response = await post(base, { kind: 'bug', message: 'It broke', email: 'a@b.co' });
     expect(response.status).toBe(200);
-    expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'bug', message: 'It broke' }),
-    );
+    expect(store.list()).toEqual([
+      expect.objectContaining({ kind: 'bug', message: 'It broke', email: 'a@b.co' }),
+    ]);
     server.close();
   });
 
   it('turns away what does not make sense, and what is too big', async () => {
-    const send = vi.fn(async () => undefined);
-    const { server, base } = await serve(send);
+    const { server, store, base } = await serve();
     expect((await post(base, { kind: 'nope', message: 'hello' })).status).toBe(400);
     expect((await post(base, { kind: 'bug', message: 'x' })).status).toBe(400);
     expect(
@@ -102,42 +110,112 @@ describe('feedback route', () => {
     ).toBe(400);
     expect((await post(base, '{not json')).status).toBe(400);
     expect((await post(base, { kind: 'bug', message: 'x'.repeat(20_000) })).status).toBe(413);
-    expect(send).not.toHaveBeenCalled();
+    expect(store.total).toBe(0);
     server.close();
   });
 
-  it('says thanks to a bot and sends nothing', async () => {
-    const send = vi.fn(async () => undefined);
-    const { server, base } = await serve(send);
+  it('says thanks to a bot and keeps nothing', async () => {
+    const { server, store, base } = await serve();
     const response = await post(base, {
       kind: 'feedback',
       message: 'buy now',
       website: 'spam.example',
     });
     expect(response.status).toBe(200);
-    expect(send).not.toHaveBeenCalled();
+    expect(store.total).toBe(0);
     server.close();
   });
 
-  it('limits how many one address can send, and reports a failure to send', async () => {
-    const { server, base } = await serve(async () => undefined);
+  it('limits how many one address can send', async () => {
+    const { server, base } = await serve();
     for (let i = 0; i < 5; i++) {
       expect((await post(base, { kind: 'feedback', message: 'hello there' })).status).toBe(200);
     }
     expect((await post(base, { kind: 'feedback', message: 'hello there' })).status).toBe(429);
     server.close();
-    const failing = await serve(async () => {
-      throw new Error('no');
-    });
-    expect((await post(failing.base, { kind: 'feedback', message: 'hello there' })).status).toBe(
-      502,
-    );
-    failing.server.close();
   });
 
-  it('says it is not set up when there is no way to send', async () => {
-    const { server, base } = await serve(undefined);
+  it('says it is not set up when there is nowhere to keep it', async () => {
+    const { server, base } = await serve(false);
     expect((await post(base, { kind: 'feedback', message: 'hello there' })).status).toBe(503);
     server.close();
+  });
+});
+
+describe('admin routes', () => {
+  let dir: string;
+  let store: FeedbackStore;
+  let server: Server;
+  let base: string;
+  const stats = {
+    startedAt: 1,
+    serverTime: 2,
+    connected: 3,
+    inMenu: 1,
+    publicPlayers: { duel: 2, ffa: 0 },
+    rooms: [],
+  };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'hexxar-admin-'));
+    store = new FeedbackStore(dir);
+    server = createServer(
+      createHttpHandler({ store, admin: { password: 'pässword', stats: () => stats } }),
+    );
+    base = await listen(server);
+  });
+  afterEach(async () => {
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const call = (path: string, init: RequestInit = {}, password = 'pässword') =>
+    fetch(`${base}/api/admin${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${encodeURIComponent(password)}` },
+    });
+
+  it('needs the password', async () => {
+    expect((await fetch(`${base}/api/admin/stats`)).status).toBe(401);
+    expect((await call('/stats', {}, 'wrong')).status).toBe(401);
+    expect((await call('/feedback', {}, 'wrong')).status).toBe(401);
+    expect((await call('/stats')).status).toBe(200);
+  });
+
+  it('locks out an address that keeps guessing, even for the right password', async () => {
+    for (let i = 0; i < 10; i++) await call('/stats', {}, `guess${i}`);
+    expect((await call('/stats', {}, 'wrong')).status).toBe(429);
+    expect((await call('/stats')).status).toBe(429);
+  });
+
+  it('reports live numbers with the feedback counts', async () => {
+    const item = await store.add({ kind: 'bug', message: 'one' });
+    await store.add({ kind: 'bug', message: 'two' });
+    await store.setResolved(item.id, true);
+    const body = await (await call('/stats')).json();
+    expect(body).toMatchObject({ connected: 3, feedback: { open: 1, total: 2 } });
+  });
+
+  it('lists, resolves and deletes feedback', async () => {
+    const item = await store.add({ kind: 'feedback', message: 'hello there' });
+    const listed = (await (await call('/feedback')).json()) as { feedback: unknown[] };
+    expect(listed.feedback).toHaveLength(1);
+    const resolve = (resolved: unknown) =>
+      call(`/feedback/${item.id}`, { method: 'POST', body: JSON.stringify({ resolved }) });
+    expect((await resolve('yes')).status).toBe(400);
+    expect((await resolve(true)).status).toBe(200);
+    expect(store.open()).toHaveLength(0);
+    expect(
+      (await call('/feedback/nope', { method: 'POST', body: '{"resolved":true}' })).status,
+    ).toBe(404);
+    expect((await call(`/feedback/${item.id}`, { method: 'DELETE' })).status).toBe(200);
+    expect(store.total).toBe(0);
+  });
+
+  it('is off without a password', async () => {
+    const off = createServer(createHttpHandler({ store }));
+    const url = await listen(off);
+    expect((await fetch(`${url}/api/admin/stats`)).status).toBe(503);
+    off.close();
   });
 });

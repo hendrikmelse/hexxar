@@ -14,6 +14,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - data:/data # feedback lives here, so it survives deploys
     cap_drop:
       - ALL
     security_opt:
@@ -22,6 +24,9 @@ services:
       driver: journald
       options:
         tag: '{{.Name}}'
+
+volumes:
+  data:
 
 networks:
   web:

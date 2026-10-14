@@ -2777,3 +2777,170 @@
   color: #eef5ff;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
 }
+
+/* The admin panel (/?admin) */
+#ui .card.admin {
+  max-width: 920px;
+  align-self: flex-start;
+  margin: 16px 0;
+}
+
+#ui .admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#ui .admin-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#ui .admin-head-actions a {
+  color: #8a93a8;
+  font-size: 14px;
+}
+
+#ui .admin-head-actions button {
+  padding: 7px 12px;
+  font-size: 14px;
+}
+
+#ui .admin-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+#ui .admin-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #0f1117;
+  border: 1px solid #2a3040;
+}
+
+#ui .admin-tile strong {
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+#ui .admin-tile span {
+  font-size: 12px;
+  color: #8a93a8;
+}
+
+#ui .admin-sub {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: #b9c0d0;
+}
+
+#ui .admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+#ui .admin-table th,
+#ui .admin-table td {
+  padding: 7px 8px;
+  text-align: left;
+  border-bottom: 1px solid #2a3040;
+}
+
+#ui .admin-table th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6f7890;
+}
+
+#ui .admin-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#ui .admin-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #0f1117;
+  border: 1px solid #2a3040;
+}
+
+#ui .admin-item.resolved {
+  opacity: 0.6;
+}
+
+#ui .admin-item header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+#ui .admin-kind {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  background: #2b3d63;
+  color: #9cc4ff;
+}
+
+#ui .admin-kind.bug {
+  background: #5a2b33;
+  color: #ff9ca8;
+}
+
+#ui .admin-who {
+  margin: 0;
+  font-size: 13px;
+  color: #8a93a8;
+}
+
+#ui .admin-who a {
+  color: #8ab8ff;
+}
+
+#ui .admin-message {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+#ui .admin-item details {
+  font-size: 12px;
+  color: #8a93a8;
+}
+
+#ui .admin-item pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#ui .admin-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#ui .admin-item-actions button {
+  padding: 7px 14px;
+  font-size: 14px;
+}
+
+#ui .admin-item-actions .muted {
+  font-size: 12px;
+}

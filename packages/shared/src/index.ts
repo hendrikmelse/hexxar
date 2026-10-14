@@ -1,3 +1,4 @@
+export * from './admin.js';
 export * from './config.js';
 export * from './duel/index.js';
 export * from './generate.js';

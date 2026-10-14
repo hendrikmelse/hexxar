@@ -82,12 +82,19 @@ Environment variables, or a `.env` file in the repository root (see `.env.exampl
 | `AFK_MS`             | 120000                           | How long a disconnected player has before surrendering                              |
 | `FINISHED_LINGER_MS` | 600000                           | How long a finished game's room stays open                                          |
 | `STATS_MS`           | 2000                             | How often the menu's online counts are refreshed                                    |
-| `RESEND_API_KEY`     | (unset)                          | Resend API key for the feedback page. Without it (or `FEEDBACK_TO`) feedback is off |
-| `FEEDBACK_TO`        | (unset)                          | The email address feedback and bug reports are sent to                              |
-| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on them: an address on a domain verified in Resend                 |
+| `DATA_DIR`           | `./data`                         | Where feedback is kept (`feedback.json`); the Docker image uses `/data`, a volume   |
+| `ADMIN_PASSWORD`     | (unset)                          | Password for the admin panel at `/?admin`. Without it the panel is off              |
+| `RESEND_API_KEY`     | (unset)                          | Resend API key for the daily feedback email. Without it (or `FEEDBACK_TO`) none     |
+| `FEEDBACK_TO`        | (unset)                          | The email address the daily email goes to                                           |
+| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on it: an address on a domain verified in Resend                   |
+| `DIGEST_HOUR`        | 7                                | The hour of the day the email goes out                                              |
+| `DIGEST_TIMEZONE`    | `Europe/Amsterdam`               | The time zone `DIGEST_HOUR` is read in                                              |
+| `PUBLIC_URL`         | `https://hexxar.io`              | The site's address, for the link to the admin panel in the email                    |
 | `RESEND_API_URL`     | (Resend's)                       | Where to send the email: only for trying it out against a stand-in                  |
 
-**Feedback and bug reports:** the speech-bubble button in the top right opens a page that posts to `POST /api/feedback`, and the server emails it through [Resend](https://resend.com). Set `RESEND_API_KEY` and `FEEDBACK_TO` to turn it on. Each address can send 5 a hour.
+**Feedback and bug reports:** the speech-bubble button in the top right opens a page that posts to `POST /api/feedback`. Each message is kept in `DATA_DIR/feedback.json` (each address can send 5 an hour), and no email is sent for it. Instead, at `DIGEST_HOUR` every day the server emails one list of everything still unresolved through [Resend](https://resend.com), and sends nothing when there is nothing open. A missed email (the server was restarting) is still sent up to 3 hours late.
+
+**Admin panel:** open `/?admin` and enter `ADMIN_PASSWORD`. The Overview tab shows who is online, the public game counts and every open game (refreshed every 3 seconds); the Feedback tab lists the messages with their technical details, and lets you mark them resolved (or open again) and delete them. The API behind it is `GET /api/admin/stats`, `GET /api/admin/feedback`, `POST /api/admin/feedback/:id` (`{"resolved": true}`) and `DELETE /api/admin/feedback/:id`, all with `Authorization: Bearer <URI-encoded password>`; an address that sends 10 wrong passwords in 15 minutes is locked out for the rest of that time.
 
 `VITE_SERVER_URL` points the client at a different WebSocket server (used by tests and screenshots).
 

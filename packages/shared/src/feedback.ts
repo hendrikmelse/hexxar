@@ -22,3 +22,17 @@ export const feedbackSchema = z.object({
   website: z.string().max(200).optional(),
 });
 export type Feedback = z.infer<typeof feedbackSchema>;
+
+/** A submission as the server keeps it, and as the admin panel lists it. */
+export interface StoredFeedback {
+  readonly id: string;
+  /** When it arrived, as an ISO timestamp. */
+  readonly receivedAt: string;
+  readonly kind: FeedbackKind;
+  readonly message: string;
+  readonly email?: string;
+  readonly name?: string;
+  readonly details?: string;
+  /** When it was marked as dealt with, or null while it is still open. */
+  readonly resolvedAt: string | null;
+}

@@ -1,8 +1,9 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   clientMessageSchema,
   parseMatchConfig,
   roomCapacity,
+  type AdminStats,
   type ClientMessage,
   type Order,
   type RoomMode,
@@ -10,6 +11,7 @@ import {
   type RoomSettingsPatch,
 } from '@hexxar/shared';
 import { Room, applySettingsPatch } from './room.js';
+import { sameSecret } from './secret.js';
 import type { Connection, ConnectionHandler, Session } from './types.js';
 
 export interface LobbyOptions {
@@ -35,12 +37,6 @@ export interface LobbyOptions {
 
 /** Wrong access codes a single connection may try before it is dropped. */
 const MAX_CODE_ATTEMPTS = 5;
-
-/** Compare two strings without leaking, through timing, how much of the guess was right. */
-function sameSecret(a: string, b: string): boolean {
-  const hash = (value: string) => createHash('sha256').update(value).digest();
-  return timingSafeEqual(hash(a), hash(b));
-}
 
 /** Characters for room codes, leaving out the ones that are easy to confuse. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -139,6 +135,23 @@ export class Lobby {
       if (room.visibility === 'public') counts[room.mode] += room.activePlayers;
     }
     return counts;
+  }
+
+  /** Live numbers for the admin panel (without the feedback counts, which the lobby does not know). */
+  adminStats(): Omit<AdminStats, 'feedback' | 'serverTime' | 'startedAt'> {
+    let connected = 0;
+    let inMenu = 0;
+    for (const session of this.sessions.values()) {
+      if (!session.connection) continue;
+      connected++;
+      if (!session.room) inMenu++;
+    }
+    return {
+      connected,
+      inMenu,
+      publicPlayers: this.stats(),
+      rooms: [...this.rooms.values()].map((room) => room.summary()),
+    };
   }
 
   private sendStats(session: Session, stats: { duel: number; ffa: number }): void {

@@ -2,8 +2,10 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { feedbackSchema, type Feedback } from '@hexxar/shared';
+import { feedbackSchema, type AdminStats } from '@hexxar/shared';
 import { RateLimiter } from './feedback.js';
+import type { FeedbackStore } from './feedbackStore.js';
+import { sameSecret } from './secret.js';
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
@@ -22,14 +24,21 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
  * client, so one process and one port serve both the page and the game's WebSocket. Paths that
  * are not files fall back to `index.html`.
  */
-export function createHttpHandler(
-  staticDir?: string,
-  /** Emails a feedback submission; without it the feedback page is told it is not set up. */
-  sendFeedback?: (feedback: Feedback) => Promise<void>,
-) {
+export interface HttpOptions {
+  /** The built client, to serve as the page. */
+  staticDir?: string;
+  /** Where feedback is kept; without it the feedback page is told it is not set up. */
+  store?: FeedbackStore;
+  /** The admin panel's password and live numbers; without it the panel is off. */
+  admin?: { password: string; stats: () => Omit<AdminStats, 'feedback'> };
+}
+
+export function createHttpHandler({ staticDir, store, admin }: HttpOptions = {}) {
   const root = staticDir ? resolve(staticDir) : null;
   // A few submissions an hour from one address is plenty.
   const limiter = new RateLimiter(5, 60 * 60_000);
+  // Wrong admin passwords: a few tries from one address, then it is locked out for a while.
+  const guesses = new RateLimiter(10, 15 * 60_000);
 
   const send = (res: ServerResponse, status: number, body: string): void => {
     res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -52,7 +61,10 @@ export function createHttpHandler(
   };
 
   const json = (res: ServerResponse, status: number, body: unknown): void => {
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.writeHead(status, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
     res.end(JSON.stringify(body));
   };
 
@@ -81,9 +93,9 @@ export function createHttpHandler(
     req.socket.remoteAddress ||
     'unknown';
 
-  /** POST /api/feedback: validate the submission and email it. */
+  /** POST /api/feedback: validate the submission and keep it. */
   const handleFeedback = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    if (!sendFeedback) return json(res, 503, { error: 'Feedback is not set up yet.' });
+    if (!store) return json(res, 503, { error: 'Feedback is not set up yet.' });
     const body = await readBody(req, 16 * 1024);
     if (body === null) {
       // Stop listening to the rest of it once the answer is out.
@@ -103,16 +115,77 @@ export function createHttpHandler(
       return json(res, 429, { error: 'You have sent a few already. Please try again later.' });
     }
     try {
-      await sendFeedback(parsed.data);
+      await store.add(parsed.data);
     } catch (error) {
-      console.error('feedback email failed', error);
-      return json(res, 502, { error: 'It could not be sent. Please try again later.' });
+      console.error('saving feedback failed', error);
+      return json(res, 500, { error: 'It could not be sent. Please try again later.' });
     }
     json(res, 200, { ok: true });
   };
 
+  /** Is the request from the admin? The password comes as `Authorization: Bearer <URI-encoded password>`. */
+  const isAdmin = (req: IncomingMessage): boolean => {
+    const header = String(req.headers.authorization ?? '');
+    if (!admin || !header.startsWith('Bearer ')) return false;
+    try {
+      return sameSecret(decodeURIComponent(header.slice(7)), admin.password);
+    } catch {
+      return false;
+    }
+  };
+
+  /** Everything under /api/admin: the live numbers and the feedback hub. */
+  const handleAdmin = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+  ): Promise<void> => {
+    if (!admin || !store) return json(res, 503, { error: 'The admin panel is not set up.' });
+    const caller = callerOf(req);
+    if (guesses.over(caller)) return json(res, 429, { error: 'Too many wrong passwords.' });
+    if (!isAdmin(req)) {
+      guesses.allow(caller);
+      return json(res, 401, { error: 'Wrong password.' });
+    }
+    const route = pathname.slice('/api/admin'.length);
+    if (req.method === 'GET' && route === '/stats') {
+      return json(res, 200, {
+        ...admin.stats(),
+        feedback: { open: store.open().length, total: store.total },
+      } satisfies AdminStats);
+    }
+    if (req.method === 'GET' && route === '/feedback') {
+      return json(res, 200, { feedback: store.list() });
+    }
+    const id = /^\/feedback\/([\w-]{1,64})$/.exec(route)?.[1];
+    if (id && req.method === 'POST') {
+      const body = await readBody(req, 1024);
+      let resolved: unknown;
+      try {
+        resolved = (JSON.parse(body ?? '') as { resolved?: unknown }).resolved;
+      } catch {
+        resolved = undefined;
+      }
+      if (typeof resolved !== 'boolean') return json(res, 400, { error: 'Say resolved or not.' });
+      return json(res, (await store.setResolved(id, resolved)) ? 200 : 404, { ok: true });
+    }
+    if (id && req.method === 'DELETE') {
+      return json(res, (await store.remove(id)) ? 200 : 404, { ok: true });
+    }
+    json(res, 404, { error: 'Not found.' });
+  };
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    if (req.method === 'POST' && (req.url ?? '').split('?')[0] === '/api/feedback') {
+    const route = (req.url ?? '').split('?')[0] ?? '';
+    if (route.startsWith('/api/admin/')) {
+      try {
+        return await handleAdmin(req, res, route);
+      } catch (error) {
+        console.error('admin request failed', error);
+        return json(res, 500, { error: 'Something went wrong.' });
+      }
+    }
+    if (req.method === 'POST' && route === '/api/feedback') {
       return handleFeedback(req, res);
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'method not allowed');

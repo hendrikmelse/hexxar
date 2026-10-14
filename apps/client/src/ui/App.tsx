@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { playSound } from '../audio/audio.js';
 import type { RoomMode, RoomSettingsPatch } from '@hexxar/shared';
 import { useApp } from '../store.js';
+import { Admin } from './Admin.js';
 import { Connecting } from './Connecting.js';
 import { Gate } from './Gate.js';
 import { MapsPage } from './MapsPage.js';
@@ -136,15 +137,21 @@ function ToastText({ message }: { message: string }) {
   );
 }
 
+const isAdminPage = (): boolean => new URLSearchParams(location.search).has('admin');
+
 /** Picks the screen: menu, lobby, or (over the board) the results. */
 export function App({ actions }: { actions: Actions }) {
   return (
     <>
       <Screen actions={actions} />
       <Toast />
-      <FeedbackToggle />
-      <FullscreenToggle />
-      <SoundToggle />
+      {!isAdminPage() && (
+        <>
+          <FeedbackToggle />
+          <FullscreenToggle />
+          <SoundToggle />
+        </>
+      )}
     </>
   );
 }
@@ -161,6 +168,8 @@ function Screen({ actions }: { actions: Actions }) {
   const app = useApp();
   // The dev sound list, at /?sounds.
   if (new URLSearchParams(location.search).has('sounds')) return <SoundPage />;
+  // The admin panel, at /?admin (it asks for a password).
+  if (isAdminPage()) return <Admin />;
   // The dev map previewer, at /?maps.
   if (new URLSearchParams(location.search).has('maps')) return <MapsPage />;
   // The feedback page, opened from the button in the corner, takes the whole screen (over the
