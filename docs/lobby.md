@@ -60,7 +60,7 @@ There is one chat per room, and who may read and write in it depends on where th
 | Finished (reading the result) | no chat                | no chat                        |
 
 - **Players never see spectator chat**, and cannot write during a match. When the match starts the lobby's log is thrown away for everyone (the server sends an empty `replace`), so players do not keep reading it and spectators start a fresh chat. The next lobby (`returnToRoom`) starts empty too.
-- Players who are knocked out (and "spectate" the rest of their match) are still players of it: they have no chat. Only people who joined as spectators do.
+- A player who is knocked out of the match (beaten, or gave up) joins the spectators' chat from then on, and keeps the color they played in; people who came only to watch have no color (their names are light grey). Players still in the match cannot read it.
 - Messages are at most 200 characters (`CHAT_MAX_LENGTH`); control characters (line breaks) are turned into spaces, empty messages are ignored, and one person can send one message every 0.4 seconds (`CHAT_GAP_MS`). The last 50 are kept (`CHAT_HISTORY`) so someone arriving late is caught up.
 - `RoomView.canChat` says whether the receiver may chat right now; the client shows the panel only then. The server sends a `chat` message with `replace: true` and the whole log whenever the chat someone may read changes (joining, becoming a spectator, the match starting) and with `replace: false` for each new message.
 - There is no moderation yet (no mute, no word filter), and chat in public lobbies is between strangers.

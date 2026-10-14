@@ -426,7 +426,18 @@
 
 /* ---- Buttons: surrender and the camera ------------------------------------------------------- */
 
-/* The surrender button at the bottom, a private game's code above it, and the spectator tally above that */
+/* The room code and the spectator count: just right of the clock's card, level with its top */
+#hud .top-info {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* The surrender button at the bottom left */
 #hud .bottom-left {
   position: fixed;
   left: 14px;
@@ -437,7 +448,7 @@
   gap: 10px;
 }
 
-/* A private game's code and the spectator count: small sunken boxes above the surrender button */
+/* A private game's code and the spectator count: small sunken boxes */
 #hud .room-code,
 #hud .spectator-tally {
   padding: 5px 10px;

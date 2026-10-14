@@ -443,7 +443,8 @@ export class Room {
   private chatChannelOf(member: Member): ChatChannel | null {
     if (member.left || member.reviewing) return null;
     if (this.state === 'lobby') return 'lobby';
-    if (this.state === 'running' && member.spectator) return 'spectators';
+    // Someone knocked out of the match (or who gave up) is watching it from then on.
+    if (this.state === 'running' && (member.spectator || this.isOut(member))) return 'spectators';
     return null;
   }
 
@@ -461,7 +462,7 @@ export class Room {
       id: ++this.chatSeq,
       userId: session.userId,
       name: session.name,
-      // Spectators have no color in the game.
+      // Spectators have no color in the game; a player who is out keeps theirs.
       color: member.spectator ? null : member.colorSlot,
       text,
       at: now,

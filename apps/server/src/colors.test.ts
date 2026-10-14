@@ -92,4 +92,30 @@ describe('player colors', () => {
     guests[0]!.say({ type: 'chat', text: 'hello' });
     expect(host.last('chat').messages[0]).toMatchObject({ name: 'Ann', color: null });
   });
+
+  it('stays with a player who is knocked out, who then chats with the spectators', () => {
+    const { host, guests } = royale('Ann', 'Bob', 'Cy');
+    const [ann, bob, cy] = guests as [FakeClient, FakeClient, FakeClient];
+    const watcher = new FakeClient(lobby).hello('Watcher');
+    watcher.say({ type: 'joinRoom', code: host.room!.code });
+    // Ann has color 1; the watcher is a player here (the room is not full), so step out.
+    watcher.say({ type: 'becomeSpectator' });
+    host.say({ type: 'startGame' });
+    expect(ann.room?.canChat).toBe(false);
+    ann.say({ type: 'surrender' });
+    expect(ann.room).toMatchObject({ state: 'running', canChat: true });
+    vi.advanceTimersByTime(1000);
+    ann.say({ type: 'chat', text: 'I am out' });
+    // The watcher sees it in Ann's color; the players still in the match do not.
+    expect(watcher.last('chat').messages[0]).toMatchObject({ name: 'Ann', color: 1 });
+    expect(host.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
+      'I am out',
+    );
+    expect(bob.room?.canChat).toBe(false);
+    expect(cy.room?.canChat).toBe(false);
+    // A real spectator has no color.
+    vi.advanceTimersByTime(1000);
+    watcher.say({ type: 'chat', text: 'hello' });
+    expect(ann.last('chat').messages[0]).toMatchObject({ name: 'Watcher', color: null });
+  });
 });

@@ -101,7 +101,10 @@ export class Hud {
     heading.textContent = 'Players';
     players.append(heading, this.standings);
     const left = el('div', 'left');
-    left.append(status, players);
+    // The room code and the spectator count sit beside the clock's card, outside it.
+    const info = el('div', 'top-info');
+    info.append(this.roomCode, this.tally);
+    left.append(status, players, info);
 
     const top = el('div', 'top');
     top.append(this.banner);
@@ -152,8 +155,7 @@ export class Hud {
     this.tally.hidden = true;
     this.roomCode.hidden = true;
     const bottom = el('div', 'bottom-left');
-    // Stacked, the surrender button at the bottom, the room code above it and the tally above that.
-    bottom.append(this.tally, this.roomCode, this.surrender);
+    bottom.append(this.surrender);
     root.append(left, top, bottom, this.remark, camera, this.referenceAnchor);
     const frame = (): void => {
       this.updateTimer();
