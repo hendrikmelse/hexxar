@@ -3,7 +3,6 @@ import {
   hexEquals,
   hexKey,
   type ClientMessage,
-  parseMatchConfig,
   type Hex,
   type RoomMode,
   type RoomSettingsPatch,
@@ -158,40 +157,8 @@ function announceOut(before: readonly string[]): void {
   appStore.set({ info: { players }, infoSeq: infoSeq + 1 });
 }
 
-/** The empty lobby is on screen, standing in for a room the server has not told us about yet. */
-let placeholderShown = false;
-
-/** Show a duel lobby with nobody across the table at once, before the server has heard of us. */
-function showSearching(): void {
-  const { userId, name } = appStore.get();
-  if (userId === null) return;
-  placeholderShown = true;
-  const placeholder: RoomView = {
-    id: 'searching',
-    code: '',
-    visibility: 'public',
-    state: 'lobby',
-    host: userId,
-    settings: { mode: 'duel', size: 2, mapSize: 'normal', config: parseMatchConfig({}) },
-    players: [{ userId, name, connected: true, playerId: null, color: 0 }],
-    minPlayers: 2,
-    waitMs: 5000,
-    earlyStartAt: null,
-    startVotes: 0,
-    votesNeeded: 0,
-    youVoted: false,
-    spectators: [],
-    spectating: false,
-    canChat: false,
-    serverTime: Date.now(),
-    you: userId,
-  };
-  appStore.set({ room: placeholder });
-}
-
 /** Take the server's word on which room we are in. */
 function applyRoom(room: RoomView | null, previous: RoomView | null): void {
-  placeholderShown = false;
   // From the lobby into the match: a loading bar covers the board for a moment first.
   const launching =
     previous?.state === 'lobby' && room?.state === 'running' && !appStore.get().tutorial;
@@ -429,8 +396,6 @@ function sendName(): void {
 function startQuickPlay(mode: RoomMode): void {
   appStore.set({ error: null });
   sendName();
-  // A duel shows its lobby at once, until the server has answered.
-  if (mode === 'duel') showSearching();
   connection.send({ type: 'quickPlay', mode });
 }
 
@@ -466,7 +431,6 @@ mountUi(document.getElementById('ui')!, {
   },
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
-  // Even from the placeholder lobby: the server gets this after the join, and so takes us back out.
   leaveRoom: () => connection.send({ type: 'leaveRoom' }),
   returnToRoom: () => connection.send({ type: 'returnToRoom' }),
   sendChat: (text) => connection.send({ type: 'chat', text }),
@@ -559,11 +523,6 @@ const connection = connect(url, playerName, {
       case 'rejected':
         if (inMatch()) render(applyMessage(game, message));
         else {
-          if (placeholderShown) {
-            // The server said no to the search: back to the menu.
-            placeholderShown = false;
-            appStore.set({ room: null });
-          }
           appStore.set({ error: message.reason, errorSeq: appStore.get().errorSeq + 1 });
         }
         return;
