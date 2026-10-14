@@ -319,9 +319,23 @@ function meStyle(room: RoomView, player: RoomPlayer): CSSProperties | undefined 
   return { '--me': `${hex >> 16} ${(hex >> 8) & 255} ${hex & 255}` } as CSSProperties;
 }
 
+/** The box that shows a cut-off name in full: where the name is in its player's box. */
+interface NameTip {
+  left: number;
+  top: number;
+  height: number;
+  fontSize: string;
+}
+
+/** How far the name tooltip's box reaches out around the name it covers. */
+const TIP_PAD_X = 10;
+const TIP_PAD_Y = 6;
+/** The width of its border, which pushes the name in from the box's edge as well. */
+const TIP_BORDER = 1;
+
 /**
- * One player's box. A name too long for it is cut off with "...", and hovering the box shows the
- * whole name.
+ * One player's box. A name too long for it is cut off with "...", and hovering the box lays a
+ * raised box over the name, with the whole name in it, set exactly where the cut-off one was.
  */
 function PlayerBox({
   room,
@@ -336,14 +350,32 @@ function PlayerBox({
   max: number;
   min: number;
 }) {
+  const box = useRef<HTMLDivElement>(null);
   const [clipped, setClipped] = useState(false);
+  const [tip, setTip] = useState<NameTip | null>(null);
   const { player } = entry;
+
+  const showTip = (): void => {
+    const name = box.current?.querySelector<HTMLElement>('.name');
+    if (!clipped || !box.current || !name) return;
+    const outer = box.current.getBoundingClientRect();
+    const inner = name.getBoundingClientRect();
+    setTip({
+      left: inner.left - outer.left,
+      top: inner.top - outer.top,
+      height: inner.height,
+      fontSize: getComputedStyle(name).fontSize,
+    });
+  };
+
   return (
     <div
+      ref={box}
       data-flip={player.userId}
-      data-tip={clipped ? player.name : undefined}
       style={meStyle(room, player)}
       className={`${base} name-tip ${boxClass(entry, player.connected)} ${player.userId === room.you ? 'me' : ''}`}
+      onMouseEnter={showTip}
+      onMouseLeave={() => setTip(null)}
     >
       <FitText
         className="name"
@@ -354,6 +386,23 @@ function PlayerBox({
         onClip={setClipped}
       />
       {!player.connected && <em>disconnected</em>}
+      {tip && (
+        <span
+          className="name-full"
+          aria-hidden="true"
+          style={{
+            left: tip.left - TIP_PAD_X - TIP_BORDER,
+            top: tip.top - TIP_PAD_Y - TIP_BORDER,
+            padding: `${TIP_PAD_Y}px ${TIP_PAD_X}px`,
+            height: tip.height,
+            lineHeight: `${tip.height}px`,
+            fontSize: tip.fontSize,
+            color: nameColor(room, player),
+          }}
+        >
+          {player.name}
+        </span>
+      )}
     </div>
   );
 }

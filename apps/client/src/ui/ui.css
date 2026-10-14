@@ -1213,9 +1213,7 @@
 /* The tooltip: the app's own raised dark panel, shown the instant the pointer arrives (or after a tap) */
 
 #ui .tip[data-tip]::after,
-#ui .name-tip[data-tip]::after,
-#ui .tip[data-tip]::before,
-#ui .name-tip[data-tip]::before {
+#ui .tip[data-tip]::before {
   position: absolute;
   left: 50%;
   opacity: 0;
@@ -1225,8 +1223,7 @@
     transform 0.08s ease-out;
 }
 
-#ui .tip[data-tip]::after,
-#ui .name-tip[data-tip]::after {
+#ui .tip[data-tip]::after {
   content: attr(data-tip);
   bottom: calc(100% + 11px);
   z-index: 30;
@@ -1247,8 +1244,7 @@
 
 /* A little arrow pointing down at the button */
 
-#ui .tip[data-tip]::before,
-#ui .name-tip[data-tip]::before {
+#ui .tip[data-tip]::before {
   content: '';
   bottom: calc(100% + 5px);
   z-index: 31;
@@ -1260,14 +1256,12 @@
   transform: translate(-50%, 4px) rotate(45deg);
 }
 
-#ui .tip[data-tip].tapped::after,
-#ui .name-tip[data-tip].tapped::after {
+#ui .tip[data-tip].tapped::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
 
-#ui .tip[data-tip].tapped::before,
-#ui .name-tip[data-tip].tapped::before {
+#ui .tip[data-tip].tapped::before {
   opacity: 1;
   transform: translate(-50%, 0) rotate(45deg);
 }
@@ -1278,14 +1272,12 @@
  */
 
 @media (hover: hover) and (pointer: fine) {
-  #ui .tip[data-tip]:hover::after,
-  #ui .name-tip[data-tip]:hover::after {
+  #ui .tip[data-tip]:hover::after {
     opacity: 1;
     transform: translate(-50%, 0);
   }
 
-  #ui .tip[data-tip]:hover::before,
-  #ui .name-tip[data-tip]:hover::before {
+  #ui .tip[data-tip]:hover::before {
     opacity: 1;
     transform: translate(-50%, 0) rotate(45deg);
   }
@@ -1293,17 +1285,41 @@
 
 @media (prefers-reduced-motion: reduce) {
   #ui .tip[data-tip]::after,
-  #ui .name-tip[data-tip]::after,
-  #ui .tip[data-tip]::before,
-  #ui .name-tip[data-tip]::before {
+  #ui .tip[data-tip]::before {
     transition: none;
   }
 }
 
-/* A player's box, whose name may be cut off: it carries the same tooltip */
+/*
+ * A player's box, with a cut-off name: hovering it lays a raised box (the tooltip's panel) over the
+ * name, with the whole name set exactly where the cut-off one is. Its place and size are measured
+ * from the name itself (see PlayerBox).
+ */
 
 #ui .name-tip {
   position: relative;
+}
+
+/* Over the boxes after it, which would otherwise be painted on top of the tooltip */
+#ui .name-tip:hover {
+  z-index: 5;
+}
+
+#ui .name-full {
+  position: absolute;
+  z-index: 30;
+  box-sizing: content-box;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #eef5ff;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #2a2f3f 0%, #1e222d 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 3px 0 #10131a,
+    0 10px 20px rgba(0, 0, 0, 0.5);
 }
 
 /* Slider rows: the slider, with its value large on the right instead of small above it */
