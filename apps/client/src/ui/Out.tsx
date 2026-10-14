@@ -19,7 +19,7 @@ export function Out({ actions }: { actions: Actions }) {
           <Chat actions={actions} title="Spectator chat" note="Players cannot see this" match />
         )}
         <div className="spectating">
-          <span>Spectating</span>
+          <h3 className="spectating-title">Spectating</h3>
           <div className="spectating-buttons">
             <button data-sound="ui.back" onClick={actions.leaveRoom}>
               Main menu
