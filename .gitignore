@@ -6,3 +6,5 @@ dist
 !.env.example
 *.tsbuildinfo
 .DS_Store
+# Feedback kept by the dev server (DATA_DIR defaults to ./data, next to where the server runs)
+apps/server/data
