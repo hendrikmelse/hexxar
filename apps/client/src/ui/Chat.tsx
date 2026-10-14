@@ -7,7 +7,7 @@ import type { Actions } from './App.js';
 /** How close to the bottom the log has to be scrolled for new messages to keep it there. */
 const STICK_PX = 40;
 /** How far one turn of the mouse wheel scrolls the log, compared with the browser's usual. */
-const WHEEL_SCALE = 0.5;
+const WHEEL_SCALE = 0.333;
 /** How long the log takes to cover most of the way to where the wheel has sent it (a time constant, in ms). */
 const GLIDE_MS = 90;
 
@@ -36,12 +36,23 @@ export function Chat({
   const log = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const stuck = useRef(true);
+  /** The log is gliding down to the newest message: it is still at the bottom, as far as it is concerned. */
+  const following = useRef(false);
+  /** Set up with the wheel's gliding: eases the log down to the end. */
+  const glideToEnd = useRef<(() => void) | null>(null);
+  const shownLast = useRef<number | undefined>(undefined);
 
   // Keep up with new messages, unless the reader has scrolled up to look at older ones.
   const last = app.chat[app.chat.length - 1]?.id;
   useEffect(() => {
     const el = log.current;
-    if (el && stuck.current) el.scrollTop = el.scrollHeight;
+    if (!el || !stuck.current) return;
+    // A new message glides the log down to it (from however far up it was scrolled); opening the
+    // chat, with nothing new, just puts it at the end.
+    const arrived = shownLast.current !== last;
+    shownLast.current = last;
+    if (arrived && glideToEnd.current) glideToEnd.current();
+    else el.scrollTop = el.scrollHeight;
   }, [last, open]);
   useEffect(() => {
     if (open) setSeen(app.chat.length);
@@ -67,13 +78,29 @@ export function Chat({
     let before = 0;
     const furthest = (): number => el.scrollHeight - el.clientHeight;
     const glide = (now: number): void => {
-      target = Math.min(target, Math.max(0, furthest()));
+      // On its way to the newest message, it goes on to wherever the end is by then.
+      target = following.current
+        ? Math.max(0, furthest())
+        : Math.min(target, Math.max(0, furthest()));
       position += (target - position) * (1 - Math.exp(-(now - before) / GLIDE_MS));
       before = now;
       if (Math.abs(target - position) < 0.5) position = target;
       el.scrollTop = position;
       frame = position === target ? 0 : requestAnimationFrame(glide);
+      if (frame === 0) following.current = false;
     };
+    const toEnd = (): void => {
+      if (calm) {
+        el.scrollTop = el.scrollHeight;
+        return;
+      }
+      following.current = true;
+      if (frame !== 0) return;
+      target = position = el.scrollTop;
+      before = performance.now();
+      frame = requestAnimationFrame(glide);
+    };
+    glideToEnd.current = toEnd;
     const onWheel = (event: WheelEvent): void => {
       if (event.ctrlKey) return;
       const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? el.clientHeight : 1;
@@ -83,6 +110,8 @@ export function Chat({
       // Already at the end it is heading for: the wheel carries on to the page as usual.
       if (step === 0 || (step < 0 && target <= 0) || (step > 0 && target >= furthest())) return;
       event.preventDefault();
+      // Whoever turns the wheel is in charge of where the log goes now.
+      following.current = false;
       target = Math.min(furthest(), Math.max(0, target + step));
       if (calm) {
         el.scrollTop = position = target;
@@ -95,6 +124,7 @@ export function Chat({
     return () => {
       el.removeEventListener('wheel', onWheel);
       cancelAnimationFrame(frame);
+      glideToEnd.current = null;
     };
   }, []);
 
@@ -121,7 +151,10 @@ export function Chat({
             aria-live="polite"
             onScroll={(event) => {
               const el = event.currentTarget;
-              stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+              // On its way down to the newest message, the log has not left the bottom.
+              if (!following.current) {
+                stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+              }
             }}
           >
             {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
