@@ -3103,6 +3103,9 @@
 /* How many messages came in while it was shut */
 #ui .chat-unread {
   position: absolute;
+  /* Above the button even when it is raised for its tooltip (see .hint:hover in hud.css) */
+  z-index: 6;
+  pointer-events: none;
   top: -6px;
   right: -6px;
   min-width: 18px;
