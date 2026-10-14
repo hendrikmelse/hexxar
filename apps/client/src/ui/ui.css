@@ -2502,12 +2502,18 @@
   letter-spacing: 0.02em;
 }
 
+/* The separator: a small round dot, level with the middle of the lettering */
 #ui .spectator-count .dot {
-  margin: 0 6px;
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 0;
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 10px;
+  border-radius: 50%;
+  background: currentColor;
   vertical-align: middle;
+  /* "Middle" is the middle of the lowercase letters: a touch up puts it level with the capitals too */
+  position: relative;
+  top: -1px;
 }
 
 /* "Enjoying Hexxar? Support it." at the bottom of the title screen and quick play lobbies */

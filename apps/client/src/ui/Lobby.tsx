@@ -140,7 +140,7 @@ export function Lobby({ actions }: { actions: Actions }) {
               {room.spectators.length} spectator{room.spectators.length === 1 ? '' : 's'}
               {room.spectating && (
                 <>
-                  <span className="dot">·</span>
+                  <span className="dot" aria-hidden="true" />
                   You are a spectator
                 </>
               )}
