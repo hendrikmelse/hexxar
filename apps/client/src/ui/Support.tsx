@@ -55,6 +55,22 @@ function QrIcon() {
   );
 }
 
+/** The mark for a link that opens in a new tab: an arrow leaving a box. */
+function NewTabIcon() {
+  return (
+    <svg className="new-tab-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 /** The card that opens from the support link: PayPal and Venmo, each showing its QR code on a click. */
 function SupportCard({ onClose }: { onClose: () => void }) {
   // One of the two codes is always showing, Venmo's to begin with.
@@ -96,6 +112,7 @@ function SupportCard({ onClose }: { onClose: () => void }) {
                   <span className="logo-chip">
                     <ProviderLogo id={id} height={logoHeight} />
                   </span>
+                  <NewTabIcon />
                 </button>
                 <button
                   className={`support-qr-button hint ${open ? 'on' : ''}`}
