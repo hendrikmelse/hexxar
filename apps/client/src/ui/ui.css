@@ -2938,8 +2938,12 @@
   width: 100%;
   height: 100%;
   padding: 0;
-  overflow: hidden;
   transition: padding 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Only while it opens or shuts is what sticks out of the window cut off */
+#ui .chat.moving .chat-body {
+  overflow: hidden;
 }
 
 #ui .chat.open .chat-body {
@@ -3009,7 +3013,8 @@
 #ui .chat.match {
   position: fixed;
   left: 14px;
-  bottom: 14px;
+  /* Clear of the screen's edge by enough for the button's tooltip, which shows below it */
+  bottom: 52px;
   z-index: 20;
   pointer-events: auto;
 }

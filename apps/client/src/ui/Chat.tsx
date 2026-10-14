@@ -6,6 +6,8 @@ import type { Actions } from './App.js';
 
 /** How close to the bottom the log has to be scrolled for new messages to keep it there. */
 const STICK_PX = 40;
+/** A little longer than the window takes to open or shut (see ui.css). */
+const SETTLE_MS = 320;
 /** How far one turn of the mouse wheel scrolls the log, compared with the browser's usual. */
 const WHEEL_SCALE = 0.333;
 /** How long the log takes to cover most of the way to where the wheel has sent it (a time constant, in ms). */
@@ -136,9 +138,23 @@ export function Chat({
     stuck.current = true;
   };
 
+  // While the window opens or shuts, whatever sticks out of it is cut off; once it has settled,
+  // nothing is, so the button's tooltip can show outside it.
+  const [moving, setMoving] = useState(false);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => void (settle.current && clearTimeout(settle.current)), []);
+  const toggle = (): void => {
+    setOpen(!open);
+    setMoving(true);
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => setMoving(false), SETTLE_MS);
+  };
+
   const label = open ? 'Close the chat' : 'Open the chat';
   return (
-    <div className={`chat ${match ? 'match' : 'lobby-chat'} ${open ? 'open' : 'closed'}`}>
+    <div
+      className={`chat ${match ? 'match' : 'lobby-chat'} ${open ? 'open' : 'closed'} ${moving ? 'moving' : ''}`}
+    >
       {/* Everything stays in place while it opens and shuts, so the size can animate. */}
       <div className="chat-body">
         <h3 className="chat-head">{title}</h3>
@@ -179,12 +195,13 @@ export function Chat({
           {/* In the bottom left of the window; shut, it is all there is. */}
           <button
             type="button"
-            className="chat-toggle"
+            className="chat-toggle hint"
             data-sound={open ? 'ui.back' : undefined}
             aria-expanded={open}
             aria-label={label}
-            title={label}
-            onClick={() => setOpen(!open)}
+            data-tip={label}
+            data-tip-pos="below-center"
+            onClick={toggle}
           >
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
               <path
