@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '@hexxar/shared';
+import { playSound } from '../audio/audio.js';
 import { paletteColor } from '../board.js';
 import { setChatOpen, useApp } from '../store.js';
 import type { Actions } from './App.js';
@@ -163,6 +164,7 @@ export function Chat({
     event.preventDefault();
     if (text.trim() === '') return;
     actions.sendChat(text);
+    playSound('chat.send');
     setText('');
     stuck.current = true;
   };
@@ -250,6 +252,7 @@ export function Chat({
           <button
             type="submit"
             className="chat-send primary"
+            data-sound="none"
             tabIndex={open ? 0 : -1}
             disabled={text.trim() === ''}
           >
