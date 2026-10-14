@@ -113,8 +113,6 @@ export const chatMessageSchema = z.object({
   /** The sender's user id (compare with `you`). */
   userId: z.string(),
   name: z.string(),
-  /** The sender's color in the game (a palette index), or null for a spectator. */
-  color: z.number().int().nonnegative().nullable(),
   text: z.string(),
   /** Server time, ms since epoch. */
   at: z.number(),

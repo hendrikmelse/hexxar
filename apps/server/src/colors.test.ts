@@ -83,14 +83,17 @@ describe('player colors', () => {
     }
   });
 
-  it('is on chat messages, and spectators have none', () => {
+  it('tells the chat who sent a message, whose color is in the room: a spectator has none', () => {
+    // Messages carry no color of their own: the chat colors a name by its sender's place in the
+    // room now, so it changes when they switch.
     const { host, guests } = royale('Ann');
     host.say({ type: 'chat', text: 'hi' });
-    expect(guests[0]!.last('chat').messages[0]).toMatchObject({ name: 'Host', color: 0 });
+    const message = guests[0]!.last('chat').messages[0]!;
+    expect(message).toMatchObject({ name: 'Host', userId: host.room!.you });
+    expect(message).not.toHaveProperty('color');
+    expect(colorsOf(guests[0]!)).toEqual({ Host: 0, Ann: 1 });
     guests[0]!.say({ type: 'becomeSpectator' });
-    vi.advanceTimersByTime(1000);
-    guests[0]!.say({ type: 'chat', text: 'hello' });
-    expect(host.last('chat').messages[0]).toMatchObject({ name: 'Ann', color: null });
+    expect(colorsOf(host)).toEqual({ Host: 0 });
   });
 
   it('stays with a player who is knocked out, who then chats with the spectators', () => {
@@ -106,8 +109,9 @@ describe('player colors', () => {
     expect(ann.room).toMatchObject({ state: 'running', canChat: true });
     vi.advanceTimersByTime(1000);
     ann.say({ type: 'chat', text: 'I am out' });
-    // The watcher sees it in Ann's color; the players still in the match do not.
-    expect(watcher.last('chat').messages[0]).toMatchObject({ name: 'Ann', color: 1 });
+    // The watcher sees it, and Ann is still a player with her color; the players still in the match do not.
+    expect(watcher.last('chat').messages[0]).toMatchObject({ name: 'Ann' });
+    expect(colorsOf(watcher).Ann).toBe(1);
     expect(host.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
       'I am out',
     );
@@ -116,6 +120,7 @@ describe('player colors', () => {
     // A real spectator has no color.
     vi.advanceTimersByTime(1000);
     watcher.say({ type: 'chat', text: 'hello' });
-    expect(ann.last('chat').messages[0]).toMatchObject({ name: 'Watcher', color: null });
+    expect(ann.last('chat').messages[0]).toMatchObject({ name: 'Watcher' });
+    expect(colorsOf(ann)).not.toHaveProperty('Watcher');
   });
 });

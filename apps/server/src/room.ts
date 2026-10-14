@@ -462,8 +462,6 @@ export class Room {
       id: ++this.chatSeq,
       userId: session.userId,
       name: session.name,
-      // Spectators have no color in the game; a player who is out keeps theirs.
-      color: member.spectator ? null : member.colorSlot,
       text,
       at: now,
     };
