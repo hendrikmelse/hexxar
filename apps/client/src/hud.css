@@ -486,6 +486,11 @@
   line-height: 1.1;
   letter-spacing: 0.14em;
   color: #eef5ff;
+  /* The HUD lets clicks through to the board; the code takes them so it can be selected and copied.
+     One click selects all of it. */
+  pointer-events: auto;
+  user-select: all;
+  cursor: text;
 }
 
 #hud .spectator-tally {
