@@ -63,32 +63,34 @@ export function Chat({
       <div className="chat-body">
         <h3 className="chat-head">{title}</h3>
         {note && <p className="chat-note">{note}</p>}
-        <div
-          className="chat-log"
-          ref={log}
-          role="log"
-          aria-live="polite"
-          onScroll={(event) => {
-            const el = event.currentTarget;
-            stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-          }}
-        >
-          {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
-          {app.chat.map((message) => (
-            <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
-              <strong
-                style={
-                  message.color === null
-                    ? undefined
-                    : { color: `#${paletteColor(message.color).toString(16).padStart(6, '0')}` }
-                }
-              >
-                {message.name}
-                {message.userId === you && ' (you)'}
-              </strong>{' '}
-              {message.text}
-            </p>
-          ))}
+        <div className="chat-log">
+          <div
+            className="chat-scroll"
+            ref={log}
+            role="log"
+            aria-live="polite"
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+            }}
+          >
+            {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
+            {app.chat.map((message) => (
+              <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
+                <strong
+                  style={
+                    message.color === null
+                      ? undefined
+                      : { color: `#${paletteColor(message.color).toString(16).padStart(6, '0')}` }
+                  }
+                >
+                  {message.name}
+                  {message.userId === you && ' (you)'}
+                </strong>{' '}
+                {message.text}
+              </p>
+            ))}
+          </div>
         </div>
         <form className="chat-form" onSubmit={submit}>
           {/* In the bottom left of the window; shut, it is all there is. */}

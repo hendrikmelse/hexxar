@@ -3034,19 +3034,30 @@
   color: #6f7890;
 }
 
+/*
+ * The log is a sunken well; the scrolling part is an inner box kept clear of the well's edge all
+ * round, so its scrollbar never runs into the rounded corners.
+ */
 #ui .chat-log {
+  display: flex;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  /* A slim dark scrollbar, as in the rest of the app, rather than the browser's white one */
-  scrollbar-width: thin;
-  scrollbar-color: #3a4156 transparent;
-  padding: 6px 8px;
   border-radius: 8px;
   background: #0f1117;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55) inset;
   color: #cfd5e4;
+}
+
+#ui .chat-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
   overflow-wrap: anywhere;
+  margin: 8px 6px 8px 0;
+  padding: 0 8px 0 10px;
+  /* A slim dark scrollbar, as in the rest of the app, rather than the browser's white one */
+  scrollbar-width: thin;
+  scrollbar-color: #3a4156 transparent;
 }
 
 #ui .chat-log p {
