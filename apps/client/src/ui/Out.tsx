@@ -20,9 +20,20 @@ export function Out({ actions }: { actions: Actions }) {
         )}
         <div className="spectating">
           <span>Spectating</span>
-          <button data-sound="ui.back" onClick={actions.leaveRoom}>
-            Main menu
-          </button>
+          <div className="spectating-buttons">
+            <button data-sound="ui.back" onClick={actions.leaveRoom}>
+              Main menu
+            </button>
+            {/* A quick game: the next one is a click away (a private room has its room to go back to). */}
+            {app.room?.visibility === 'public' && (
+              <button
+                className="primary"
+                onClick={() => actions.playAgain(app.room!.settings.mode)}
+              >
+                Play again
+              </button>
+            )}
+          </div>
         </div>
       </>
     );
