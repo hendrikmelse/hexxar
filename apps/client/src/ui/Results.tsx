@@ -20,6 +20,16 @@ export function Results({ actions }: { actions: Actions }) {
       {room.canChat && <Chat actions={actions} title="Chat" match />}
       <div className="end-card">
         <div className="end-box" role="dialog" aria-label={banner}>
+          {/* Puts the card away and leaves you spectating, with the chat to talk the game over in. */}
+          <button
+            className="end-close"
+            data-sound="ui.back"
+            aria-label="Close"
+            title="Close"
+            onClick={actions.spectate}
+          >
+            ×
+          </button>
           <Logo banner={banner} tone={won ? 'win' : app.winner !== null ? 'lose' : 'neutral'} />
           {app.winner !== null && (
             <div className="winner">

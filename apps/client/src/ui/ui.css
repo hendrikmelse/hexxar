@@ -1968,6 +1968,7 @@
 }
 
 #ui .end-box {
+  position: relative;
   pointer-events: auto;
   box-sizing: border-box;
   width: min(420px, 100%);
@@ -1984,6 +1985,34 @@
     0 4px 0 #10131a,
     0 16px 28px rgba(0, 0, 0, 0.55);
   animation: finish-pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+/* The close button in the card's top right corner */
+#ui .end-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #8a93a8;
+  font-size: 22px;
+  line-height: 1;
+}
+
+#ui .end-close:hover:not(:disabled) {
+  background: transparent;
+  color: #ffffff;
+}
+
+#ui .end-close:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
 }
 
 #ui .end-box p {

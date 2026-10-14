@@ -11,13 +11,19 @@ import { Logo } from './Logo.js';
 export function Out({ actions }: { actions: Actions }) {
   const app = useApp();
 
+  const finished = app.room?.state === 'finished';
+
   // Someone in a private room to watch is a spectator from the start.
   if (app.spectating || app.room?.spectating) {
     return (
       <>
-        {app.room?.canChat && (
-          <Chat actions={actions} title="Spectator chat" note="Players cannot see this" match />
-        )}
+        {app.room?.canChat &&
+          (finished ? (
+            // The match is over: everyone is in this chat, and nothing in it is a secret.
+            <Chat actions={actions} title="Chat" match />
+          ) : (
+            <Chat actions={actions} title="Spectator chat" note="Players cannot see this" match />
+          ))}
         <div className="spectating">
           <h3 className="spectating-title">Spectating</h3>
           <div className="spectating-buttons">
@@ -31,6 +37,12 @@ export function Out({ actions }: { actions: Actions }) {
                 onClick={() => actions.playAgain(app.room!.settings.mode)}
               >
                 Play again
+              </button>
+            )}
+            {/* The match is over, in a private room: the way back to the room, as on the result card. */}
+            {app.room?.visibility === 'private' && finished && (
+              <button className="primary" data-sound="ui.back" onClick={actions.returnToRoom}>
+                Back to room
               </button>
             )}
           </div>
