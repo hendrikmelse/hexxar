@@ -312,6 +312,13 @@ function nameColor(room: RoomView, player: RoomPlayer): string | undefined {
   return `#${paletteColor(player.color).toString(16).padStart(6, '0')}`;
 }
 
+/** Your own box is lit in your color: the glow reads it from `--me` (red, green and blue). */
+function meStyle(room: RoomView, player: RoomPlayer): CSSProperties | undefined {
+  if (player.userId !== room.you || player.color === null) return undefined;
+  const hex = paletteColor(player.color);
+  return { '--me': `${hex >> 16} ${(hex >> 8) & 255} ${hex & 255}` } as CSSProperties;
+}
+
 /** A grid of boxes, one per place in the game, filled in as players join and emptied as they leave. */
 function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const grid = useRef<HTMLDivElement>(null);
@@ -340,6 +347,7 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
           <div
             key={entry.player.userId}
             data-flip={entry.player.userId}
+            style={meStyle(room, entry.player)}
             className={`roster-slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
           >
             <FitText
@@ -367,6 +375,7 @@ function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
     entry ? (
       <div
         key={entry.player.userId}
+        style={meStyle(room, entry.player)}
         className={`slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
       >
         <FitText
