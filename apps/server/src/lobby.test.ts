@@ -206,7 +206,13 @@ describe('Lobby', () => {
         host.say({ type: 'leaveRoom' });
         return Object.keys(snapshot.state.tiles).length;
       };
-      const [small, normal, large] = [tilesAt('small'), tilesAt('normal'), tilesAt('large')];
+      // Boards are random, and the sizes overlap: one board of each size is out of order about 1
+      // time in 90. On average, though, a bigger map has clearly more tiles (the averages of 9
+      // boards each were never out of order in 200,000 draws).
+      const BOARDS = 9;
+      const averageAt = (mapSize: 'small' | 'normal' | 'large') =>
+        Array.from({ length: BOARDS }, () => tilesAt(mapSize)).reduce((a, b) => a + b, 0) / BOARDS;
+      const [small, normal, large] = [averageAt('small'), averageAt('normal'), averageAt('large')];
       expect(small).toBeLessThan(normal);
       expect(normal).toBeLessThan(large);
     });
