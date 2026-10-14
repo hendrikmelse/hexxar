@@ -58,57 +58,53 @@ export function Chat({
   const label = open ? 'Close the chat' : 'Open the chat';
   return (
     <div className={`chat ${match ? 'match' : 'lobby-chat'} ${open ? 'open' : 'closed'}`}>
-      {open && (
-        <>
-          <h3 className="chat-head">{title}</h3>
-          {note && <p className="chat-note">{note}</p>}
-          <div
-            className="chat-log"
-            ref={log}
-            role="log"
-            aria-live="polite"
-            onScroll={(event) => {
-              const el = event.currentTarget;
-              stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-            }}
-          >
-            {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
-            {app.chat.map((message) => (
-              <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
-                <strong>{message.name}</strong> {message.text}
-              </p>
-            ))}
-          </div>
-        </>
-      )}
-      <form className="chat-form" onSubmit={submit}>
-        {/* In the bottom left of the window; shut, it is all there is. */}
-        <button
-          type="button"
-          className="chat-toggle"
-          data-sound="none"
-          aria-expanded={open}
-          aria-label={label}
-          title={label}
-          onClick={() => setOpen(!open)}
+      {/* Everything stays in place while it opens and shuts, so the size can animate. */}
+      <div className="chat-body">
+        <h3 className="chat-head">{title}</h3>
+        {note && <p className="chat-note">{note}</p>}
+        <div
+          className="chat-log"
+          ref={log}
+          role="log"
+          aria-live="polite"
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+          }}
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path
-              d={
-                open
-                  ? 'M9 4v5H4m16 0h-5V4M4 15h5v5m6 0v-5h5'
-                  : 'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'
-              }
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-          {unread > 0 && <b className="chat-unread">{unread > 9 ? '9+' : unread}</b>}
-        </button>
-        {open && (
+          {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
+          {app.chat.map((message) => (
+            <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
+              <strong>{message.name}</strong> {message.text}
+            </p>
+          ))}
+        </div>
+        <form className="chat-form" onSubmit={submit}>
+          {/* In the bottom left of the window; shut, it is all there is. */}
+          <button
+            type="button"
+            className="chat-toggle"
+            data-sound="none"
+            aria-expanded={open}
+            aria-label={label}
+            title={label}
+            onClick={() => setOpen(!open)}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path
+                d={
+                  open
+                    ? 'M6 9l6 6 6-6'
+                    : 'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'
+                }
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </svg>
+          </button>
           <input
             ref={input}
             type="text"
@@ -117,6 +113,7 @@ export function Chat({
             placeholder="Say something..."
             aria-label="Chat message"
             autoComplete="off"
+            tabIndex={open ? 0 : -1}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
               // Typing must not trigger the game's shortcuts.
@@ -124,8 +121,9 @@ export function Chat({
               if (event.key === 'Escape') event.currentTarget.blur();
             }}
           />
-        )}
-      </form>
+        </form>
+      </div>
+      {unread > 0 && <b className="chat-unread">{unread > 9 ? '9+' : unread}</b>}
     </div>
   );
 }

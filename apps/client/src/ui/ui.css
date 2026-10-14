@@ -2816,17 +2816,29 @@
   box-sizing: border-box;
 }
 
-/* Shut, the chat is a button; open, a window. Either way it grows from the bottom left corner. */
+/*
+ * Shut, the chat is a button; open, a window. It grows from the bottom left corner, and the size,
+ * the skin and the writing all animate. The sizes are fixed so they can: the window is as tall as
+ * the lobby card beside it.
+ */
 #ui .chat {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  position: relative;
+  isolation: isolate;
   box-sizing: border-box;
+  width: 40px;
+  height: 40px;
   font-size: 14px;
+  transition:
+    width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-#ui .chat.open {
-  padding: 16px;
+/* The window's look, faded in as it opens */
+#ui .chat::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   border-radius: 12px;
   background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -2834,24 +2846,68 @@
     0 1px 0 rgba(255, 255, 255, 0.09) inset,
     0 6px 0 #10131a,
     0 22px 38px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
 }
 
-/* Beside the card, as wide as it; open, as tall as it too */
+#ui .chat.open::before {
+  opacity: 1;
+}
+
+#ui .chat-body {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  transition: padding 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+#ui .chat.open .chat-body {
+  padding: 16px;
+}
+
+/* The writing fades out as the window folds, and in as it opens */
+#ui .chat-head,
+#ui .chat-note,
+#ui .chat-log,
+#ui .chat-form input {
+  transition:
+    opacity 0.2s,
+    visibility 0s linear 0.2s;
+}
+
+#ui .chat.closed .chat-head,
+#ui .chat.closed .chat-note,
+#ui .chat.closed .chat-log,
+#ui .chat.closed .chat-form input {
+  opacity: 0;
+  visibility: hidden;
+}
+
+#ui .chat.open .chat-head,
+#ui .chat.open .chat-note,
+#ui .chat.open .chat-log,
+#ui .chat.open .chat-form input {
+  transition-delay: 0.08s;
+}
+
+/* Beside the card, as wide and as tall as it when open */
 #ui .chat.lobby-chat {
   position: absolute;
   bottom: 0;
   left: calc(100% + 20px);
-  width: 100%;
   pointer-events: auto;
 }
 
 #ui .chat.lobby-chat.open {
-  top: 0;
-  min-height: 300px;
-}
-
-#ui .chat.lobby-chat.closed {
-  width: auto;
+  width: 100%;
+  height: 100%;
 }
 
 /* Too narrow to hang beside the card (the card is centered, so it needs room on both sides) */
@@ -2863,37 +2919,30 @@
   }
 
   #ui .chat.lobby-chat {
-    position: static;
-  }
-
-  #ui .chat.lobby-chat.closed {
+    position: relative;
+    left: auto;
+    bottom: auto;
     align-self: flex-start;
   }
 
-  #ui .chat.lobby-chat .chat-log {
-    flex: none;
-    height: 200px;
+  #ui .chat.lobby-chat.open {
+    width: 100%;
+    height: 340px;
   }
 }
 
-/* A spectator's, over the board, centered above the "Spectating" bar */
+/* A spectator's, over the board, above the "Spectating" bar */
 #ui .chat.match {
   position: fixed;
-  left: 50%;
+  left: max(14px, calc(50% - 190px));
   bottom: 74px;
   z-index: 20;
-  transform: translateX(-50%);
-  width: min(380px, calc(100vw - 28px));
   pointer-events: auto;
 }
 
-#ui .chat.match.closed {
-  width: auto;
-}
-
-#ui .chat.match .chat-log {
-  flex: none;
-  height: min(40vh, 280px);
+#ui .chat.match.open {
+  width: min(380px, calc(100vw - 28px));
+  height: min(calc(40vh + 110px), 400px);
 }
 
 #ui .chat-head {
@@ -2913,7 +2962,7 @@
 
 #ui .chat-log {
   flex: 1;
-  min-height: 120px;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 8px;
   border-radius: 8px;
@@ -2976,4 +3025,16 @@
   font-size: 11px;
   line-height: 18px;
   text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .chat,
+  #ui .chat::before,
+  #ui .chat-body,
+  #ui .chat-head,
+  #ui .chat-note,
+  #ui .chat-log,
+  #ui .chat-form input {
+    transition: none;
+  }
 }
