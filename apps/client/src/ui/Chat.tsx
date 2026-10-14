@@ -73,6 +73,21 @@ export function Chat({
     if (arrived && glideToEnd.current) glideToEnd.current();
     else el.scrollTop = el.scrollHeight;
   }, [last, open]);
+  // Opening the chat always shows the very end of it, however far up it was left, and keeps showing
+  // it while the window grows to its full size (which moves the end).
+  useEffect(() => {
+    const el = log.current;
+    if (!open || !el) return;
+    stuck.current = true;
+    const until = performance.now() + SETTLE_MS;
+    let frame = 0;
+    const pin = (): void => {
+      el.scrollTop = el.scrollHeight;
+      if (performance.now() < until) frame = requestAnimationFrame(pin);
+    };
+    pin();
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   useEffect(() => {
     if (open) setSeen(app.chat.length);
   }, [open, last]);
