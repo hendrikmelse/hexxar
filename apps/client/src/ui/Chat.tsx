@@ -94,7 +94,7 @@ export function Chat({
           <button
             type="button"
             className="chat-toggle"
-            data-sound="none"
+            data-sound={open ? 'ui.back' : undefined}
             aria-expanded={open}
             aria-label={label}
             title={label}
