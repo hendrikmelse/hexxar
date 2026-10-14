@@ -2569,6 +2569,23 @@
   color: #6f7890;
 }
 
+/* The mark for "opens in a new tab", at the right end, so the logo stays in the middle */
+#ui .support-pay {
+  position: relative;
+}
+
+#ui .support-pay .new-tab-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.7;
+}
+
+#ui .support-pay:hover:not(:disabled) .new-tab-icon {
+  opacity: 1;
+}
+
 #ui .support-pay {
   /* Both rows the same height, whichever logo is taller */
   height: 52px;
