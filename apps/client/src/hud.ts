@@ -10,6 +10,8 @@ const css = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 const CONFIRM_MS = 4000;
 /** How long a remark above the surrender button stays up. */
 const REMARK_MS = 3500;
+/** The reference sheet takes this long to turn back into its button (a little over its closing animation in hud.css). */
+const REFERENCE_CLOSE_MS = 260;
 
 /** What the HUD's buttons do. */
 export interface HudActions {
@@ -59,6 +61,7 @@ export class Hud {
   private readonly reference = el('div', 'reference');
   private readonly referenceBody = el('div', 'reference-body');
   private readonly referenceButton: HTMLButtonElement;
+  private tipTimer: ReturnType<typeof setTimeout> | null = null;
   /** Holds the sheet and its button: the button's tooltip must not be cut off by the sheet's edge. */
   private readonly referenceAnchor = el('div', 'reference-anchor');
   private game: GameView | null = null;
@@ -169,8 +172,11 @@ export class Hud {
     this.reference.classList.toggle('open', open);
     this.referenceAnchor.classList.toggle('open', open);
     this.referenceButton.textContent = open ? '×' : '?';
+    if (this.tipTimer) clearTimeout(this.tipTimer);
+    this.tipTimer = null;
+    this.referenceAnchor.classList.toggle('closing', !open);
     if (open) delete this.referenceButton.dataset.tip;
-    else this.referenceButton.dataset.tip = 'Reference';
+    else this.tipTimer = setTimeout(() => this.restoreReferenceTip(), REFERENCE_CLOSE_MS);
     // Closing it makes the back sound, opening it the usual click (read when the button is pressed).
     if (open) this.referenceButton.dataset.sound = 'ui.back';
     else delete this.referenceButton.dataset.sound;
@@ -185,6 +191,23 @@ export class Hud {
     // Grow to fit the sheet, never past the screen.
     const room = window.innerHeight - 40;
     this.reference.style.height = `${Math.min(room, this.referenceBody.offsetHeight)}px`;
+  }
+
+  /**
+   * The tooltip comes back once the sheet has finished turning into the button, and then after the
+   * usual hover delay: the pointer is usually still on the button (it was just pressed). Put back
+   * while it is hovered, the tooltip would simply be there; so it is put back invisible, and let
+   * go of a moment later, which makes it fade in as it does for any hover.
+   */
+  private restoreReferenceTip(): void {
+    this.tipTimer = null;
+    // It is the button again: no longer over the cards.
+    this.referenceAnchor.classList.remove('closing');
+    const button = this.referenceButton;
+    button.classList.add('tip-arming');
+    button.dataset.tip = 'Reference';
+    void button.offsetWidth;
+    button.classList.remove('tip-arming');
   }
 
   render(game: GameView): void {

@@ -874,8 +874,13 @@
   height: 42px;
 }
 
-#hud .reference-anchor.open {
-  /* Over the tutorial's guide card, which comes later in the page and would cover it otherwise */
+/*
+ * While it is open it is over the cards of the menu layer (the tutorial's guide, the spectating
+ * card), which come later in the page and would cover it otherwise. It stays over them while it
+ * closes (`closing`, kept until it has finished), or they would jump in front of it half way.
+ */
+#hud .reference-anchor.open,
+#hud .reference-anchor.closing {
   z-index: 20;
 }
 
@@ -905,6 +910,13 @@
   width: min(600px, calc(100vw - 100px));
   border-radius: 14px;
   background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+}
+
+/* While its tooltip is being put back (see Hud.toggleReference): shown from nothing, so it fades in */
+#hud .hint.tip-arming::after,
+#hud .hint.tip-arming::before {
+  opacity: 0 !important;
+  transition: none !important;
 }
 
 /* The button sits over the sheet, in the corner it grew from (outside the sheet's clipping) */
