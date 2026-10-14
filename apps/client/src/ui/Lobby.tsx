@@ -306,9 +306,9 @@ function SearchingDots() {
   );
 }
 
-/** A private game's names are in the colors the players will have in the match. */
-function nameColor(room: RoomView, player: RoomPlayer): string | undefined {
-  if (room.visibility !== 'private' || player.color === null) return undefined;
+/** Names are in the colors the players will have in the match. */
+function nameColor(player: RoomPlayer): string | undefined {
+  if (player.color === null) return undefined;
   return `#${paletteColor(player.color).toString(16).padStart(6, '0')}`;
 }
 
@@ -383,7 +383,7 @@ function PlayerBox({
         text={player.name}
         max={max}
         min={min}
-        color={nameColor(room, player)}
+        color={nameColor(player)}
         onClip={setClipped}
       />
       {!player.connected && <em>disconnected</em>}
@@ -399,7 +399,7 @@ function PlayerBox({
               height: tip?.height ?? 0,
               lineHeight: `${tip?.height ?? 0}px`,
               fontSize: tip?.fontSize,
-              '--tip-color': nameColor(room, player),
+              '--tip-color': nameColor(player),
             } as CSSProperties
           }
         >
