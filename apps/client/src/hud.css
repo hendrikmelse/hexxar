@@ -431,6 +431,9 @@
   position: absolute;
   top: 0;
   left: calc(100% + 12px);
+  /* Sitting past its container's edge leaves no room to grow into, so without this it shrinks to its
+     narrowest and breaks "Room code" onto two lines. */
+  width: max-content;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
