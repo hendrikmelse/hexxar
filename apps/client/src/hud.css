@@ -583,8 +583,8 @@
 /*
  * The app's tooltip: an element with the class `hint` and a `data-tip` shows the text in a dark
  * panel, with a small arrow pointing back at the element, on hover or keyboard focus.
- * `data-tip-pos` says where: `left` (the default), `below` (lined up with the element's right
- * edge) or `below-center`. With no `data-tip`, no tooltip.
+ * `data-tip-pos` says where: `left` (the default), `right`, `below` (lined up with the element's
+ * right edge) or `below-center`. With no `data-tip`, no tooltip.
  * The panel is the element's ::after and the arrow its ::before.
  */
 .hint {
@@ -748,6 +748,30 @@
 .hint[data-tip-pos='below-center']:hover::after,
 .hint[data-tip-pos='below-center']:focus-visible::after {
   transform: translate(-50%, 0);
+}
+
+/* To the right of the element, the arrow pointing back at it (the mirror of the default) */
+.hint[data-tip-pos='right']::after {
+  left: calc(100% + 12px);
+  right: auto;
+  transform: translate(-6px, -50%);
+}
+
+.hint[data-tip-pos='right']::before {
+  left: calc(100% + 7px);
+  right: auto;
+  border-width: 0 0 1px 1px;
+  transform: translate(-6px, -50%) rotate(45deg);
+}
+
+.hint[data-tip-pos='right']:hover::after,
+.hint[data-tip-pos='right']:focus-visible::after {
+  transform: translate(0, -50%);
+}
+
+.hint[data-tip-pos='right']:hover::before,
+.hint[data-tip-pos='right']:focus-visible::before {
+  transform: translate(0, -50%) rotate(45deg);
 }
 
 /* The "show the whole board" icon is drawn with CSS: a hexagon outline */

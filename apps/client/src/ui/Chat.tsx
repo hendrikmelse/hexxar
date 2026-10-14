@@ -200,7 +200,7 @@ export function Chat({
             aria-expanded={open}
             aria-label={label}
             data-tip={label}
-            data-tip-pos="below-center"
+            data-tip-pos={match ? 'right' : 'below-center'}
             onClick={toggle}
           >
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">

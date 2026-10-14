@@ -3013,8 +3013,7 @@
 #ui .chat.match {
   position: fixed;
   left: 14px;
-  /* Clear of the screen's edge by enough for the button's tooltip, which shows below it */
-  bottom: 52px;
+  bottom: 14px;
   z-index: 20;
   pointer-events: auto;
 }
