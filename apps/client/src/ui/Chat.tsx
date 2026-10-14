@@ -97,7 +97,7 @@ export function Chat({
                     ? 'M12 6l-6 6 6 6M18 6l-6 6 6 6'
                     : 'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'
                 }
-                transform={open ? 'rotate(-45 12 12)' : undefined}
+                transform={open ? 'translate(-1.1 1.1) rotate(-45 12 12)' : undefined}
                 stroke="currentColor"
                 strokeWidth="2"
                 strokeLinecap="round"

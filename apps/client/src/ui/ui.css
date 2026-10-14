@@ -2853,8 +2853,6 @@
 
 #ui .chat.open::before {
   opacity: 1;
-  /* Opening: quick and at once, as the size is already most of the way there early on */
-  transition: opacity 0.09s ease-out;
 }
 
 #ui .chat-body {
