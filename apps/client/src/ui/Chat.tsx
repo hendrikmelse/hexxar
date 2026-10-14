@@ -8,8 +8,8 @@ import type { Actions } from './App.js';
 const STICK_PX = 40;
 /** How far one turn of the mouse wheel scrolls the log, compared with the browser's usual. */
 const WHEEL_SCALE = 0.5;
-/** Ticks of the wheel closer together than this belong to one glide. */
-const GLIDE_MS = 250;
+/** How long the log takes to cover most of the way to where the wheel has sent it (a time constant, in ms). */
+const GLIDE_MS = 90;
 
 /**
  * The chat: a button the size of the sound and fullscreen buttons, which opens into the chat
@@ -52,31 +52,50 @@ export function Chat({
   }, [open]);
   const unread = open ? 0 : Math.max(0, app.chat.length - seen);
 
-  // The log scrolls at a gentler pace than the browser's own, which suits so small a window. (A
-  // listener of its own: React's wheel handlers cannot hold the page's scrolling back.)
+  // The log scrolls at a gentler pace than the browser's own, which suits so small a window, and
+  // glides there: every turn of the wheel moves a target, and each frame the log eases toward it.
+  // (Done by hand: the browser's own smooth scrolling starts over with every call, which is jerky
+  // when the wheel is turned quickly, or back and forth.) A listener of its own, too: React's wheel
+  // handlers cannot hold the page's scrolling back.
   useEffect(() => {
     const el = log.current;
     if (!el) return;
-    // Where a run of wheel ticks is heading, and when the last one came: a tick that arrives
-    // while the log is still gliding adds to where it is going, not to where it is.
-    let heading = 0;
-    let lastTick = 0;
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let target = 0;
+    let position = 0;
+    let frame = 0;
+    let before = 0;
+    const furthest = (): number => el.scrollHeight - el.clientHeight;
+    const glide = (now: number): void => {
+      target = Math.min(target, Math.max(0, furthest()));
+      position += (target - position) * (1 - Math.exp(-(now - before) / GLIDE_MS));
+      before = now;
+      if (Math.abs(target - position) < 0.5) position = target;
+      el.scrollTop = position;
+      frame = position === target ? 0 : requestAnimationFrame(glide);
+    };
     const onWheel = (event: WheelEvent): void => {
       if (event.ctrlKey) return;
       const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? el.clientHeight : 1;
       const step = event.deltaY * unit * WHEEL_SCALE;
-      const last = el.scrollHeight - el.clientHeight;
-      const from = event.timeStamp - lastTick < GLIDE_MS ? heading : el.scrollTop;
+      // Gliding, the log is on its way to the target; otherwise, it starts from where it is.
+      if (frame === 0) target = position = el.scrollTop;
       // Already at the end it is heading for: the wheel carries on to the page as usual.
-      if (step === 0 || (step < 0 && from <= 0) || (step > 0 && from >= last)) return;
+      if (step === 0 || (step < 0 && target <= 0) || (step > 0 && target >= furthest())) return;
       event.preventDefault();
-      heading = Math.min(last, Math.max(0, from + step));
-      lastTick = event.timeStamp;
-      const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
-      el.scrollTo({ top: heading, behavior: calm ? 'auto' : 'smooth' });
+      target = Math.min(furthest(), Math.max(0, target + step));
+      if (calm) {
+        el.scrollTop = position = target;
+      } else if (frame === 0) {
+        before = performance.now();
+        frame = requestAnimationFrame(glide);
+      }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   const submit = (event: FormEvent): void => {
