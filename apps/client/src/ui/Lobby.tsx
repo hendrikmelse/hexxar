@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { type MapSize, type RoomMode, type RoomPlayer, type RoomView } from '@hexxar/shared';
 import { playSound } from '../audio/audio.js';
+import { paletteColor } from '../board.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 import { Chat } from './Chat.js';
@@ -305,6 +306,12 @@ function SearchingDots() {
   );
 }
 
+/** A private game's names are in the colors the players will have in the match. */
+function nameColor(room: RoomView, player: RoomPlayer): string | undefined {
+  if (room.visibility !== 'private' || player.color === null) return undefined;
+  return `#${paletteColor(player.color).toString(16).padStart(6, '0')}`;
+}
+
 /** A grid of boxes, one per place in the game, filled in as players join and emptied as they leave. */
 function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const grid = useRef<HTMLDivElement>(null);
@@ -335,7 +342,13 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
             data-flip={entry.player.userId}
             className={`roster-slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
           >
-            <FitText className="name" text={entry.player.name} max={14} min={10} />
+            <FitText
+              className="name"
+              text={entry.player.name}
+              max={14}
+              min={10}
+              color={nameColor(room, entry.player)}
+            />
             {!entry.player.connected && <em>disconnected</em>}
           </div>
         );
@@ -356,7 +369,13 @@ function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
         key={entry.player.userId}
         className={`slot ${boxClass(entry, entry.player.connected)} ${entry.player.userId === room.you ? 'me' : ''}`}
       >
-        <FitText className="name" text={entry.player.name} max={15} min={11} />
+        <FitText
+          className="name"
+          text={entry.player.name}
+          max={15}
+          min={11}
+          color={nameColor(room, entry.player)}
+        />
         {!entry.player.connected && <em>disconnected</em>}
       </div>
     ) : (

@@ -158,10 +158,6 @@ function announceOut(before: readonly string[]): void {
   appStore.set({ info: { players }, infoSeq: infoSeq + 1 });
 }
 
-/** How long a quick-play duel shows an empty opponent box before it tells the server it is joining. */
-const SEARCH_DELAY_MS = 1200;
-/** The join is waiting to be sent. */
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
 /** The empty lobby is on screen, standing in for a room the server has not told us about yet. */
 let placeholderShown = false;
 
@@ -433,17 +429,9 @@ function sendName(): void {
 function startQuickPlay(mode: RoomMode): void {
   appStore.set({ error: null });
   sendName();
-  if (mode === 'duel') {
-    // The empty lobby first, and only then the join: so the player who was already waiting and
-    // the one who just clicked see the same countdown, starting when the join really happens.
-    showSearching();
-    searchTimer = setTimeout(() => {
-      searchTimer = null;
-      connection.send({ type: 'quickPlay', mode });
-    }, SEARCH_DELAY_MS);
-  } else {
-    connection.send({ type: 'quickPlay', mode });
-  }
+  // A duel shows its lobby at once, until the server has answered.
+  if (mode === 'duel') showSearching();
+  connection.send({ type: 'quickPlay', mode });
 }
 
 /** Set when leaving a quick game to play another of this mode: the search starts once the server has let go. */
@@ -478,17 +466,8 @@ mountUi(document.getElementById('ui')!, {
   },
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
-  leaveRoom: () => {
-    if (searchTimer) {
-      // Still on the empty lobby, and the server has not heard of us: just go back.
-      clearTimeout(searchTimer);
-      searchTimer = null;
-      placeholderShown = false;
-      appStore.set({ room: null });
-      return;
-    }
-    connection.send({ type: 'leaveRoom' });
-  },
+  // Even from the placeholder lobby: the server gets this after the join, and so takes us back out.
+  leaveRoom: () => connection.send({ type: 'leaveRoom' }),
   returnToRoom: () => connection.send({ type: 'returnToRoom' }),
   sendChat: (text) => connection.send({ type: 'chat', text }),
   becomeSpectator: () => connection.send({ type: 'becomeSpectator' }),

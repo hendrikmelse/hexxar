@@ -10,11 +10,14 @@ export function FitText({
   max,
   min,
   className,
+  color,
 }: {
   text: string;
   max: number;
   min: number;
   className?: string;
+  /** Overrides the text color. */
+  color?: string;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
 
@@ -38,7 +41,7 @@ export function FitText({
   }, [text, max, min]);
 
   return (
-    <span ref={ref} className={className}>
+    <span ref={ref} className={className} style={color ? { color } : undefined}>
       {text}
     </span>
   );
