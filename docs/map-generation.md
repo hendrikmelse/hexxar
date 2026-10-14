@@ -93,35 +93,38 @@ A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRo
 
 ### The settings
 
-| Setting                                                            | Value                                                                             | Where                                          |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Start bowl radius                                                  | `bowlRadius`: 1.6 by default; rooms use `royaleBowlRadius(size, players)` (below) | `params.ts`                                    |
-| Start bowls are first placed inside a disc of radius               | 4 tiles                                                                           | `SPAWN_START_RADIUS` in `archetypes/common.ts` |
-| First relaxing: start bowl centers pushed apart to                 | `4 × radius + 1.4` tiles                                                          | `SPAWN_GAP`, `spreadSpawns` in `scattered.ts`  |
-| Tree corridor bridge (open ground between two bowls)               | `4 + (U + U − 1) × 2`: 2 to 6, about 3 in 4 between 3 and 5                       | `bridgeLength` in `scattered.ts`               |
-| Second relaxing: pairs not joined by a tree corridor kept at least | `2 × radius + 1.4` tiles                                                          | `tighten` in `scattered.ts`                    |
-| Most relaxing rounds (each of the two)                             | 2000                                                                              | `RELAX_ROUNDS` in `scattered.ts`               |
-| Neutral chambers                                                   | none (the code is kept for another archetype)                                     | `neutralRooms()`                               |
-| Corridor widths and weights                                        | 1: 30, 2: 45, 3: 25 (30%, 45%, 25%; no 4-wide)                                    | `CORRIDOR_WIDTHS`                              |
-| Corridor bend                                                      | uniform in ±0.15 × the corridor's length                                          | `connect` in `scattered.ts`                    |
-| Extra "loop" corridors                                             | `round(0.3 × chambers)`                                                           | `connect`                                      |
-| Coast roughness / detail / warp                                    | 1 / 5 / 1.5                                                                       | `DEFAULT_GENERATION_PARAMS`                    |
+| Setting                                                            | Value                                                                                          | Where                                          |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Start bowl radius                                                  | `bowlRadius`: 1.6 by default; rooms use `royaleBowlRadius(size, players)` (below)              | `params.ts`                                    |
+| Start bowls are first placed inside a disc of radius               | 4 tiles                                                                                        | `SPAWN_START_RADIUS` in `archetypes/common.ts` |
+| First relaxing: start bowl centers pushed apart to                 | `4 × radius + 1.4` tiles                                                                       | `SPAWN_GAP`, `spreadSpawns` in `scattered.ts`  |
+| Tree corridor bridge (open ground between two bowls)               | `4 + (U + U − 1) × 2`: 2 to 6, about 3 in 4 between 3 and 5; evenly spaced quantiles, shuffled | `bridgeLengths` in `scattered.ts`              |
+| Second relaxing: pairs not joined by a tree corridor kept at least | `2 × radius + 1.4` tiles                                                                       | `tighten` in `scattered.ts`                    |
+| Most relaxing rounds (each of the two)                             | 2000                                                                                           | `RELAX_ROUNDS` in `scattered.ts`               |
+| Neutral chambers                                                   | none (the code is kept for another archetype)                                                  | `neutralRooms()`                               |
+| Corridor widths and weights                                        | 1: 30, 2: 45, 3: 25 (30%, 45%, 25%; no 4-wide); a fixed set per board, see below               | `CORRIDOR_WIDTHS`, `assignWidths`              |
+| Corridor bend                                                      | uniform in ±0.15 × the corridor's length                                                       | `connect` in `scattered.ts`                    |
+| Extra "loop" corridors                                             | `round(0.3 × chambers)`                                                                        | `connect`                                      |
+| Coast roughness / detail / warp                                    | 1 / 5 / 1.5                                                                                    | `DEFAULT_GENERATION_PARAMS`                    |
 
 There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the code allows more.
 
 ### The bowl radius, which sets the size
 
-`royaleBowlRadius(size, players) = ROYALE_BOWL_RADIUS[size] × (6 / max(players, 2)) ^ 0.17`, with `ROYALE_BOWL_RADIUS` = small 1.15, normal 2.0, large 3.1 (the radius at 6 players). It has the same form as the tiles-per-player formula it replaced (a base per map size, times a power of `6 / players`), and the numbers were fitted so that boards come out about as big as the old targets did: 15, 25 and 45 tiles per player at 6 players, falling with the player count as `(6 / players) ^ 0.25`. (Area grows faster than the radius, so the exponent on the radius is smaller.)
+`royaleBowlRadius(size, players) = ROYALE_BOWL_RADIUS[size] × (6 / max(players, 2)) ^ 0.27`, with `ROYALE_BOWL_RADIUS` = small 0.8, normal 1.5, large 2.8 (the radius at 6 players). It has the same form as the tiles-per-player formula it replaced (a base per map size, times a power of `6 / players`). The numbers were fitted so that boards come out about as big as the old targets did, which were 15, 25 and 45 tiles per player at 6 players, falling with the player count as `(6 / players) ^ 0.25`. How the fit went:
+
+- **Normal and large** came out within about 10% of the old numbers at every player count. The best exponent for normal alone is about 0.4 and for large about 0.23 (the corridors cover the same land whatever the bowl radius, so the radius matters less on big boards); 0.27 is a compromise.
+- **Small cannot reach the old numbers.** The corridors alone (bridges of 2 to 6 tiles) cover about 15 tiles per player, whatever the bowls, so small boards come out 10% to 25% above the old targets even with small bowls. The small base of 0.8 is about the smallest that still makes sense: the city and the ring of six land hexes around it are always land, so a bowl is never really smaller than about 1.
 
 | Players | Radius (small / normal / large) | Tiles per player now (small / normal / large) | Old targets (small / normal / large) |
 | ------- | ------------------------------- | --------------------------------------------- | ------------------------------------ |
-| 3       | 1.29 / 2.25 / 3.49              | 17 / 28 / 53                                  | 18 / 30 / 54                         |
-| 4       | 1.23 / 2.14 / 3.32              | 15 / 26 / 49                                  | 17 / 28 / 50                         |
-| 6       | 1.15 / 2.00 / 3.10              | 15 / 25 / 45                                  | 15 / 25 / 45                         |
-| 8       | 1.10 / 1.90 / 2.95              | 14 / 23 / 42                                  | 14 / 23 / 42                         |
-| 12      | 1.02 / 1.78 / 2.76              | 13 / 22 / 38                                  | 13 / 21 / 38                         |
+| 3       | 0.96 / 1.81 / 3.38              | 19 / 28 / 58                                  | 18 / 30 / 54                         |
+| 4       | 0.89 / 1.67 / 3.12              | 17 / 25 / 48                                  | 17 / 28 / 50                         |
+| 6       | 0.80 / 1.50 / 2.80              | 18 / 25 / 45                                  | 15 / 25 / 45                         |
+| 8       | 0.74 / 1.39 / 2.59              | 16 / 23 / 41                                  | 14 / 23 / 42                         |
+| 12      | 0.66 / 1.24 / 2.32              | 16 / 23 / 38                                  | 13 / 21 / 38                         |
 
-(Measured: the average over 40 seeds per cell, **before the corridor lengths were varied (the two-stage relaxing above); not re-measured since, so the tiles per player will have shifted.**) Individual boards vary a lot, since nothing controls the area: for example normal boards with 3 players have between 19 and 38 tiles per player, and with 12 players between 19 and 25.
+(Measured: the average over 150 seeds per cell.) Individual boards still vary, but much less than they did: the standard deviation of tiles per player is 5% to 10% of the mean (the full range is about ±25%); for example normal boards with 6 players have between 18 and 31 tiles per player.
 
 ### Step by step
 
@@ -133,14 +136,15 @@ _Start chambers_, one per player, in three steps (`spreadSpawns`, `spanningTree`
 
 - **Spread far apart.** Every player's point starts at a uniformly random place inside a disc of radius 4 around the origin (`SPAWN_START_RADIUS`), so they all start piled up in the middle. The points are then **relaxed**: for up to 2000 rounds, every pair closer than `4 × radius + 1.4` is pushed apart by half the shortfall each (plus 0.01), the pairs taken in order, until a round moves nothing. Two points on exactly the same place are pushed apart along the x axis. Nothing keeps the points inside any disc.
 - **Spanning tree.** Prim's algorithm from point 0 over these far apart points: the nearest unlinked point first. These are the tree corridors, and they are chosen here, before the points move again.
-- **Pull together along the tree.** Each tree corridor gets a target length: `2 × radius + bridge`, where the bridge is `4 + (U₁ + U₂ − 1) × 2` tiles of open ground between the two bowls (`U` are uniform random numbers in [0, 1); so between 2 and 6, and about 3 in 4 are between 3 and 5). Then for up to 2000 rounds: each tree corridor moves its two points a quarter of its error each toward (or away from) the target distance, and every pair of points that is _not_ joined by a tree corridor and is closer than `2 × radius + 1.4` is pushed apart as before; it stops when no corridor is more than 0.02 off and nobody had to be pushed. So how far apart neighbors end up varies from corridor to corridor.
+- **Pull together along the tree.** Each tree corridor gets a target length: `2 × radius + bridge`, where the bridge is `4 + (U₁ + U₂ − 1) × 2` tiles of open ground between the two bowls (`U` are uniform random numbers in [0, 1); so between 2 and 6, and about 3 in 4 are between 3 and 5). The lengths are not drawn independently: for a tree of `k` corridors they are the `k` evenly spaced quantiles of that distribution (the `(i + 0.5) / k`-th, using the inverse of the triangle distribution of `U₁ + U₂`), shuffled among the corridors, so the average bridge of a board is always 4. Then for up to 2000 rounds: each tree corridor moves its two points a quarter of its error each toward (or away from) the target distance, and every pair of points that is _not_ joined by a tree corridor and is closer than `2 × radius + 1.4` is pushed apart as before; it stops when no corridor is more than 0.02 off and nobody had to be pushed. So how far apart neighbors end up varies from corridor to corridor.
 - Each point is then snapped to the nearest hex center, so the city sits exactly on a hex, and becomes a chamber of the bowl radius.
 
 _Corridors_ (`connect`):
 
 - **Spanning tree:** the tree chosen above, so every chamber is reachable. Its corridors are added first.
 - **Loops:** (after the points have been pulled together) let `reach = 1.4 ×` the median tree corridor length. Candidate extra corridors are all pairs that are not already joined, are at most `reach` long, and whose straight line does not run through another chamber (within that chamber's radius + 0.5). The shortest `round(0.3 × chambers)` of them are added (ties broken randomly).
-- **Widths and bend:** each corridor gets a random width from the weights above and a random bend.
+- **Bend:** each corridor gets a random bend.
+- **Widths** (`assignWidths` in `archetypes/common.ts`), given last, once every corridor (tree, loops and repairs) is known. The widths are a fixed set in exactly the proportions of the weights above, as far as whole corridors allow (30% 1-wide, 45% 2-wide, 25% 3-wide, the rounding going to the largest remainders), so no board is all narrow or all wide. They start shuffled; then up to `50 × corridors` random pairs of corridors are considered, and two of different widths swap widths if that brings the total area of the bridges (the sum over corridors of bridge length × width, with the bridge being the open ground between the two bowls as placed) closer to the budget, which is the total bridge length times the average width (1.95). The result: long bridges tend to get narrow widths and short bridges wide ones, so the land the bridges cover does not depend on the luck of the draw.
 - **Long tails are repaired** (`royale/topology.ts`; this is a repair, there is no check afterwards, so a rare layout can keep one): a dead-end chamber (one corridor) may hang off a junction, but not at the end of a chain of chambers that each have exactly two corridors ("snakes", or a dead end behind a dead end). Up to `4 × chambers` times, the worst remaining tail end is joined to the nearest chamber it is not yet joined to (a straight line through another chamber costs 1000 extra, so is only a last resort), which closes a loop. Dead-end chambers at a junction ("peninsulas", which can be a player's start) are fine, and nothing adds them on purpose.
 
 **3. Draw and tidy** (`rasterize` and `cleanup`, see Shared machinery): once, with no offset and no correction.
@@ -160,17 +164,17 @@ Nothing checks the starts, because nothing can remove what they need:
 - **A start is never on the edge**, because all six neighbors of the city are land.
 - **Two starts are never on one hex**, because the second relaxing keeps every pair that is not joined by a tree corridor at least `2 × radius + 1.4` apart, and a pair that is joined is pulled to `2 × radius + bridge` (at least about `2 × radius + 2`, which is 4 tiles even for the smallest bowl), far more than the half-tile rounding to a hex can close. The tests draw 180 boards across sizes and player counts and check every ring, and that the starts are all different.
 
-### Measured
+### Measured: bridge length
 
-Over 40 seeds per cell, before the two-stage relaxing (not re-measured since), the average open ground between two chambers along a corridor ("bridge"):
+Over 150 seeds per cell, the average open ground between two chambers along a corridor ("bridge"), loop corridors included:
 
 | Board                   | Bridge (tiles)  |
 | ----------------------- | --------------- |
-| small, 3 to 12 players  | 2.4 down to 1.4 |
-| normal, 3 to 12 players | 2.2 down to 1.5 |
-| large, 3 to 12 players  | 2.6 down to 1.5 |
+| small, 3 to 12 players  | 4.6 down to 3.6 |
+| normal, 3 to 12 players | 5.2 down to 4.0 |
+| large, 3 to 12 players  | 6.8 down to 4.6 |
 
-Boards are compact at every size and player count (the old, fixed bowl size gave bridges of 6 to 15 tiles on boards with few players or on large maps). A small board with many players has bowls that touch or overlap slightly.
+The tree corridors average 4 by construction; the rest of the average is the loops and tail repairs, which are chosen after the points have been pulled together and can be longer. (Boards with 3 players have the longest ones, since a few loops are the only extras.)
 
 ## Fair boards
 

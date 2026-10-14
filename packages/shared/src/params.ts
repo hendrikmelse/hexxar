@@ -124,12 +124,12 @@ export const SEXTET_TILES: Readonly<Record<MapSize, number>> = {
  * other player counts.
  */
 export const ROYALE_BOWL_RADIUS: Readonly<Record<MapSize, number>> = {
-  small: 1.15,
-  normal: 2,
-  large: 3.1,
+  small: 0.8,
+  normal: 1.5,
+  large: 2.8,
 };
 
 /** The bowl radius in a battle royale: smaller for each player when there are many of them. */
 export function royaleBowlRadius(size: MapSize, players: number): number {
-  return ROYALE_BOWL_RADIUS[size] * (6 / Math.max(players, 2)) ** 0.17;
+  return ROYALE_BOWL_RADIUS[size] * (6 / Math.max(players, 2)) ** 0.27;
 }

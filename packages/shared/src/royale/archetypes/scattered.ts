@@ -8,7 +8,15 @@ import {
   type Point,
 } from '../blueprint.js';
 import { topologyIssues } from '../topology.js';
-import { blocked, distance, MIN_GAP, pickWidth, SPAWN_GAP, SPAWN_START_RADIUS } from './common.js';
+import {
+  assignWidths,
+  blocked,
+  distance,
+  MIN_GAP,
+  shuffleInPlace,
+  SPAWN_GAP,
+  SPAWN_START_RADIUS,
+} from './common.js';
 import type { ArchetypeInput } from './types.js';
 
 /** How many random spots are tried for each room before it is given up on. */
@@ -88,11 +96,21 @@ function spanningTree(points: readonly Point[]): [number, number][] {
 }
 
 /**
- * How long a tree corridor's bridge is meant to be, in tiles of open ground between the two bowls:
- * 4 plus or minus a little, from the sum of two random numbers (so most are between 3 and 5, about
- * 3 in 4, and a few are shorter or longer, from 2 to 6).
+ * How long each tree corridor's bridge is meant to be, in tiles of open ground between the two
+ * bowls. The lengths follow the sum of two random numbers, `4 + (U₁ + U₂ − 1) × 2` (so most are
+ * between 3 and 5, about 3 in 4, and a few are shorter or longer, from 2 to 6), but are not drawn
+ * independently: they are the evenly spaced quantiles of that distribution, shuffled among the
+ * corridors, so the average length of a board's bridges is always the same.
  */
-const bridgeLength = (rng: Rng): number => 4 + (rng.next() + rng.next() - 1) * 2;
+function bridgeLengths(count: number, rng: Rng): number[] {
+  const lengths = Array.from({ length: count }, (_, i) => {
+    const u = (i + 0.5) / count;
+    // The inverse of the distribution of U₁ + U₂ (a triangle between 0 and 2).
+    const sum = u < 0.5 ? Math.sqrt(2 * u) : 2 - Math.sqrt(2 * (1 - u));
+    return 4 + (sum - 1) * 2;
+  });
+  return shuffleInPlace(lengths, rng);
+}
 
 /**
  * Pull the points together along the tree: each corridor tries to bring its two points to a target
@@ -106,7 +124,7 @@ function tighten(
   radius: number,
   rng: Rng,
 ): void {
-  const targets = tree.map(() => 2 * radius + bridgeLength(rng));
+  const targets = bridgeLengths(tree.length, rng).map((bridge) => 2 * radius + bridge);
   const joined = new Set(tree.map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
   const spacing = 2 * radius + SPAWN_GAP;
   const move = (i: number, j: number, amount: number): void => {
@@ -175,7 +193,7 @@ function placeNeutrals(
 
 /**
  * Join the chambers: the spanning tree (made from where the starts were first spread out) so
- * everything is reachable, then a few extra short passages that make loops. Corridors are picked at random widths and bowed a little.
+ * everything is reachable, then a few extra short passages that make loops. Corridors are bowed a little, and given their widths last.
  */
 function connect(
   chambers: readonly Chamber[],
@@ -184,14 +202,10 @@ function connect(
 ): Corridor[] {
   const corridors: Corridor[] = [];
   const pairs = new Set<string>();
+  // Widths are not known until every corridor is: they are given at the end (`assignWidths`).
   const add = (from: number, to: number): void => {
     const length = distance(chambers[from]!.center, chambers[to]!.center);
-    corridors.push({
-      from,
-      to,
-      width: pickWidth(rng),
-      bend: (rng.next() - 0.5) * 0.3 * length,
-    });
+    corridors.push({ from, to, width: 1, bend: (rng.next() - 0.5) * 0.3 * length });
     pairs.add(`${Math.min(from, to)}-${Math.max(from, to)}`);
   };
 
@@ -214,7 +228,17 @@ function connect(
   const loops = Math.round(chambers.length * 0.3);
   for (const [from, to] of extras.slice(0, loops)) add(from, to);
   repairTopology(chambers, corridors, add, pairs);
-  return corridors;
+  // The bridge of each corridor (open ground between its bowls) and its width decide how much land it covers.
+  const bridges = corridors.map(({ from, to }) =>
+    Math.max(
+      0,
+      distance(chambers[from]!.center, chambers[to]!.center) -
+        chambers[from]!.radius -
+        chambers[to]!.radius,
+    ),
+  );
+  const widths = assignWidths(bridges, rng);
+  return corridors.map((corridor, i) => ({ ...corridor, width: widths[i]! }));
 }
 
 /**
