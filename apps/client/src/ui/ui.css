@@ -2941,20 +2941,25 @@
   flex-direction: column;
   justify-content: flex-end;
   gap: 8px;
-  width: 100%;
+  /*
+   * Always laid out at the window's full width, whatever size the window is part-way through
+   * opening or shutting: the window only shows more or less of it, so the lines never re-wrap
+   * (which would make the text jump about). The same goes for the padding.
+   */
+  width: var(--chat-w);
   height: 100%;
-  padding: 0;
-  transition: padding 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Little at the top: the title's row is the minimize button's, which is as tall as it */
+  padding: 8px 16px 16px;
+}
+
+/* Shut, what is left of it (it is wider than the button) must not catch the pointer */
+#ui .chat.closed .chat-body {
+  pointer-events: none;
 }
 
 /* Only while it opens or shuts is what sticks out of the window cut off */
 #ui .chat.moving .chat-body {
   overflow: hidden;
-}
-
-#ui .chat.open .chat-body {
-  /* Little at the top: the title's row is the minimize button's, which is as tall as it */
-  padding: 8px 16px 16px;
 }
 
 /* The writing fades out as the window folds, and in as it opens */
@@ -2987,6 +2992,8 @@
 
 /* Beside the card, as wide and as tall as it when open */
 #ui .chat.lobby-chat {
+  /* As wide as the card beside it */
+  --chat-w: min(380px, calc(100vw - 32px));
   position: absolute;
   bottom: 0;
   left: calc(100% + 20px);
@@ -2994,7 +3001,7 @@
 }
 
 #ui .chat.lobby-chat.open {
-  width: 100%;
+  width: var(--chat-w);
   height: 100%;
 }
 
@@ -3014,13 +3021,14 @@
   }
 
   #ui .chat.lobby-chat.open {
-    width: 100%;
+    width: var(--chat-w);
     height: 340px;
   }
 }
 
 /* A spectator's, over the board, in the bottom left corner of the screen */
 #ui .chat.match {
+  --chat-w: min(380px, calc(100vw - 28px));
   position: fixed;
   left: 14px;
   bottom: 14px;
@@ -3029,7 +3037,7 @@
 }
 
 #ui .chat.match.open {
-  width: min(380px, calc(100vw - 28px));
+  width: var(--chat-w);
   height: min(calc(40vh + 110px), 400px);
 }
 
