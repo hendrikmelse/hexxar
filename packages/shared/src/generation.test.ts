@@ -103,7 +103,7 @@ describe('applyTickDiff', () => {
     const { state: initial, config: matchConfig } = createDuelMatch({
       players: ['A', 'B'],
       seed: 21,
-      tiles: 91,
+      params: { bowlRadius: 1.2 },
       config: fast,
     });
     const rng = createRng(77);

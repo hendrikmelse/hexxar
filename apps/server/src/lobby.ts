@@ -216,6 +216,8 @@ export class Lobby {
             return room.setSpectating(session, true);
           case 'becomePlayer':
             return room.setSpectating(session, false);
+          case 'chat':
+            return room.chat(session, message.text);
           case 'order':
             return this.reply(session, room.enqueue(session, message.order), message.order);
           case 'surrender':

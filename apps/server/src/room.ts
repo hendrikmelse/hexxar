@@ -1,8 +1,8 @@
 import {
-  DUEL_TILES,
-  ROYALE_START_DISTANCE,
-  royaleTilesPerPlayer,
+  bowlRadiusFor,
   createFreeForAllMatch,
+  extraSetsFor,
+  FAIR_BOWL_RADIUS,
   createRng,
   createDuelMatch,
   diffTiles,
@@ -10,6 +10,10 @@ import {
   roomCapacity,
   roomMinPlayers,
   roomSettingsSchema,
+  CHAT_HISTORY,
+  FFA_MAX_PLAYERS,
+  type ChatChannel,
+  type ChatMessage,
   scoresOf,
   visibleMoves,
   visibleState,
@@ -37,6 +41,8 @@ const BOARD_ATTEMPTS = 100;
 /** Most people who may watch one private game. */
 const MAX_SPECTATORS = 20;
 const BOARD_BUDGET_MS = 2000;
+/** The least time between one person's chat messages. */
+const CHAT_GAP_MS = 400;
 
 /**
  * Apply a settings patch on top of the current settings. Returns the new settings, or a
@@ -106,6 +112,9 @@ interface Member {
   spectator: boolean;
   /** The color this person plays in, kept from match to match for as long as they are in the room. */
   colorSlot: number | null;
+  /** Which chat this person has been sent the log of (and so gets new messages of), if any. */
+  chatSent: ChatChannel | null;
+  lastChatAt: number;
   afkTimer: Timer | null;
 }
 
@@ -146,6 +155,9 @@ export class Room {
   private resultPlayers: RoomView['players'] | null = null;
   /** The color slot of each player of the current match, by player id. */
   private matchColors: Record<string, number> = {};
+  /** What was said in each chat. The lobby's is gone once the match starts; the spectators' ends with it. */
+  private chatLogs: Record<ChatChannel, ChatMessage[]> = { lobby: [], spectators: [] };
+  private chatSeq = 0;
 
   constructor(private readonly options: RoomOptions) {
     this.id = options.id;
@@ -176,8 +188,11 @@ export class Room {
       watching: false,
       spectator: false,
       colorSlot: null,
+      chatSent: null,
+      lastChatAt: 0,
       afkTimer: null,
     });
+    this.claimColor(this.members[this.members.length - 1]!);
     session.room = this;
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
     if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
@@ -211,6 +226,8 @@ export class Room {
       watching: true,
       spectator: true,
       colorSlot: null,
+      chatSent: null,
+      lastChatAt: 0,
       afkTimer: null,
     };
     this.members.push(member);
@@ -239,6 +256,7 @@ export class Room {
       if (this.activeMembers().length >= this.capacity) return 'that game is full';
       member.spectator = false;
       member.watching = false;
+      this.claimColor(member);
     }
     this.broadcastRoom();
     return null;
@@ -294,6 +312,8 @@ export class Room {
     if (!member || member.left) return;
     if (member.afkTimer) clearTimeout(member.afkTimer);
     member.afkTimer = null;
+    // The new connection has seen no chat yet.
+    member.chatSent = null;
     this.broadcastRoom();
     if (!member.reviewing) this.sendSnapshot(member);
   }
@@ -322,6 +342,7 @@ export class Room {
     }
     member.reviewing = false;
     member.playerId = null;
+    if (!member.spectator) this.claimColor(member);
     // The host stays the host while they read the result: the role passes on only once they have
     // gone (back to the menu, or the tab closed).
     const hostMember = this.memberOf(this.host);
@@ -338,6 +359,7 @@ export class Room {
     this.lingerTimer = null;
     this.resetEarlyStart();
     this.state = 'lobby';
+    this.clearChat();
     this.match = null;
     this.nextTickAt = null;
     for (let i = this.members.length - 1; i >= 0; i--) {
@@ -413,6 +435,105 @@ export class Room {
     if (member && !member.left) this.surrenderMember(member);
   }
 
+  // -- Chat ----------------------------------------------------------------
+
+  /**
+   * Who can chat with whom. Everyone gathered in the room talks together until the match starts;
+   * then the players are silent and only the spectators talk, among themselves, out of the
+   * players' sight. Once the match is over there is nothing left to keep from anyone: everyone
+   * still in the room joins that chat, which carries on while they read the result.
+   */
+  private chatChannelOf(member: Member): ChatChannel | null {
+    if (member.left) return null;
+    if (this.state === 'finished') return 'spectators';
+    if (member.reviewing) return null;
+    if (this.state === 'lobby') return 'lobby';
+    // Someone knocked out of the match (or who gave up) is watching it from then on.
+    if (this.state === 'running' && (member.spectator || this.isOut(member))) return 'spectators';
+    return null;
+  }
+
+  chat(session: Session, raw: string): string | null {
+    const member = this.memberOf(session);
+    const channel = member ? this.chatChannelOf(member) : null;
+    if (!member || !channel) return 'you cannot chat right now';
+    // Line breaks and other control characters would only break the layout.
+    const text = raw.replace(/\p{Cc}+/gu, ' ').trim();
+    if (text === '') return null;
+    const now = Date.now();
+    if (now - member.lastChatAt < CHAT_GAP_MS) return 'you are chatting too fast';
+    member.lastChatAt = now;
+    const message: ChatMessage = {
+      id: ++this.chatSeq,
+      userId: session.userId,
+      name: session.name,
+      text,
+      at: now,
+    };
+    this.publish(channel, message);
+    return null;
+  }
+
+  /** Add a message to a chat's log, and send it to everyone who reads that chat. */
+  private publish(channel: ChatChannel, message: ChatMessage): void {
+    const log = this.chatLogs[channel];
+    log.push(message);
+    if (log.length > CHAT_HISTORY) log.splice(0, log.length - CHAT_HISTORY);
+    for (const other of this.members) {
+      if (this.chatChannelOf(other) !== channel) continue;
+      // Someone who has not been sent this chat yet gets all of it, this message included.
+      if (other.chatSent !== channel) this.syncChat(other);
+      else other.session.connection?.send({ type: 'chat', messages: [message], replace: false });
+    }
+  }
+
+  /** Tell the chat who won the match, if anyone did. */
+  private announceWinner(): void {
+    const winner = this.match?.state.winner;
+    if (winner) this.announceOut(winner, 'won the match');
+  }
+
+  /** Tell the spectators' chat that a player is out of the match ("was eliminated", "surrendered"). */
+  private announceOut(playerId: string, text: string): void {
+    const member = this.members.find((m) => m.playerId === playerId);
+    if (!member) return;
+    this.publish('spectators', {
+      id: ++this.chatSeq,
+      userId: member.session.userId,
+      name: member.session.name,
+      text,
+      system: true,
+      at: Date.now(),
+    });
+  }
+
+  private canChat(session: Session): boolean {
+    const member = this.memberOf(session);
+    return member !== undefined && this.chatChannelOf(member) !== null;
+  }
+
+  /** Send this person the whole chat they may read, if what they may read has changed. */
+  private syncChat(member: Member): void {
+    const channel = this.chatChannelOf(member);
+    if (channel === member.chatSent) return;
+    member.chatSent = channel;
+    member.session.connection?.send({
+      type: 'chat',
+      messages: channel ? [...this.chatLogs[channel]] : [],
+      replace: true,
+    });
+  }
+
+  /** Forget everything said, and tell everyone to empty their chat (whatever they may read now). */
+  private clearChat(): void {
+    this.chatLogs = { lobby: [], spectators: [] };
+    for (const member of this.members) {
+      member.chatSent = this.chatChannelOf(member);
+      if (!member.left)
+        member.session.connection?.send({ type: 'chat', messages: [], replace: true });
+    }
+  }
+
   // -- Views ---------------------------------------------------------------
 
   view(session: Session): RoomView {
@@ -434,6 +555,7 @@ export class Room {
               name: m.session.name,
               connected: !m.left && m.session.connection !== null,
               playerId: m.playerId,
+              color: m.colorSlot,
             })),
       minPlayers: this.minPlayers,
       // How long the wait on screen starts from: a battle royale's, or a duel's short pause.
@@ -442,8 +564,12 @@ export class Room {
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
       youVoted: this.votes.has(session.userId),
-      spectators: this.members.filter((m) => m.spectator && !m.left).map((m) => m.session.name),
+      // Anyone out of the running match is watching it, as much as someone who came to watch.
+      spectators: this.members
+        .filter((m) => !m.left && (m.spectator || this.isOut(m)))
+        .map((m) => m.session.name),
       spectating: this.memberOf(session)?.spectator === true,
+      canChat: this.canChat(session),
       serverTime: Date.now(),
       you: session.userId,
     };
@@ -657,10 +783,37 @@ export class Room {
 
     this.match = new Match(this.id, board.state, board.config);
     this.state = 'running';
+    // What was said while gathering stays behind: the players must not read it again, and the
+    // spectators start their own chat.
+    this.clearChat();
     this.nextTickAt = Date.now() + this.options.prepMs;
     this.broadcastRoom();
     this.broadcastSnapshots();
     this.scheduleTick();
+  }
+
+  /**
+   * Give a new player their color, which they keep for as long as they are in the room, so it is
+   * the same in the lobby, the chat and the match. A spectator keeps the color they had as a
+   * player in reserve for if they come back, so it goes to someone else only when every other
+   * color is taken; then it is the lowest reserved one, and its spectator will get a new color
+   * when they come back.
+   */
+  private claimColor(member: Member): void {
+    if (member.colorSlot !== null) return;
+    const others = this.members.filter((m) => m !== member && !m.left && m.colorSlot !== null);
+    const playing = new Set(others.filter((m) => !m.spectator).map((m) => m.colorSlot));
+    const reserved = new Set(others.filter((m) => m.spectator).map((m) => m.colorSlot));
+    let slot = 0;
+    while (playing.has(slot) || reserved.has(slot)) slot++;
+    if (slot >= FFA_MAX_PLAYERS) {
+      // Nothing unreserved is left (there are never more players than colors, so a reserved one is).
+      slot = 0;
+      while (playing.has(slot)) slot++;
+      const holder = others.find((m) => m.spectator && m.colorSlot === slot);
+      if (holder) holder.colorSlot = null;
+    }
+    member.colorSlot = slot;
   }
 
   /**
@@ -699,11 +852,15 @@ export class Room {
           seed,
           config,
           params: {
-            tilesPerPlayer: royaleTilesPerPlayer(mapSize, players.length),
-            minStartDistance: ROYALE_START_DISTANCE[mapSize],
+            bowlRadius: bowlRadiusFor(mapSize, players.length),
           },
         })
-      : createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize], config });
+      : createDuelMatch({
+          players,
+          seed,
+          config,
+          params: { bowlRadius: FAIR_BOWL_RADIUS[mapSize], extraSets: extraSetsFor(mapSize, 2) },
+        });
   }
 
   private scheduleTick(): void {
@@ -711,9 +868,19 @@ export class Room {
     this.tickTimer = setTimeout(() => this.runTick(), Math.max(0, this.nextTickAt - Date.now()));
   }
 
+  /** Knocked out of the match that is running (or surrendered from it), and still in the room. */
+  private isOut(member: Member): boolean {
+    return (
+      this.state === 'running' &&
+      member.playerId !== null &&
+      this.match?.state.eliminated.includes(member.playerId) === true
+    );
+  }
+
   private runTick(): void {
     const match = this.match;
     if (!match || this.nextTickAt === null) return;
+    const outBefore = match.state.eliminated.length;
     const { previous, state, moves } = match.step();
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
     const { config } = match;
@@ -744,8 +911,16 @@ export class Room {
       });
     }
 
-    if (match.isOver) this.finish();
-    else this.scheduleTick();
+    // The spectators' chat says who is out, and, if that ends the match, who won.
+    for (const id of state.eliminated.slice(outBefore)) this.announceOut(id, 'was eliminated');
+    if (match.isOver) {
+      this.announceWinner();
+      this.finish();
+    } else {
+      // Someone who is out is now a spectator, for everyone to see.
+      if (state.eliminated.length > outBefore) this.broadcastRoom();
+      this.scheduleTick();
+    }
   }
 
   private surrenderMember(member: Member): void {
@@ -753,7 +928,13 @@ export class Room {
     if (this.state !== 'running' || !match || !member.playerId) return;
     match.surrender(member.playerId);
     this.broadcastSnapshots();
-    if (match.isOver) this.finish();
+    this.announceOut(member.playerId, 'surrendered');
+    if (match.isOver) {
+      this.announceWinner();
+      this.finish();
+    } else {
+      this.broadcastRoom();
+    }
   }
 
   /** The match is over: stop ticking and leave the room open for the result. */
@@ -816,8 +997,9 @@ export class Room {
 
   private broadcastRoom(): void {
     for (const member of this.members) {
-      if (!member.left)
-        member.session.connection?.send({ type: 'room', room: this.view(member.session) });
+      if (member.left) continue;
+      member.session.connection?.send({ type: 'room', room: this.view(member.session) });
+      this.syncChat(member);
     }
   }
 }

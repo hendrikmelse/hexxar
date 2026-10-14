@@ -44,6 +44,11 @@ const FILES: Readonly<Record<string, { file: string; source: string; volume?: nu
     file: 'InterfaceSounds/switch_003.ogg',
     source: 'Kenney - Interface Sounds - switch_003.ogg',
   },
+  'chat.send': {
+    file: 'Other/dragon-studio-simple-whoosh-382724.mp3',
+    source: 'Pixabay - Dragon Studio - simple whoosh',
+    volume: 0.7,
+  },
   'lobby.join': {
     file: 'InterfaceSounds/drop_003.ogg',
     source: 'Kenney - Interface Sounds - drop_003.ogg',
@@ -191,6 +196,13 @@ export const SOUNDS: readonly SoundDef[] = [
     'Lobby',
     'A short tick, once a second, over the last few seconds before the match starts.',
     'The lobby countdown reaching 3, 2, 1.',
+  ),
+  sound(
+    'chat.send',
+    'Chat message sent',
+    'Lobby',
+    'A short, light whoosh: the message leaving.',
+    'Sending a chat message, with the Send button or the Enter key (Chat.tsx; the Send button has no click of its own).',
   ),
   // -- Match flow ------------------------------------------------------------------------
   sound(

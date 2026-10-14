@@ -10,6 +10,8 @@ const css = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 const CONFIRM_MS = 4000;
 /** How long a remark above the surrender button stays up. */
 const REMARK_MS = 3500;
+/** The reference sheet takes this long to turn back into its button (a little over its closing animation in hud.css). */
+const REFERENCE_CLOSE_MS = 260;
 
 /** What the HUD's buttons do. */
 export interface HudActions {
@@ -49,9 +51,9 @@ export class Hud {
   private readonly defeatedHeading = el('li', 'defeated-heading');
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
-  /** The code of a private game, in a small box beside the surrender button. */
+  /** The code of a private game, in a small box above the surrender button. */
   private readonly roomCode = el('span', 'room-code');
-  /** How many people are watching this game, in small print beside the surrender button. */
+  /** How many people are watching this game, in small print above the room code. */
   private readonly tally = el('span', 'spectator-tally');
   /** A short remark in a bubble above the surrender button. */
   private readonly remark = el('div', 'surrender-remark');
@@ -59,6 +61,7 @@ export class Hud {
   private readonly reference = el('div', 'reference');
   private readonly referenceBody = el('div', 'reference-body');
   private readonly referenceButton: HTMLButtonElement;
+  private tipTimer: ReturnType<typeof setTimeout> | null = null;
   /** Holds the sheet and its button: the button's tooltip must not be cut off by the sheet's edge. */
   private readonly referenceAnchor = el('div', 'reference-anchor');
   private game: GameView | null = null;
@@ -101,7 +104,10 @@ export class Hud {
     heading.textContent = 'Players';
     players.append(heading, this.standings);
     const left = el('div', 'left');
-    left.append(status, players);
+    // The room code and the spectator count sit beside the clock's card, outside it.
+    const info = el('div', 'top-info');
+    info.append(this.roomCode, this.tally);
+    left.append(status, players, info);
 
     const top = el('div', 'top');
     top.append(this.banner);
@@ -152,7 +158,7 @@ export class Hud {
     this.tally.hidden = true;
     this.roomCode.hidden = true;
     const bottom = el('div', 'bottom-left');
-    bottom.append(this.surrender, this.roomCode, this.tally);
+    bottom.append(this.surrender);
     root.append(left, top, bottom, this.remark, camera, this.referenceAnchor);
     const frame = (): void => {
       this.updateTimer();
@@ -166,8 +172,11 @@ export class Hud {
     this.reference.classList.toggle('open', open);
     this.referenceAnchor.classList.toggle('open', open);
     this.referenceButton.textContent = open ? '×' : '?';
+    if (this.tipTimer) clearTimeout(this.tipTimer);
+    this.tipTimer = null;
+    this.referenceAnchor.classList.toggle('closing', !open);
     if (open) delete this.referenceButton.dataset.tip;
-    else this.referenceButton.dataset.tip = 'Reference';
+    else this.tipTimer = setTimeout(() => this.restoreReferenceTip(), REFERENCE_CLOSE_MS);
     // Closing it makes the back sound, opening it the usual click (read when the button is pressed).
     if (open) this.referenceButton.dataset.sound = 'ui.back';
     else delete this.referenceButton.dataset.sound;
@@ -182,6 +191,23 @@ export class Hud {
     // Grow to fit the sheet, never past the screen.
     const room = window.innerHeight - 40;
     this.reference.style.height = `${Math.min(room, this.referenceBody.offsetHeight)}px`;
+  }
+
+  /**
+   * The tooltip comes back once the sheet has finished turning into the button, and then after the
+   * usual hover delay: the pointer is usually still on the button (it was just pressed). Put back
+   * while it is hovered, the tooltip would simply be there; so it is put back invisible, and let
+   * go of a moment later, which makes it fade in as it does for any hover.
+   */
+  private restoreReferenceTip(): void {
+    this.tipTimer = null;
+    // It is the button again: no longer over the cards.
+    this.referenceAnchor.classList.remove('closing');
+    const button = this.referenceButton;
+    button.classList.add('tip-arming');
+    button.dataset.tip = 'Reference';
+    void button.offsetWidth;
+    button.classList.remove('tip-arming');
   }
 
   render(game: GameView): void {
@@ -365,7 +391,7 @@ export class Hud {
     this.roomCode.replaceChildren();
     if (code === null) return;
     const label = el('small', '');
-    label.textContent = 'Code';
+    label.textContent = 'Room code';
     const value = el('strong', '');
     value.textContent = code;
     this.roomCode.append(label, value);
@@ -374,7 +400,7 @@ export class Hud {
   /** Show how many people are watching (nothing, when no one is). */
   setSpectators(count: number): void {
     this.tally.hidden = count === 0;
-    this.tally.textContent = `${count} spectating`;
+    this.tally.textContent = `${count} ${count === 1 ? 'spectator' : 'spectators'}`;
   }
 
   /** Say something in a little bubble above the surrender button, for a few seconds. */

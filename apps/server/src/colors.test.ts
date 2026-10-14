@@ -1,0 +1,152 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Lobby } from './lobby.js';
+import { FakeClient, options } from './test-helpers.js';
+
+describe('player colors', () => {
+  let lobby: Lobby;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lobby = new Lobby(options);
+  });
+
+  afterEach(() => {
+    lobby.stop();
+    vi.useRealTimers();
+  });
+
+  /** A private battle royale with the host and these guests, all in the lobby. */
+  function royale(...names: string[]) {
+    const host = new FakeClient(lobby).hello('Host');
+    host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+    const guests = names.map((name) => {
+      const client = new FakeClient(lobby).hello(name);
+      client.say({ type: 'joinRoom', code: host.room!.code });
+      return client;
+    });
+    return { host, guests };
+  }
+
+  /** The color each player has in the room, by name. */
+  const colorsOf = (client: FakeClient): Record<string, number | null> =>
+    Object.fromEntries(client.room!.players.map((p) => [p.name, p.color]));
+
+  it('gives each player the lowest free color as they join', () => {
+    const { host } = royale('Ann', 'Bob');
+    expect(colorsOf(host)).toEqual({ Host: 0, Ann: 1, Bob: 2 });
+  });
+
+  it('frees the color of someone who leaves, without changing anyone else', () => {
+    const { host, guests } = royale('Ann', 'Bob');
+    guests[0]!.say({ type: 'leaveRoom' });
+    expect(colorsOf(host)).toEqual({ Host: 0, Bob: 2 });
+    const cy = new FakeClient(lobby).hello('Cy');
+    cy.say({ type: 'joinRoom', code: host.room!.code });
+    expect(colorsOf(host)).toEqual({ Host: 0, Bob: 2, Cy: 1 });
+  });
+
+  it('keeps the color of a spectator for when they come back', () => {
+    const { host, guests } = royale('Ann', 'Bob');
+    const [ann] = guests as [FakeClient, FakeClient];
+    ann.say({ type: 'becomeSpectator' });
+    expect(colorsOf(host)).toEqual({ Host: 0, Bob: 2 });
+    // A newcomer does not get the reserved color while others are free.
+    const cy = new FakeClient(lobby).hello('Cy');
+    cy.say({ type: 'joinRoom', code: host.room!.code });
+    expect(colorsOf(host)).toEqual({ Host: 0, Bob: 2, Cy: 3 });
+    ann.say({ type: 'becomePlayer' });
+    expect(colorsOf(host)).toEqual({ Host: 0, Ann: 1, Bob: 2, Cy: 3 });
+  });
+
+  it("hands out a spectator's color only when every other color is taken", () => {
+    const names = Array.from({ length: 11 }, (_, i) => `P${i + 1}`);
+    const { host, guests } = royale(...names);
+    // Twelve players, so colors 0 to 11 are all in use. P6 has color 6.
+    expect(colorsOf(host).P6).toBe(6);
+    guests[5]!.say({ type: 'becomeSpectator' });
+    const late = new FakeClient(lobby).hello('Late');
+    late.say({ type: 'joinRoom', code: host.room!.code });
+    expect(colorsOf(host).Late).toBe(6);
+    // The spectator lost the reservation: they take whichever color is free when they return.
+    guests[0]!.say({ type: 'leaveRoom' });
+    guests[5]!.say({ type: 'becomePlayer' });
+    expect(colorsOf(host).P6).toBe(1);
+  });
+
+  it('is the color the player has in the match', () => {
+    const { host, guests } = royale('Ann', 'Bob');
+    const lobbyColors = colorsOf(host);
+    host.say({ type: 'startGame' });
+    const snapshot = guests[0]!.last('snapshot');
+    for (const player of host.room!.players) {
+      expect(snapshot.colors?.[player.playerId!]).toBe(lobbyColors[player.name]);
+    }
+  });
+
+  it('tells the chat who sent a message, whose color is in the room: a spectator has none', () => {
+    // Messages carry no color of their own: the chat colors a name by its sender's place in the
+    // room now, so it changes when they switch.
+    const { host, guests } = royale('Ann');
+    host.say({ type: 'chat', text: 'hi' });
+    const message = guests[0]!.last('chat').messages[0]!;
+    expect(message).toMatchObject({ name: 'Host', userId: host.room!.you });
+    expect(message).not.toHaveProperty('color');
+    expect(colorsOf(guests[0]!)).toEqual({ Host: 0, Ann: 1 });
+    guests[0]!.say({ type: 'becomeSpectator' });
+    expect(colorsOf(host)).toEqual({ Host: 0 });
+  });
+
+  it('stays with a player who is knocked out, who then chats with the spectators', () => {
+    const { host, guests } = royale('Ann', 'Bob', 'Cy');
+    const [ann, bob, cy] = guests as [FakeClient, FakeClient, FakeClient];
+    const watcher = new FakeClient(lobby).hello('Watcher');
+    watcher.say({ type: 'joinRoom', code: host.room!.code });
+    // Ann has color 1; the watcher is a player here (the room is not full), so step out.
+    watcher.say({ type: 'becomeSpectator' });
+    host.say({ type: 'startGame' });
+    expect(ann.room?.canChat).toBe(false);
+    ann.say({ type: 'surrender' });
+    expect(ann.room).toMatchObject({ state: 'running', canChat: true });
+    vi.advanceTimersByTime(1000);
+    ann.say({ type: 'chat', text: 'I am out' });
+    // The watcher sees it, and Ann is still a player with her color; the players still in the match do not.
+    expect(watcher.last('chat').messages[0]).toMatchObject({ name: 'Ann' });
+    expect(colorsOf(watcher).Ann).toBe(1);
+    expect(host.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
+      'I am out',
+    );
+    expect(bob.room?.canChat).toBe(false);
+    expect(cy.room?.canChat).toBe(false);
+    // A real spectator has no color.
+    vi.advanceTimersByTime(1000);
+    watcher.say({ type: 'chat', text: 'hello' });
+    expect(ann.last('chat').messages[0]).toMatchObject({ name: 'Watcher' });
+    expect(colorsOf(ann)).not.toHaveProperty('Watcher');
+  });
+
+  it('tells the spectators when a player surrenders, but not the players', () => {
+    const { host, guests } = royale('Ann', 'Bob');
+    const watcher = new FakeClient(lobby).hello('Watcher');
+    watcher.say({ type: 'joinRoom', code: host.room!.code });
+    watcher.say({ type: 'becomeSpectator' });
+    host.say({ type: 'startGame' });
+    const [ann, bob] = guests as [FakeClient, FakeClient];
+    ann.say({ type: 'surrender' });
+    // The spectator, and Ann herself (who is a spectator now), read it as news about Ann.
+    for (const reader of [watcher, ann]) {
+      expect(reader.last('chat').messages[0]).toMatchObject({
+        system: true,
+        name: 'Ann',
+        userId: ann.room!.you,
+        text: 'surrendered',
+      });
+    }
+    // The players still in the match see nothing.
+    expect(host.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
+      'surrendered',
+    );
+    expect(bob.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
+      'surrendered',
+    );
+  });
+});

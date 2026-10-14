@@ -124,13 +124,17 @@ const MAX_RING_SEGMENTS = 36;
 const WIDE_SCREEN = 900;
 const LEFT_HUD_WIDTH = 296;
 
-export function playerColor(game: GameView, owner: string | null): number | null {
-  if (owner === null) return null;
-  const index = game.colors[owner] ?? Math.max(0, game.players.indexOf(owner));
+/** The color with this number in the palette. */
+export function paletteColor(index: number): number {
   const palette = PLAYER_COLORS[index];
   if (palette !== undefined) return palette;
   // Beyond the hand-picked palette (big battle royales), space hues around the color wheel.
   return hslToHex((index * 137.508) % 360, 0.62, 0.6);
+}
+
+export function playerColor(game: GameView, owner: string | null): number | null {
+  if (owner === null) return null;
+  return paletteColor(game.colors[owner] ?? Math.max(0, game.players.indexOf(owner)));
 }
 
 function hslToHex(hue: number, saturation: number, lightness: number): number {

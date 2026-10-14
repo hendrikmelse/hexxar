@@ -9,13 +9,13 @@ import {
 } from '../blueprint.js';
 import { topologyIssues } from '../topology.js';
 import {
+  assignWidths,
   blocked,
-  crowding,
+  bridgeLengths,
   distance,
-  minGap,
-  pickWidth,
-  spawnRadius,
-  spawnSpacing,
+  MIN_GAP,
+  SPAWN_GAP,
+  SPAWN_START_RADIUS,
 } from './common.js';
 import type { ArchetypeInput } from './types.js';
 
@@ -30,11 +30,12 @@ function inDisc(radius: number, rng: Rng): Point {
 }
 
 /**
- * Push apart any points closer than `spacing`, keeping them inside a disc, until none are (or
- * the rounds run out). Plain random spots cannot pack bowls tightly; this can.
+ * Push apart any points closer than `spacing`, until none are (or the rounds run out): each pair
+ * that is too close moves half the shortfall apart. The points are free to spread out as far as
+ * they need to, so this is what sets how far apart the start chambers end up.
  */
-function relax(points: Point[], spacing: number, limit: number): void {
-  for (let round = 0; round < 400; round++) {
+function relax(points: Point[], spacing: number): void {
+  for (let round = 0; round < RELAX_ROUNDS; round++) {
     let moved = false;
     for (let i = 0; i < points.length; i++) {
       for (let j = i + 1; j < points.length; j++) {
@@ -50,53 +51,93 @@ function relax(points: Point[], spacing: number, limit: number): void {
         points[j] = { x: b.x + dx * push, y: b.y + dy * push };
       }
     }
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]!;
-      const out = Math.hypot(p.x, p.y);
-      if (out > limit) points[i] = { x: (p.x / out) * limit, y: (p.y / out) * limit };
-    }
     if (!moved) return;
   }
 }
 
+/** The most rounds of relaxing; far more than a board needs. */
+const RELAX_ROUNDS = 2000;
+
 /**
- * Spawn chambers: each starts as the best of a few random spots, the one furthest from the spawns
- * already placed, which spreads the players out; then they are pushed apart until every pair is
- * far enough. Centers end up on a hex so the city is exactly there.
+ * The start points, spread far apart: every point starts at a random place inside a disc of radius
+ * 4 (so they all start piled up in the middle), and relaxing pushes them apart until every pair is
+ * `4 × radius + 1.4` apart. They are pulled closer together again by the corridors later (see
+ * `tighten`), so how far they end up apart varies from corridor to corridor.
  */
-function placeSpawns(
-  count: number,
-  spread: number,
-  startDistance: number,
-  crowded: number,
-  rng: Rng,
-): Chamber[] | null {
-  const spacing = spawnSpacing(startDistance, crowded);
+function spreadSpawns(count: number, radius: number, rng: Rng): Point[] {
   const points: Point[] = [];
-  for (let i = 0; i < count; i++) {
-    let best: Point = inDisc(spread, rng);
-    let bestGap = -1;
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const spot = inDisc(spread, rng);
-      const gap = Math.min(Infinity, ...points.map((other) => distance(spot, other)));
-      if (gap > bestGap) {
-        best = spot;
-        bestGap = gap;
+  for (let i = 0; i < count; i++) points.push(inDisc(SPAWN_START_RADIUS, rng));
+  relax(points, 4 * radius + SPAWN_GAP);
+  return points;
+}
+
+/** A spanning tree over the points: Prim's algorithm from point 0, the nearest unlinked point first. */
+function spanningTree(points: readonly Point[]): [number, number][] {
+  const tree: [number, number][] = [];
+  const linked = new Set<number>([0]);
+  while (linked.size < points.length) {
+    let best: [number, number] | null = null;
+    let bestLength = Infinity;
+    for (const from of linked) {
+      for (let to = 0; to < points.length; to++) {
+        if (linked.has(to)) continue;
+        const length = distance(points[from]!, points[to]!);
+        if (length < bestLength) {
+          best = [from, to];
+          bestLength = length;
+        }
       }
     }
-    points.push(best);
+    if (!best) break;
+    tree.push(best);
+    linked.add(best[1]);
   }
-  relax(points, spacing, spread * 1.15);
-  const centers = points.map((p) => hexToPoint(pointToHex(p)));
-  for (const [i, a] of centers.entries()) {
-    // Snapping to a hex moves a point a little, so the real gap is checked on the hexes.
-    if (centers.slice(i + 1).some((b) => distance(a, b) < startDistance)) return null;
+  return tree;
+}
+
+/**
+ * Pull the points together along the tree: each corridor tries to bring its two points to a target
+ * distance (twice the radius plus its bridge length), moving both by a quarter of the error each
+ * round, while every pair that is not joined by a corridor is still kept at least `2 × radius + 1.4`
+ * apart. Stops when everything is within 0.02 of where it should be, or after `RELAX_ROUNDS`.
+ */
+function tighten(
+  points: Point[],
+  tree: readonly [number, number][],
+  radius: number,
+  rng: Rng,
+): void {
+  const targets = bridgeLengths(tree.length, rng).map((bridge) => 2 * radius + bridge);
+  const joined = new Set(tree.map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
+  const spacing = 2 * radius + SPAWN_GAP;
+  const move = (i: number, j: number, amount: number): void => {
+    // Move i and j toward each other by `amount` each (away, if negative).
+    const a = points[i]!;
+    const b = points[j]!;
+    const gap = distance(a, b);
+    const dx = gap === 0 ? 1 : (b.x - a.x) / gap;
+    const dy = gap === 0 ? 0 : (b.y - a.y) / gap;
+    points[i] = { x: a.x + dx * amount, y: a.y + dy * amount };
+    points[j] = { x: b.x - dx * amount, y: b.y - dy * amount };
+  };
+  for (let round = 0; round < RELAX_ROUNDS; round++) {
+    let worst = 0;
+    tree.forEach(([a, b], k) => {
+      const error = distance(points[a]!, points[b]!) - targets[k]!;
+      worst = Math.max(worst, Math.abs(error));
+      move(a, b, error / 4);
+    });
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        if (joined.has(`${i}-${j}`)) continue;
+        const gap = distance(points[i]!, points[j]!);
+        if (gap >= spacing) continue;
+        worst = Math.max(worst, spacing - gap);
+        move(i, j, -((spacing - gap) / 2 + 0.01));
+      }
+    }
+    if (worst < 0.02) return;
   }
-  return centers.map((center) => ({
-    center,
-    radius: spawnRadius(startDistance, crowded),
-    spawn: true,
-  }));
 }
 
 /**
@@ -113,11 +154,11 @@ function placeNeutrals(
   count: number,
   spread: number,
   maxRadius: number,
-  startDistance: number,
+  bowlRadius: number,
   rng: Rng,
 ): void {
-  const smallest = Math.min(1.6, spawnRadius(startDistance));
-  const gap = minGap(startDistance);
+  const smallest = bowlRadius;
+  const gap = MIN_GAP;
   for (let i = 0; i < count; i++) {
     const radius = smallest + rng.next() * Math.max(0, maxRadius - smallest);
     for (let attempt = 0; attempt < PLACE_TRIES; attempt++) {
@@ -133,45 +174,25 @@ function placeNeutrals(
   }
 }
 
-/** How much smaller the share of extra passages is on a fully crowded board (0.3 of the chambers otherwise). */
-const LOOPS_LESS_WHEN_CROWDED = 0.15;
-
 /**
- * Join the chambers: a minimum spanning tree so everything is reachable, then a few extra short
- * passages that make loops. Corridors are picked at random widths and bowed a little.
+ * Join the chambers: the spanning tree (made from where the starts were first spread out) so
+ * everything is reachable, then a few extra short passages that make loops. Corridors are bowed a little, and given their widths last.
  */
-function connect(chambers: readonly Chamber[], crowded: number, rng: Rng): Corridor[] {
+function connect(
+  chambers: readonly Chamber[],
+  tree: readonly [number, number][],
+  rng: Rng,
+): Corridor[] {
   const corridors: Corridor[] = [];
-  const linked = new Set<number>([0]);
   const pairs = new Set<string>();
+  // Widths are not known until every corridor is: they are given at the end (`assignWidths`).
   const add = (from: number, to: number): void => {
     const length = distance(chambers[from]!.center, chambers[to]!.center);
-    corridors.push({
-      from,
-      to,
-      width: pickWidth(rng, crowded),
-      bend: (rng.next() - 0.5) * 0.3 * length,
-    });
+    corridors.push({ from, to, width: 1, bend: (rng.next() - 0.5) * 0.3 * length });
     pairs.add(`${Math.min(from, to)}-${Math.max(from, to)}`);
   };
 
-  while (linked.size < chambers.length) {
-    let best: [number, number] | null = null;
-    let bestLength = Infinity;
-    for (const from of linked) {
-      for (let to = 0; to < chambers.length; to++) {
-        if (linked.has(to)) continue;
-        const length = distance(chambers[from]!.center, chambers[to]!.center);
-        if (length < bestLength) {
-          best = [from, to];
-          bestLength = length;
-        }
-      }
-    }
-    if (!best) break;
-    add(best[0], best[1]);
-    linked.add(best[1]);
-  }
+  for (const [from, to] of tree) add(from, to);
 
   const treeLengths = corridors
     .map((c) => distance(chambers[c.from]!.center, chambers[c.to]!.center))
@@ -187,11 +208,20 @@ function connect(chambers: readonly Chamber[], crowded: number, rng: Rng): Corri
     }
   }
   extras.sort((a, b) => a[2] - b[2] || rng.next() - 0.5);
-  // Crowded boards get fewer extra passages, so they are less of a tangle.
-  const loops = Math.round(chambers.length * (0.3 - LOOPS_LESS_WHEN_CROWDED * crowded));
+  const loops = Math.round(chambers.length * 0.3);
   for (const [from, to] of extras.slice(0, loops)) add(from, to);
   repairTopology(chambers, corridors, add, pairs);
-  return corridors;
+  // The bridge of each corridor (open ground between its bowls) and its width decide how much land it covers.
+  const bridges = corridors.map(({ from, to }) =>
+    Math.max(
+      0,
+      distance(chambers[from]!.center, chambers[to]!.center) -
+        chambers[from]!.radius -
+        chambers[to]!.radius,
+    ),
+  );
+  const widths = assignWidths(bridges, rng);
+  return corridors.map((corridor, i) => ({ ...corridor, width: widths[i]! }));
 }
 
 /**
@@ -255,16 +285,18 @@ function repairTopology(
  * Dead ends (peninsulas) happen where the tree has them, a start included, as long as they are
  * one corridor off a junction.
  */
-export function buildScattered({
-  players,
-  scale,
-  rng,
-  startDistance,
-}: ArchetypeInput): Blueprint | null {
-  const crowded = crowding(players);
-  const spawns = placeSpawns(players, scale, startDistance, crowded, rng);
-  if (!spawns) return null;
-  const chambers: Chamber[] = [...spawns];
-  placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, startDistance, rng);
-  return { chambers, corridors: connect(chambers, crowded, rng) };
+export function buildScattered({ players, bowlRadius, rng }: ArchetypeInput): Blueprint {
+  const points = spreadSpawns(players, bowlRadius, rng);
+  const tree = spanningTree(points);
+  tighten(points, tree, bowlRadius, rng);
+  // Each point is snapped to the nearest hex center, so the city sits exactly on a hex.
+  const chambers: Chamber[] = points.map((p) => ({
+    center: hexToPoint(pointToHex(p)),
+    radius: bowlRadius,
+    spawn: true,
+  }));
+  // Neutral rooms (none are asked for) are scattered over the ground the starts cover.
+  const spread = Math.max(...chambers.map((c) => Math.hypot(c.center.x, c.center.y)));
+  placeNeutrals(chambers, neutralRooms(), spread, 2.2 + 0.15 * spread, bowlRadius, rng);
+  return { chambers, corridors: connect(chambers, tree, rng) };
 }

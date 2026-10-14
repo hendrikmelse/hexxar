@@ -206,7 +206,13 @@ describe('Lobby', () => {
         host.say({ type: 'leaveRoom' });
         return Object.keys(snapshot.state.tiles).length;
       };
-      const [small, normal, large] = [tilesAt('small'), tilesAt('normal'), tilesAt('large')];
+      // Boards are random, and the sizes overlap: one board of each size is out of order about 1
+      // time in 90. On average, though, a bigger map has clearly more tiles (the averages of 9
+      // boards each were never out of order in 200,000 draws).
+      const BOARDS = 9;
+      const averageAt = (mapSize: 'small' | 'normal' | 'large') =>
+        Array.from({ length: BOARDS }, () => tilesAt(mapSize)).reduce((a, b) => a + b, 0) / BOARDS;
+      const [small, normal, large] = [averageAt('small'), averageAt('normal'), averageAt('large')];
       expect(small).toBeLessThan(normal);
       expect(normal).toBeLessThan(large);
     });
@@ -337,6 +343,25 @@ describe('Lobby', () => {
         expect(colorsOf(host).mine).toBe(first.host.mine);
         expect(colorsOf(tia).mine).toBe(first.tia.mine);
         expect(colorsOf(zed).mine).toBe(first.zed.mine);
+      });
+
+      it('counts a player who is out as a spectator for the others, right away', () => {
+        const host = new FakeClient(lobby).hello('Hana');
+        host.say({ type: 'createRoom', settings: { mode: 'ffa' } });
+        const [gus, tia, zed] = ['Gus', 'Tia', 'Zed'].map((name) => {
+          const client = new FakeClient(lobby).hello(name);
+          client.say({ type: 'joinRoom', code: host.room!.code });
+          return client;
+        }) as [FakeClient, FakeClient, FakeClient];
+        host.say({ type: 'startGame' });
+        // Everyone is still in the game: nobody is watching.
+        expect(host.room?.spectators).toEqual([]);
+        gus.say({ type: 'surrender' });
+        expect(host.room?.state).toBe('running');
+        // Out is a spectator at once, without having to ask for it.
+        expect(host.room?.spectators).toEqual(['Gus']);
+        expect(zed.room?.spectators).toEqual(['Gus']);
+        expect(tia.room?.spectators).toEqual(['Gus']);
       });
 
       it('keeps the host as host while they read the result, until they leave', () => {

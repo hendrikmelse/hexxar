@@ -426,26 +426,49 @@
 
 /* ---- Buttons: surrender and the camera ------------------------------------------------------- */
 
-/* The surrender button, with the number of spectators in small print beside it */
+/* The room code and the spectator count: just right of the clock's card, level with its top */
+#hud .top-info {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* The surrender button at the bottom left */
 #hud .bottom-left {
   position: fixed;
   left: 14px;
   bottom: 18px;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-/* A private game's code, in a small sunken box between the surrender button and the tally */
-#hud .room-code {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
+/* A private game's code and the spectator count: small sunken boxes */
+#hud .room-code,
+#hud .spectator-tally {
   padding: 5px 10px;
   border-radius: 8px;
   background: var(--well);
   box-shadow: var(--well-shadow);
   color: var(--muted);
+}
+
+#hud .room-code[hidden],
+#hud .spectator-tally[hidden] {
+  display: none;
+}
+
+/* The label sits above the code */
+#hud .room-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 #hud .room-code small {
@@ -456,13 +479,13 @@
 }
 
 #hud .room-code strong {
-  font-size: 15px;
+  font-size: 19px;
+  line-height: 1.1;
   letter-spacing: 0.14em;
   color: #eef5ff;
 }
 
 #hud .spectator-tally {
-  color: #8a93a8;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -560,8 +583,8 @@
 /*
  * The app's tooltip: an element with the class `hint` and a `data-tip` shows the text in a dark
  * panel, with a small arrow pointing back at the element, on hover or keyboard focus.
- * `data-tip-pos` says where: `left` (the default), `below` (lined up with the element's right
- * edge) or `below-center`. With no `data-tip`, no tooltip.
+ * `data-tip-pos` says where: `left` (the default), `right`, `below` (lined up with the element's
+ * right edge) or `below-center`. With no `data-tip`, no tooltip.
  * The panel is the element's ::after and the arrow its ::before.
  */
 .hint {
@@ -727,6 +750,30 @@
   transform: translate(-50%, 0);
 }
 
+/* To the right of the element, the arrow pointing back at it (the mirror of the default) */
+.hint[data-tip-pos='right']::after {
+  left: calc(100% + 12px);
+  right: auto;
+  transform: translate(-6px, -50%);
+}
+
+.hint[data-tip-pos='right']::before {
+  left: calc(100% + 7px);
+  right: auto;
+  border-width: 0 0 1px 1px;
+  transform: translate(-6px, -50%) rotate(45deg);
+}
+
+.hint[data-tip-pos='right']:hover::after,
+.hint[data-tip-pos='right']:focus-visible::after {
+  transform: translate(0, -50%);
+}
+
+.hint[data-tip-pos='right']:hover::before,
+.hint[data-tip-pos='right']:focus-visible::before {
+  transform: translate(0, -50%) rotate(45deg);
+}
+
 /* The "show the whole board" icon is drawn with CSS: a hexagon outline */
 #hud .camera button.icon i {
   position: absolute;
@@ -827,8 +874,13 @@
   height: 42px;
 }
 
-#hud .reference-anchor.open {
-  /* Over the tutorial's guide card, which comes later in the page and would cover it otherwise */
+/*
+ * While it is open it is over the cards of the menu layer (the tutorial's guide, the spectating
+ * card), which come later in the page and would cover it otherwise. It stays over them while it
+ * closes (`closing`, kept until it has finished), or they would jump in front of it half way.
+ */
+#hud .reference-anchor.open,
+#hud .reference-anchor.closing {
   z-index: 20;
 }
 
@@ -858,6 +910,13 @@
   width: min(600px, calc(100vw - 100px));
   border-radius: 14px;
   background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+}
+
+/* While its tooltip is being put back (see Hud.toggleReference): shown from nothing, so it fades in */
+#hud .hint.tip-arming::after,
+#hud .hint.tip-arming::before {
+  opacity: 0 !important;
+  transition: none !important;
 }
 
 /* The button sits over the sheet, in the corner it grew from (outside the sheet's clipping) */

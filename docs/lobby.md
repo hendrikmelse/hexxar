@@ -49,10 +49,28 @@ A private room's host can change the game mode (duel or battle royale), the **ma
 - **Room ids are random UUIDs and are never reused**, even across server restarts, so replays can be saved under them. The match uses its room's id. The short join code is only unique among open rooms and is freed when the room closes.
 - Who starts where is decided randomly when the match starts.
 
+## Chat
+
+There is one chat per room, and who may read and write in it depends on where the room is (`chatChannelOf` in `apps/server/src/room.ts`):
+
+| Room state                  | Players                        | Spectators                     |
+| --------------------------- | ------------------------------ | ------------------------------ |
+| Lobby (public and private)  | **lobby chat**, shared         | **lobby chat**, shared         |
+| Running match               | no chat                        | **spectator chat**, among them |
+| Finished (the result is up) | **spectator chat**, carried on | **spectator chat**             |
+
+- **Players never see spectator chat**, and cannot write during a match. When the match starts the lobby's log is thrown away for everyone (the server sends an empty `replace`), so players do not keep reading it and spectators start a fresh chat. The next lobby (`returnToRoom`) starts empty too.
+- When a player is knocked out or surrenders, the spectators' chat gets a line about it ("Ann was eliminated" / "Ann surrendered", a `system` message about that player, in their color), as well as the toast the players still in the match see. When the match ends, it also says who won ("Ann won the match").
+- **Once the match is over, everyone in the room joins the spectators' chat**, including the winner and the players who were still in it (there is nothing left to keep from them): it is the same log, so they can read what the spectators said, and it is open while the defeat, game over and victory cards are up. It is thrown away with the match: the next lobby starts a fresh chat.
+- A player who is knocked out of the match (beaten, or gave up) joins the spectators' chat from then on, and keeps the color they played in; people who came only to watch have no color (their names are light grey). Players still in the match cannot read it.
+- Messages are at most 200 characters (`CHAT_MAX_LENGTH`); control characters (line breaks) are turned into spaces, empty messages are ignored, and one person can send one message every 0.4 seconds (`CHAT_GAP_MS`). The last 50 are kept (`CHAT_HISTORY`) so someone arriving late is caught up.
+- `RoomView.canChat` says whether the receiver may chat right now; the client shows the panel only then. The server sends a `chat` message with `replace: true` and the whole log whenever the chat someone may read changes (joining, becoming a spectator, the match starting) and with `replace: false` for each new message.
+- There is no moderation yet (no mute, no word filter), and chat in public lobbies is between strangers.
+
 ## Protocol
 
-- Client: `hello`, `setName`, `quickPlay` (with a mode), `voteStart`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, plus the in-match `order` and `surrender`.
-- Server: `welcome`, `denied` (see below), `room` (your room, or `null` for the menu; sent on every change), `stats` (online counts for the menu), `snapshot`, `tick`, `queued`, `rejected`.
+- Client: `hello`, `setName`, `quickPlay` (with a mode), `voteStart`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, `chat`, plus the in-match `order` and `surrender`.
+- Server: `welcome`, `denied` (see below), `room` (your room, or `null` for the menu; sent on every change), `stats` (online counts for the menu), `snapshot`, `tick`, `queued`, `chat` (see above), `rejected`.
 
 ## Beta access code
 
@@ -60,7 +78,7 @@ When the server has a `BETA_CODE`, `hello` must carry it (`code`). Without the r
 
 ## Not built yet
 
-A public game list, spectators, bots, ranked rooms and reconnecting after a server restart.
+A public game list, bots, ranked rooms and reconnecting after a server restart.
 
 ## Map sizes
 
