@@ -157,6 +157,17 @@ export class Hud {
     this.remark.setAttribute('role', 'status');
     this.tally.hidden = true;
     this.roomCode.hidden = true;
+    // Pressing anywhere else puts the code's highlight away, as it would on a page of text (the
+    // board does not do that by itself). Selections elsewhere, such as in the chat, are left alone.
+    window.addEventListener(
+      'pointerdown',
+      (event) => {
+        const selection = window.getSelection();
+        const inCode = selection?.anchorNode && this.roomCode.contains(selection.anchorNode);
+        if (inCode && !this.roomCode.contains(event.target as Node)) selection.removeAllRanges();
+      },
+      true,
+    );
     const bottom = el('div', 'bottom-left');
     bottom.append(this.surrender);
     root.append(left, top, bottom, this.remark, camera, this.referenceAnchor);
