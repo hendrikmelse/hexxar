@@ -231,6 +231,11 @@
   padding-right: 14px;
 }
 
+/* A private game's row can hold Leave, Start game and Join as player at once: smaller lettering so they fit */
+#ui .lobby.compact .buttons button {
+  font-size: 15px;
+}
+
 #ui .muted {
   margin: 0;
   color: #8a93a8;
@@ -3047,7 +3052,7 @@
 
 /* Spectators have no player color: light grey */
 #ui .chat-log strong {
-  color: #c9cedb;
+  color: #a9afbf;
 }
 
 #ui .chat-log .chat-empty {
