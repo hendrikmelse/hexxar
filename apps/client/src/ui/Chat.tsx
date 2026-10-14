@@ -204,8 +204,11 @@ export function Chat({
     >
       {/* Everything stays in place while it opens and shuts, so the size can animate. */}
       <div className="chat-body">
-        <h3 className="chat-head">{title}</h3>
-        {note && <p className="chat-note">{note}</p>}
+        {/* The title and its note share the row of the minimize button beside them. */}
+        <div className="chat-title">
+          <h3 className="chat-head">{title}</h3>
+          {note && <p className="chat-note">{note}</p>}
+        </div>
         <div className="chat-log">
           <div
             className="chat-scroll"

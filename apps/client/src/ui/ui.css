@@ -3011,6 +3011,8 @@
   }
 
   #ui .chat.lobby-chat {
+    /* Stacked under the card, as wide as it */
+    --chat-w: min(430px, calc(100vw - 32px));
     position: relative;
     left: auto;
     bottom: auto;
@@ -3038,12 +3040,16 @@
   height: min(calc(40vh + 110px), 400px);
 }
 
-#ui .chat-head {
+#ui .chat-title {
   display: flex;
-  align-items: center;
-  /* As tall as the minimize button beside it, and clear of it */
+  flex-direction: column;
+  justify-content: center;
+  /* As tall as the minimize button beside it, and clear of it: the log starts right below both */
   min-height: 40px;
   padding-right: 44px;
+}
+
+#ui .chat-head {
   margin: 0;
   font-size: 12px;
   font-weight: 700;
