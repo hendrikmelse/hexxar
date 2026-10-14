@@ -8,7 +8,7 @@ import {
   type Point,
 } from '../blueprint.js';
 import { topologyIssues } from '../topology.js';
-import { blocked, distance, minGap, pickWidth, spawnRadius, spawnSpacing } from './common.js';
+import { blocked, distance, MIN_GAP, pickWidth, SPAWN_RADIUS, SPAWN_SPACING } from './common.js';
 import type { ArchetypeInput } from './types.js';
 
 /** How many random spots are tried for each room before it is given up on. */
@@ -56,13 +56,8 @@ function relax(points: Point[], spacing: number, limit: number): void {
  * already placed, which spreads the players out; then they are pushed apart until every pair is
  * far enough. Centers end up on a hex so the city is exactly there.
  */
-function placeSpawns(
-  count: number,
-  spread: number,
-  startDistance: number,
-  rng: Rng,
-): Chamber[] | null {
-  const spacing = spawnSpacing(startDistance);
+function placeSpawns(count: number, spread: number, rng: Rng): Chamber[] | null {
+  const spacing = SPAWN_SPACING;
   const points: Point[] = [];
   for (let i = 0; i < count; i++) {
     let best: Point = inDisc(spread, rng);
@@ -81,11 +76,11 @@ function placeSpawns(
   const centers = points.map((p) => hexToPoint(pointToHex(p)));
   for (const [i, a] of centers.entries()) {
     // Snapping to a hex moves a point a little, so the real gap is checked on the hexes.
-    if (centers.slice(i + 1).some((b) => distance(a, b) < startDistance)) return null;
+    if (centers.slice(i + 1).some((b) => distance(a, b) < SPAWN_SPACING - 0.6)) return null;
   }
   return centers.map((center) => ({
     center,
-    radius: spawnRadius(startDistance),
+    radius: SPAWN_RADIUS,
     spawn: true,
   }));
 }
@@ -104,11 +99,10 @@ function placeNeutrals(
   count: number,
   spread: number,
   maxRadius: number,
-  startDistance: number,
   rng: Rng,
 ): void {
-  const smallest = Math.min(1.6, spawnRadius(startDistance));
-  const gap = minGap(startDistance);
+  const smallest = SPAWN_RADIUS;
+  const gap = MIN_GAP;
   for (let i = 0; i < count; i++) {
     const radius = smallest + rng.next() * Math.max(0, maxRadius - smallest);
     for (let attempt = 0; attempt < PLACE_TRIES; attempt++) {
@@ -242,15 +236,10 @@ function repairTopology(
  * Dead ends (peninsulas) happen where the tree has them, a start included, as long as they are
  * one corridor off a junction.
  */
-export function buildScattered({
-  players,
-  scale,
-  rng,
-  startDistance,
-}: ArchetypeInput): Blueprint | null {
-  const spawns = placeSpawns(players, scale, startDistance, rng);
+export function buildScattered({ players, scale, rng }: ArchetypeInput): Blueprint | null {
+  const spawns = placeSpawns(players, scale, rng);
   if (!spawns) return null;
   const chambers: Chamber[] = [...spawns];
-  placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, startDistance, rng);
+  placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, rng);
   return { chambers, corridors: connect(chambers, rng) };
 }

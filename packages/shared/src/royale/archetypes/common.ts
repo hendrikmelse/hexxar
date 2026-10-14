@@ -1,17 +1,12 @@
 import type { Rng } from '../../rng.js';
 import { segmentDistance, type Chamber, type Point } from '../blueprint.js';
 
-/**
- * Spawn chambers are all the same size, so no player starts with a roomier bowl than another.
- * Closer cities get smaller bowls, but never less than the city and the ring around it.
- */
-export const spawnRadius = (startDistance: number): number =>
-  Math.min(2, Math.max(1.2, startDistance * 0.4));
-/** Spawn chamber centers are a little further apart than the cities are required to be. */
-export const spawnSpacing = (startDistance: number): number => startDistance + 0.6;
+/** Spawn chambers are all the same size, so no player starts with a roomier bowl than another. */
+export const SPAWN_RADIUS = 1.6;
+/** Spawn chamber centers are pushed at least this far apart. */
+export const SPAWN_SPACING = 4.6;
 /** The least open ground between two chambers, so a corridor is long enough to read as one. */
-export const minGap = (startDistance: number): number =>
-  Math.min(2.5, Math.max(1.5, startDistance * 0.5));
+export const MIN_GAP = 2;
 /** Corridor widths, in hexes, and how often each is picked. The wide ones are not chokes. */
 export const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number])[] = [
   [1, 3],

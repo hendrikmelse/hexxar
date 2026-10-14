@@ -825,7 +825,8 @@ describe('battle royale boards', () => {
   const board = (n: number, seed: number) =>
     createFreeForAllMatch({ players: ids(n), seed, params: { villageChance: 100 } }).state;
   const counts = [3, 5, 8, 12];
-  const minDistance = DEFAULT_GENERATION_PARAMS.minStartDistance;
+  /** The spawn bowls are kept about this far apart. */
+  const minDistance = 4;
 
   it('is deterministic for a seed and different for different seeds', () => {
     expect(board(8, 5)).toEqual(board(8, 5));
@@ -834,10 +835,7 @@ describe('battle royale boards', () => {
 
   it('scales the board with the number of players', () => {
     for (const n of counts) {
-      const perPlayer = Math.max(
-        DEFAULT_GENERATION_PARAMS.tilesPerPlayer,
-        DEFAULT_GENERATION_PARAMS.minTilesPerPlayer,
-      );
+      const perPlayer = DEFAULT_GENERATION_PARAMS.tilesPerPlayer;
       for (let seed = 1; seed <= 3; seed++) {
         const tiles = Object.keys(board(n, seed).tiles).length;
         expect(tiles / (n * perPlayer)).toBeGreaterThan(0.85);

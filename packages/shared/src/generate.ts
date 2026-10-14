@@ -444,7 +444,7 @@ export interface FreeForAllOptions {
 /**
  * A battle royale board: random terrain with no symmetry, drawn from a blueprint of rooms and
  * passages (see `royale/`), with a starting city in every spawn chamber. Cities are never on
- * the edge and never closer than `minStartDistance`. The same terrain rules apply as on
+ * the edge. The same terrain rules apply as on
  * symmetric boards. Players are assigned to the starting cities at random.
  */
 export function createFreeForAllMatch(options: FreeForAllOptions): {

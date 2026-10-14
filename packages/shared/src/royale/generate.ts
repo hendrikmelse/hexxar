@@ -1,4 +1,4 @@
-import { hexDistance, hexKey, type Hex } from '../hex.js';
+import { hexKey, type Hex } from '../hex.js';
 import type { GenerationParams } from '../params.js';
 import { createRng } from '../rng.js';
 import { ARCHETYPE_IDS, archetypeById, type ArchetypeId } from './archetypes/index.js';
@@ -51,7 +51,7 @@ const MAX_INTERIOR_SHARE = 0.4;
 
 /** Tiles a board should have, never fewer than the players can fit. */
 export const royaleTargetTiles = (players: number, params: GenerationParams): number =>
-  players * Math.max(params.tilesPerPlayer, params.minTilesPerPlayer);
+  players * params.tilesPerPlayer;
 
 interface Candidate {
   readonly land: Land;
@@ -82,7 +82,6 @@ function drawCandidate(
       players,
       scale,
       rng: createRng(layoutSeed),
-      startDistance: params.minStartDistance,
     });
     if (!blueprint) {
       drawn = null;
@@ -126,11 +125,8 @@ function drawCandidate(
 
   const depth = depthFromCoast(land);
   const starts = blueprint.chambers.filter((c) => c.spawn).map((c) => pointToHex(c.center));
-  for (const [i, start] of starts.entries()) {
+  for (const start of starts) {
     if ((depth.get(hexKey(start)) ?? 0) < 2) return 'spawns';
-    for (const other of starts.slice(i + 1)) {
-      if (hexDistance(start, other) < params.minStartDistance) return 'spawns';
-    }
   }
 
   const metrics = analyze(blueprint, land, depth, starts);

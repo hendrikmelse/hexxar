@@ -20,13 +20,6 @@ export interface GenerationParams {
 
   /** Battle Royale boards: tiles of board per player, which decides the board size. */
   tilesPerPlayer: number;
-  /**
-   * Battle Royale boards never get less than this many tiles per player. Cities are at least
-   * `minStartDistance` apart, so below a certain size there is no room left for water or chokes.
-   */
-  minTilesPerPlayer: number;
-  /** Battle Royale boards: starting cities are never closer than this to each other. */
-  minStartDistance: number;
 
   // -- Coast (battle royale and duel boards) -------------------------------------------
 
@@ -46,8 +39,6 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   villagesNextToCities: false,
 
   tilesPerPlayer: 25,
-  minTilesPerPlayer: 20,
-  minStartDistance: 4,
 
   coastRoughness: 1,
   coastDetail: 5,

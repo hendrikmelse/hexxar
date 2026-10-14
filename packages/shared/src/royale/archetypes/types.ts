@@ -10,8 +10,6 @@ export interface ArchetypeInput {
    */
   readonly scale: number;
   readonly rng: Rng;
-  /** Starting cities are at least this many tiles apart; chambers shrink to fit when it is small. */
-  readonly startDistance: number;
 }
 
 /**

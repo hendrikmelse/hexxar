@@ -178,11 +178,6 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
     title: 'Battle royale terrain',
     fields: [
       { key: 'tilesPerPlayer', hint: 'Tiles of board per player, which decides the board size' },
-      {
-        key: 'minTilesPerPlayer',
-        hint: 'Boards never get less than this per player (0 for no floor)',
-      },
-      { key: 'minStartDistance', hint: 'Starting cities are never closer than this' },
     ],
   },
   {
