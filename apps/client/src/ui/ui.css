@@ -2947,14 +2947,16 @@
 }
 
 #ui .chat.open .chat-body {
-  padding: 16px;
+  /* Little at the top: the title's row is the minimize button's, which is as tall as it */
+  padding: 8px 16px 16px;
 }
 
 /* The writing fades out as the window folds, and in as it opens */
 #ui .chat-head,
 #ui .chat-note,
 #ui .chat-log,
-#ui .chat-form input {
+#ui .chat-form input,
+#ui .chat-send {
   transition:
     opacity 0.2s,
     visibility 0s linear 0.2s;
@@ -2963,7 +2965,8 @@
 #ui .chat.closed .chat-head,
 #ui .chat.closed .chat-note,
 #ui .chat.closed .chat-log,
-#ui .chat.closed .chat-form input {
+#ui .chat.closed .chat-form input,
+#ui .chat.closed .chat-send {
   opacity: 0;
   visibility: hidden;
 }
@@ -2971,7 +2974,8 @@
 #ui .chat.open .chat-head,
 #ui .chat.open .chat-note,
 #ui .chat.open .chat-log,
-#ui .chat.open .chat-form input {
+#ui .chat.open .chat-form input,
+#ui .chat.open .chat-send {
   transition-delay: 0.03s;
 }
 
@@ -3024,6 +3028,11 @@
 }
 
 #ui .chat-head {
+  display: flex;
+  align-items: center;
+  /* As tall as the minimize button beside it, and clear of it */
+  min-height: 40px;
+  padding-right: 44px;
   margin: 0;
   font-size: 12px;
   font-weight: 700;
@@ -3088,9 +3097,22 @@
   font-size: 14px;
 }
 
-/* The same size as the sound and fullscreen buttons */
-#ui .chat-toggle {
-  position: relative;
+/*
+ * The same size as the sound and fullscreen buttons. Shut, it fills the chat's corner; open, it
+ * is in the top right of the window. Its place is measured from the chat's own box, so it travels
+ * along with the window as that grows.
+ */
+#ui button.chat-toggle.hint {
+  position: absolute;
+  left: 0;
+  top: calc(100% - 40px);
+  transition:
+    left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 0.08s ease,
+    box-shadow 0.08s ease,
+    filter 0.12s ease,
+    z-index 0s linear 0.2s;
   flex: none;
   width: 40px;
   height: 40px;
@@ -3098,6 +3120,23 @@
   display: grid;
   place-items: center;
   color: #e8eaf0;
+}
+
+#ui .chat.open .chat-toggle {
+  left: calc(100% - 48px);
+  top: 8px;
+}
+
+/* The send button, beside the message bar */
+#ui .chat-send {
+  flex: none;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+#ui .chat-send:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* How many messages came in while it was shut */
@@ -3126,7 +3165,9 @@
   #ui .chat-head,
   #ui .chat-note,
   #ui .chat-log,
-  #ui .chat-form input {
+  #ui .chat-form input,
+  #ui .chat-send,
+  #ui button.chat-toggle.hint {
     transition: none;
   }
 }

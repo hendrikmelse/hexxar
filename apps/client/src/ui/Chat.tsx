@@ -192,33 +192,6 @@ export function Chat({
           </div>
         </div>
         <form className="chat-form" onSubmit={submit}>
-          {/* In the bottom left of the window; shut, it is all there is. */}
-          <button
-            type="button"
-            className="chat-toggle hint"
-            data-sound={open ? 'ui.back' : undefined}
-            aria-expanded={open}
-            aria-label={label}
-            data-tip={label}
-            data-tip-pos={match ? 'right' : 'below-center'}
-            onClick={toggle}
-          >
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <path
-                d={
-                  open
-                    ? 'M12 6l-6 6 6 6M18 6l-6 6 6 6'
-                    : 'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'
-                }
-                transform={open ? 'translate(-1.1 2.2) rotate(-45 12 12)' : undefined}
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            </svg>
-          </button>
           <input
             ref={input}
             type="text"
@@ -235,8 +208,43 @@ export function Chat({
               if (event.key === 'Escape') event.currentTarget.blur();
             }}
           />
+          <button
+            type="submit"
+            className="chat-send primary"
+            tabIndex={open ? 0 : -1}
+            disabled={text.trim() === ''}
+          >
+            Send
+          </button>
         </form>
       </div>
+      {/* Shut, it is all there is, in the bottom left; open, it is in the window's top right. */}
+      <button
+        type="button"
+        className="chat-toggle hint"
+        data-sound={open ? 'ui.back' : undefined}
+        aria-expanded={open}
+        aria-label={label}
+        data-tip={label}
+        data-tip-pos={match ? 'right' : 'below-center'}
+        onClick={toggle}
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path
+            d={
+              open
+                ? 'M12 6l-6 6 6 6M18 6l-6 6 6 6'
+                : 'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'
+            }
+            transform={open ? 'translate(-1.1 2.2) rotate(-45 12 12)' : undefined}
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      </button>
       {unread > 0 && <b className="chat-unread">{unread > 9 ? '9+' : unread}</b>}
     </div>
   );
