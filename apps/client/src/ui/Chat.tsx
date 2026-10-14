@@ -6,6 +6,8 @@ import type { Actions } from './App.js';
 
 /** How close to the bottom the log has to be scrolled for new messages to keep it there. */
 const STICK_PX = 40;
+/** How far one turn of the mouse wheel scrolls the log, compared with the browser's usual. */
+const WHEEL_SCALE = 0.5;
 
 /**
  * The chat: a button the size of the sound and fullscreen buttons, which opens into the chat
@@ -47,6 +49,25 @@ export function Chat({
     if (open) input.current?.focus();
   }, [open]);
   const unread = open ? 0 : Math.max(0, app.chat.length - seen);
+
+  // The log scrolls at a gentler pace than the browser's own, which suits so small a window. (A
+  // listener of its own: React's wheel handlers cannot hold the page's scrolling back.)
+  useEffect(() => {
+    const el = log.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent): void => {
+      if (event.ctrlKey) return;
+      const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? el.clientHeight : 1;
+      const step = event.deltaY * unit * WHEEL_SCALE;
+      const max = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // Already at the end it is heading for: the wheel carries on to the page as usual.
+      if (step === 0 || (step < 0 && el.scrollTop <= 0) || (step > 0 && max <= 0)) return;
+      event.preventDefault();
+      el.scrollTop += step;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
