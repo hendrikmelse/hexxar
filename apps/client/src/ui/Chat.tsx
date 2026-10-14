@@ -77,6 +77,7 @@ export function Chat({
     if (open) setSeen(app.chat.length);
   }, [open, last]);
   const unread = open ? 0 : Math.max(0, app.chat.length - seen);
+  const badge = unread > 9 ? '9+' : String(unread);
 
   // The log scrolls at a gentler pace than the browser's own, which suits so small a window, and
   // glides there: every turn of the wheel moves a target, and each frame the log eases toward it.
@@ -268,7 +269,12 @@ export function Chat({
           />
         </svg>
       </button>
-      {unread > 0 && <b className="chat-unread">{unread > 9 ? '9+' : unread}</b>}
+      {/* Keyed by what it says: a new number is a new badge, which bounces in. */}
+      {unread > 0 && (
+        <b key={badge} className="chat-unread">
+          {badge}
+        </b>
+      )}
     </div>
   );
 }

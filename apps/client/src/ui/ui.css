@@ -3146,7 +3146,23 @@
 }
 
 /* How many messages came in while it was shut */
+@keyframes chat-badge-bounce {
+  0% {
+    transform: scale(0.6);
+  }
+  45% {
+    transform: scale(1.35);
+  }
+  70% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 #ui .chat-unread {
+  animation: chat-badge-bounce 0.36s ease-out;
   position: absolute;
   /* Above the button even when it is raised for its tooltip (see .hint:hover in hud.css) */
   z-index: 6;
@@ -3165,6 +3181,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  #ui .chat-unread {
+    animation: none;
+  }
+
   #ui .chat,
   #ui .chat::before,
   #ui .chat-body,
