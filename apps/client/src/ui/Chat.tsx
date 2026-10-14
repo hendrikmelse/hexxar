@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '@hexxar/shared';
 import { paletteColor } from '../board.js';
 import { setChatOpen, useApp } from '../store.js';
@@ -14,6 +14,12 @@ const SETTLE_MS = 320;
 const WHEEL_SCALE = 0.333;
 /** How long the log takes to cover most of the way to where the wheel has sent it (a time constant, in ms). */
 const GLIDE_MS = 90;
+
+/** A name's style: in the player's color (a palette index), or the log's own light grey for none. */
+function nameStyle(color: number | null | undefined): CSSProperties | undefined {
+  if (color === null || color === undefined) return undefined;
+  return { color: `#${paletteColor(color).toString(16).padStart(6, '0')}` };
+}
 
 /**
  * The chat: a button the size of the sound and fullscreen buttons, which opens into the chat
@@ -34,6 +40,13 @@ export function Chat({
 }) {
   const app = useApp();
   const you = app.room?.you;
+  // A name is in the color its owner has now, so it changes along with them (a player who steps
+  // out to spectate, or a spectator who takes a place), and everything they said before with it.
+  // Whoever is not a player here (a spectator, or someone who has gone) has none.
+  const colors = useMemo(
+    () => new Map(app.room?.players.map((player) => [player.userId, player.color])),
+    [app.room],
+  );
   // Kept in the app's store, not here: the lobby's chat and the match's are the same window to
   // the player, so what one was left as, the other starts as.
   const open = app.chatOpen;
@@ -192,13 +205,7 @@ export function Chat({
             {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
             {app.chat.map((message) => (
               <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
-                <strong
-                  style={
-                    message.color === null
-                      ? undefined
-                      : { color: `#${paletteColor(message.color).toString(16).padStart(6, '0')}` }
-                  }
-                >
+                <strong style={nameStyle(colors.get(message.userId))}>
                   {message.name}
                   {message.userId === you && ' (you)'}
                 </strong>{' '}
