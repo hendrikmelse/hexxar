@@ -93,17 +93,19 @@ A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRo
 
 ### The settings
 
-| Setting                                              | Value                                                                             | Where                                          |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Start bowl radius                                    | `bowlRadius`: 1.6 by default; rooms use `royaleBowlRadius(size, players)` (below) | `params.ts`                                    |
-| Start bowls are first placed inside a disc of radius | 4 tiles                                                                           | `SPAWN_START_RADIUS` in `archetypes/common.ts` |
-| Start bowl centers are relaxed apart to              | `2 × radius + 1.4` tiles                                                          | `SPAWN_GAP`                                    |
-| Most relaxing rounds                                 | 2000                                                                              | `RELAX_ROUNDS` in `scattered.ts`               |
-| Neutral chambers                                     | none (the code is kept for another archetype)                                     | `neutralRooms()`                               |
-| Corridor widths and weights                          | 1: 3, 2: 3, 3: 2.5, 4: 1.5 (30%, 30%, 25%, 15%)                                   | `CORRIDOR_WIDTHS`                              |
-| Corridor bend                                        | uniform in ±0.15 × the corridor's length                                          | `connect` in `scattered.ts`                    |
-| Extra "loop" corridors                               | `round(0.3 × chambers)`                                                           | `connect`                                      |
-| Coast roughness / detail / warp                      | 1 / 5 / 1.5                                                                       | `DEFAULT_GENERATION_PARAMS`                    |
+| Setting                                                            | Value                                                                             | Where                                          |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Start bowl radius                                                  | `bowlRadius`: 1.6 by default; rooms use `royaleBowlRadius(size, players)` (below) | `params.ts`                                    |
+| Start bowls are first placed inside a disc of radius               | 4 tiles                                                                           | `SPAWN_START_RADIUS` in `archetypes/common.ts` |
+| First relaxing: start bowl centers pushed apart to                 | `4 × radius + 1.4` tiles                                                          | `SPAWN_GAP`, `spreadSpawns` in `scattered.ts`  |
+| Tree corridor bridge (open ground between two bowls)               | `3 + (U + U − 1) × 2`: 1 to 5, about 3 in 4 between 2 and 4                       | `bridgeLength` in `scattered.ts`               |
+| Second relaxing: pairs not joined by a tree corridor kept at least | `2 × radius + 1.4` tiles                                                          | `tighten` in `scattered.ts`                    |
+| Most relaxing rounds (each of the two)                             | 2000                                                                              | `RELAX_ROUNDS` in `scattered.ts`               |
+| Neutral chambers                                                   | none (the code is kept for another archetype)                                     | `neutralRooms()`                               |
+| Corridor widths and weights                                        | 1: 3, 2: 3, 3: 2.5, 4: 1.5 (30%, 30%, 25%, 15%)                                   | `CORRIDOR_WIDTHS`                              |
+| Corridor bend                                                      | uniform in ±0.15 × the corridor's length                                          | `connect` in `scattered.ts`                    |
+| Extra "loop" corridors                                             | `round(0.3 × chambers)`                                                           | `connect`                                      |
+| Coast roughness / detail / warp                                    | 1 / 5 / 1.5                                                                       | `DEFAULT_GENERATION_PARAMS`                    |
 
 There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the code allows more.
 
@@ -119,7 +121,7 @@ There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the 
 | 8       | 1.10 / 1.90 / 2.95              | 14 / 23 / 42                                  | 14 / 23 / 42                         |
 | 12      | 1.02 / 1.78 / 2.76              | 13 / 22 / 38                                  | 13 / 21 / 38                         |
 
-(Measured: the average over 40 seeds per cell.) Individual boards vary a lot, since nothing controls the area: for example normal boards with 3 players have between 19 and 38 tiles per player, and with 12 players between 19 and 25.
+(Measured: the average over 40 seeds per cell, **before the corridor lengths were varied (the two-stage relaxing above); not re-measured since, so the tiles per player will have shifted.**) Individual boards vary a lot, since nothing controls the area: for example normal boards with 3 players have between 19 and 38 tiles per player, and with 12 players between 19 and 25.
 
 ### Step by step
 
@@ -127,16 +129,17 @@ There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the 
 
 **2. Blueprint** (`buildScattered`), using `createRng(layoutSeed)`.
 
-_Start chambers_ (`placeSpawns`), one per player:
+_Start chambers_, one per player, in three steps (`spreadSpawns`, `spanningTree`, `tighten` in `scattered.ts`):
 
-- Every player's point starts at a uniformly random place inside a disc of radius 4 around the origin (`SPAWN_START_RADIUS`), so they all start piled up in the middle. There is no scale or size parameter: the layout is as spread out as the relaxing makes it.
-- The points are then **relaxed**: for up to 2000 rounds, every pair closer than `2 × radius + 1.4` is pushed apart by half the shortfall each (plus 0.01), the pairs taken in order, until a round moves nothing. Two points on exactly the same place are pushed apart along the x axis. Nothing keeps the points inside any disc, so they spread out as far as they need to.
-- Each point is snapped to the nearest hex center, so the city sits exactly on a hex, and becomes a chamber of the bowl radius.
+- **Spread far apart.** Every player's point starts at a uniformly random place inside a disc of radius 4 around the origin (`SPAWN_START_RADIUS`), so they all start piled up in the middle. The points are then **relaxed**: for up to 2000 rounds, every pair closer than `4 × radius + 1.4` is pushed apart by half the shortfall each (plus 0.01), the pairs taken in order, until a round moves nothing. Two points on exactly the same place are pushed apart along the x axis. Nothing keeps the points inside any disc.
+- **Spanning tree.** Prim's algorithm from point 0 over these far apart points: the nearest unlinked point first. These are the tree corridors, and they are chosen here, before the points move again.
+- **Pull together along the tree.** Each tree corridor gets a target length: `2 × radius + bridge`, where the bridge is `3 + (U₁ + U₂ − 1) × 2` tiles of open ground between the two bowls (`U` are uniform random numbers in [0, 1); so between 1 and 5, and about 3 in 4 are between 2 and 4). Then for up to 2000 rounds: each tree corridor moves its two points a quarter of its error each toward (or away from) the target distance, and every pair of points that is _not_ joined by a tree corridor and is closer than `2 × radius + 1.4` is pushed apart as before; it stops when no corridor is more than 0.02 off and nobody had to be pushed. So how far apart neighbors end up varies from corridor to corridor.
+- Each point is then snapped to the nearest hex center, so the city sits exactly on a hex, and becomes a chamber of the bowl radius.
 
 _Corridors_ (`connect`):
 
-- **Spanning tree:** Prim's algorithm from chamber 0 over true center-to-center distances (nearest unlinked chamber first). Every chamber is reachable.
-- **Loops:** let `reach = 1.4 ×` the median tree corridor length. Candidate extra corridors are all pairs that are not already joined, are at most `reach` long, and whose straight line does not run through another chamber (within that chamber's radius + 0.5). The shortest `round(0.3 × chambers)` of them are added (ties broken randomly).
+- **Spanning tree:** the tree chosen above, so every chamber is reachable. Its corridors are added first.
+- **Loops:** (after the points have been pulled together) let `reach = 1.4 ×` the median tree corridor length. Candidate extra corridors are all pairs that are not already joined, are at most `reach` long, and whose straight line does not run through another chamber (within that chamber's radius + 0.5). The shortest `round(0.3 × chambers)` of them are added (ties broken randomly).
 - **Widths and bend:** each corridor gets a random width from the weights above and a random bend.
 - **Long tails are repaired** (`royale/topology.ts`; this is a repair, there is no check afterwards, so a rare layout can keep one): a dead-end chamber (one corridor) may hang off a junction, but not at the end of a chain of chambers that each have exactly two corridors ("snakes", or a dead end behind a dead end). Up to `4 × chambers` times, the worst remaining tail end is joined to the nearest chamber it is not yet joined to (a straight line through another chamber costs 1000 extra, so is only a last resort), which closes a loop. Dead-end chambers at a junction ("peninsulas", which can be a player's start) are fine, and nothing adds them on purpose.
 
@@ -155,11 +158,11 @@ Nothing checks the starts, because nothing can remove what they need:
 - **The city and its six neighbors are land.** `rasterize` sets them as land after drawing everything else, and lists them as protected. Tidying only ever _adds_ land when filling bays, and never removes a protected hex when trimming spurs.
 - **They stay in the one piece that is kept.** Cleanup keeps the biggest connected piece. Every chamber has at least one corridor (the spanning tree), and a corridor's core, every hex within 0.58 of its centerline (more than the 0.5774 a hex can be from a line that crosses it), is land whatever the noise says. That makes an unbroken chain of land from each chamber's center to the next chamber's center, so all the chambers and their rings are one piece, and the piece kept is the whole board.
 - **A start is never on the edge**, because all six neighbors of the city are land.
-- **Two starts are never on one hex**, because relaxing leaves every pair at least `2 × radius + 1.4` apart (at least 3.4 for the smallest bowl), far more than the half-tile rounding to a hex can close. The tests draw 180 boards across sizes and player counts and check every ring, and that the starts are all different.
+- **Two starts are never on one hex**, because the second relaxing keeps every pair that is not joined by a tree corridor at least `2 × radius + 1.4` apart, and a pair that is joined is pulled to `2 × radius + bridge` (at least about `2 × radius + 1`, which is 3 tiles even for the smallest bowl), far more than the half-tile rounding to a hex can close. The tests draw 180 boards across sizes and player counts and check every ring, and that the starts are all different.
 
 ### Measured
 
-Over 40 seeds per cell, the average open ground between two chambers along a corridor ("bridge"):
+Over 40 seeds per cell, before the two-stage relaxing (not re-measured since), the average open ground between two chambers along a corridor ("bridge"):
 
 | Board                   | Bridge (tiles)  |
 | ----------------------- | --------------- |
