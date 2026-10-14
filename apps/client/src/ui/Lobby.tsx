@@ -61,129 +61,134 @@ export function Lobby({ actions }: { actions: Actions }) {
 
   return (
     <div className="screen">
-      <div className={`card lobby ${isPrivate ? 'compact' : ''}`}>
-        <h2>{isPrivate ? 'Private game' : mode === 'ffa' ? 'Battle Royale' : 'Duel'}</h2>
+      <div className="lobby-layout">
+        <div className={`card lobby ${isPrivate ? 'compact' : ''}`}>
+          <h2>{isPrivate ? 'Private game' : mode === 'ffa' ? 'Battle Royale' : 'Duel'}</h2>
 
-        {isPrivate && <InviteCode code={room.code} />}
+          {isPrivate && <InviteCode code={room.code} />}
 
-        {mode === 'ffa' ? (
-          isPrivate ? null : (
-            // Quick play fills up with strangers, so a head count says more than a list of names.
-            <div className="head-count">
-              <strong>
-                {/* Bounces each time the count changes after the lobby is on screen. */}
-                <span
-                  key={bump.changes}
-                  className={bump.changes === 0 ? '' : bump.grew ? 'count-bump' : 'count-shrink'}
-                >
-                  {players}
-                </span>
-                <small> / {size}</small>
-              </strong>
-              <span>players in the lobby</span>
-            </div>
-          )
-        ) : (
-          <>
-            <Versus room={room} shown={shown} />
-          </>
-        )}
+          {mode === 'ffa' ? (
+            isPrivate ? null : (
+              // Quick play fills up with strangers, so a head count says more than a list of names.
+              <div className="head-count">
+                <strong>
+                  {/* Bounces each time the count changes after the lobby is on screen. */}
+                  <span
+                    key={bump.changes}
+                    className={bump.changes === 0 ? '' : bump.grew ? 'count-bump' : 'count-shrink'}
+                  >
+                    {players}
+                  </span>
+                  <small> / {size}</small>
+                </strong>
+                <span>players in the lobby</span>
+              </div>
+            )
+          ) : (
+            <>
+              <Versus room={room} shown={shown} />
+            </>
+          )}
 
-        {/* In a private game you know who you are playing with: twelve boxes that fill as people join. */}
-        {mode === 'ffa' && isPrivate && <Roster room={room} shown={shown} />}
+          {/* In a private game you know who you are playing with: twelve boxes that fill as people join. */}
+          {mode === 'ffa' && isPrivate && <Roster room={room} shown={shown} />}
 
-        {isPrivate && <Settings room={room} editable={editable} onChange={actions.updateRoom} />}
+          {isPrivate && <Settings room={room} editable={editable} onChange={actions.updateRoom} />}
 
-        {/* The timer and the vote are always on screen, so nothing jumps when the third player joins. */}
-        {(canVote || publicDuel) && (
-          <div
-            className={`wait-timer ${lockedIn ? 'locked' : ''} ${waitSeconds === null ? 'paused' : ''}`}
-          >
-            {/* A duel with nobody across the table yet says so here, in place of the label and number. */}
-            {!waitingForOpponent && (
-              <span className="wait-label">
-                {lockedIn ? 'Enough votes: starting in' : 'Match starts in'}
-              </span>
-            )}
-            {waitingForOpponent ? (
-              <strong className="waiting-text">Waiting for an opponent...</strong>
-            ) : (
-              <strong>{formatClock(waitSeconds ?? Math.round(room.waitMs / 1000))}</strong>
-            )}
-          </div>
-        )}
-
-        {canVote && (
-          <div className="vote">
-            {canStart ? (
-              <button
-                className={room.youVoted ? 'voted' : ''}
-                disabled={lockedIn && room.youVoted}
-                onClick={() => actions.voteStart(!room.youVoted)}
-              >
-                {`${room.youVoted ? 'Voted to start early ✓' : 'Vote to start early'} (${room.startVotes}/${room.votesNeeded})`}
-              </button>
-            ) : (
-              <p className="vote-note">At least three players required to start</p>
-            )}
-          </div>
-        )}
-
-        {/* Private games always keep the line's place, empty or not, so nothing moves when someone starts watching. */}
-        {isPrivate && (
-          <p
-            className="muted center spectator-count"
-            style={room.spectators.length === 0 ? { visibility: 'hidden' } : undefined}
-          >
-            {room.spectators.length} spectator{room.spectators.length === 1 ? '' : 's'}
-            {room.spectating && (
-              <>
-                <span className="dot">·</span>
-                You are a spectator
-              </>
-            )}
-          </p>
-        )}
-
-        <div className="buttons">
-          <button data-sound="ui.back" onClick={actions.leaveRoom}>
-            Leave
-          </button>
-          {isHost && isPrivate && room.state === 'lobby' && (
-            <Tip
-              text={
-                canStart
-                  ? undefined
-                  : mode === 'ffa'
-                    ? 'At least three players are required to start a Battle Royale'
-                    : 'Two players are required to start a duel'
-              }
+          {/* The timer and the vote are always on screen, so nothing jumps when the third player joins. */}
+          {(canVote || publicDuel) && (
+            <div
+              className={`wait-timer ${lockedIn ? 'locked' : ''} ${waitSeconds === null ? 'paused' : ''}`}
             >
-              <button className="primary" disabled={!canStart} onClick={actions.startGame}>
-                Start game
-              </button>
-            </Tip>
+              {/* A duel with nobody across the table yet says so here, in place of the label and number. */}
+              {!waitingForOpponent && (
+                <span className="wait-label">
+                  {lockedIn ? 'Enough votes: starting in' : 'Match starts in'}
+                </span>
+              )}
+              {waitingForOpponent ? (
+                <strong className="waiting-text">Waiting for an opponent...</strong>
+              ) : (
+                <strong>{formatClock(waitSeconds ?? Math.round(room.waitMs / 1000))}</strong>
+              )}
+            </div>
           )}
-          {/* In the bottom right: players can step out to watch, and spectators can take a free place. */}
-          {isPrivate && !room.spectating && (
-            <button className="side-button" onClick={actions.becomeSpectator}>
-              Spectate
-            </button>
-          )}
-          {room.spectating && (
-            <Tip text={players < size ? undefined : 'The game is full'}>
-              <button className="primary" disabled={players >= size} onClick={actions.becomePlayer}>
-                Join as player
-              </button>
-            </Tip>
-          )}
-        </div>
 
+          {canVote && (
+            <div className="vote">
+              {canStart ? (
+                <button
+                  className={room.youVoted ? 'voted' : ''}
+                  disabled={lockedIn && room.youVoted}
+                  onClick={() => actions.voteStart(!room.youVoted)}
+                >
+                  {`${room.youVoted ? 'Voted to start early ✓' : 'Vote to start early'} (${room.startVotes}/${room.votesNeeded})`}
+                </button>
+              ) : (
+                <p className="vote-note">At least three players required to start</p>
+              )}
+            </div>
+          )}
+
+          {/* Private games always keep the line's place, empty or not, so nothing moves when someone starts watching. */}
+          {isPrivate && (
+            <p
+              className="muted center spectator-count"
+              style={room.spectators.length === 0 ? { visibility: 'hidden' } : undefined}
+            >
+              {room.spectators.length} spectator{room.spectators.length === 1 ? '' : 's'}
+              {room.spectating && (
+                <>
+                  <span className="dot">·</span>
+                  You are a spectator
+                </>
+              )}
+            </p>
+          )}
+
+          <div className="buttons">
+            <button data-sound="ui.back" onClick={actions.leaveRoom}>
+              Leave
+            </button>
+            {isHost && isPrivate && room.state === 'lobby' && (
+              <Tip
+                text={
+                  canStart
+                    ? undefined
+                    : mode === 'ffa'
+                      ? 'At least three players are required to start a Battle Royale'
+                      : 'Two players are required to start a duel'
+                }
+              >
+                <button className="primary" disabled={!canStart} onClick={actions.startGame}>
+                  Start game
+                </button>
+              </Tip>
+            )}
+            {/* In the bottom right: players can step out to watch, and spectators can take a free place. */}
+            {isPrivate && !room.spectating && (
+              <button className="side-button" onClick={actions.becomeSpectator}>
+                Spectate
+              </button>
+            )}
+            {room.spectating && (
+              <Tip text={players < size ? undefined : 'The game is full'}>
+                <button
+                  className="primary"
+                  disabled={players >= size}
+                  onClick={actions.becomePlayer}
+                >
+                  Join as player
+                </button>
+              </Tip>
+            )}
+          </div>
+
+          {/* Laid over the card's bottom padding, as far from the edge as on the title screen. */}
+          <SupportLink />
+        </div>
         {/* Everyone in the room talks together until the match starts. */}
         {room.canChat && <Chat actions={actions} title="Chat" />}
-
-        {/* Laid over the card's bottom padding, as far from the edge as on the title screen. */}
-        <SupportLink />
       </div>
     </div>
   );

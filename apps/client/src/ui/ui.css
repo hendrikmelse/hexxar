@@ -2804,43 +2804,72 @@
 
 /* ---- Chat ------------------------------------------------------------------------------------ */
 
-/* A panel in the bottom corner: the lobby's at the left, a spectator's centered above their bar */
+/* The lobby's card and its chat, side by side and centered together */
+#ui .lobby-layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+  /* Two cards, plus the gap between them */
+  max-width: 780px;
+  margin: auto;
+}
+
+#ui .lobby-layout > .card {
+  /* The same width as the chat beside it */
+  flex: 0 1 380px;
+}
+
 #ui .chat {
-  position: fixed;
-  bottom: 14px;
-  z-index: 20;
-  width: min(300px, calc(100vw - 28px));
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  pointer-events: auto;
-  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 16px;
   border-radius: 12px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.09) inset,
+    0 6px 0 #10131a,
+    0 22px 38px rgba(0, 0, 0, 0.55);
   font-size: 14px;
 }
 
+/* Beside the card: as wide as it, and as tall unless made taller */
 #ui .chat.lobby-chat {
-  left: 14px;
+  flex: 0 1 380px;
+  min-height: 300px;
 }
 
+#ui .chat.lobby-chat.big {
+  align-self: center;
+  height: min(80vh, 640px);
+}
+
+/* A spectator's, over the board, centered above the "Spectating" bar */
 #ui .chat.match {
+  position: fixed;
   left: 50%;
-  transform: translateX(-50%);
-  /* Above the "Spectating" bar */
   bottom: 74px;
+  z-index: 20;
+  transform: translateX(-50%);
+  width: min(380px, calc(100vw - 28px));
+  pointer-events: auto;
+}
+
+#ui .chat.match .chat-log {
+  height: 160px;
+}
+
+#ui .chat.match.big .chat-log {
+  height: min(50vh, 420px);
 }
 
 #ui .chat-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px;
-  border: 0;
-  background: none;
-  box-shadow: none;
+  margin: 0;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -2848,35 +2877,15 @@
   color: #8a93a8;
 }
 
-#ui .chat-head span {
-  flex: 1;
-  text-align: left;
-}
-
-#ui .chat-head i {
-  font-style: normal;
-  font-size: 16px;
-}
-
-#ui .chat-unread {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: #3f8cf0;
-  color: #fff;
-  font-size: 11px;
-  letter-spacing: 0;
-  text-align: center;
-}
-
 #ui .chat-note {
-  margin: 0 4px;
+  margin: 0;
   font-size: 11px;
   color: #6f7890;
 }
 
 #ui .chat-log {
-  height: 150px;
+  flex: 1;
+  min-height: 120px;
   overflow-y: auto;
   padding: 6px 8px;
   border-radius: 8px;
@@ -2902,9 +2911,22 @@
   color: #6f7890;
 }
 
+/* The expand button in the bottom left, level with the input */
+#ui .chat-form {
+  display: flex;
+  gap: 8px;
+}
+
 #ui .chat-form input {
-  width: 100%;
-  box-sizing: border-box;
+  flex: 1;
   padding: 7px 10px;
   font-size: 14px;
+}
+
+#ui .chat-expand {
+  flex: none;
+  width: 36px;
+  padding: 0;
+  font-size: 17px;
+  line-height: 1;
 }
