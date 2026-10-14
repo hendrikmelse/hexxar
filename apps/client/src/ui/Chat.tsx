@@ -6,6 +6,8 @@ import type { Actions } from './App.js';
 
 /** How close to the bottom the log has to be scrolled for new messages to keep it there. */
 const STICK_PX = 40;
+/** Long enough for the message field to have become visible when the window opens. */
+const FOCUS_DELAY_MS = 60;
 /** A little longer than the window takes to open or shut (see ui.css). */
 const SETTLE_MS = 320;
 /** How far one turn of the mouse wheel scrolls the log, compared with the browser's usual. */
@@ -59,9 +61,12 @@ export function Chat({
   useEffect(() => {
     if (open) setSeen(app.chat.length);
   }, [open, last]);
-  // Opening it is for writing something.
+  // Opening it is for writing something. The field only becomes visible a moment after the window
+  // starts to open (see ui.css), and a browser will not focus what is hidden: so wait for that.
   useEffect(() => {
-    if (open) input.current?.focus();
+    if (!open) return;
+    const id = setTimeout(() => input.current?.focus({ preventScroll: true }), FOCUS_DELAY_MS);
+    return () => clearTimeout(id);
   }, [open]);
   const unread = open ? 0 : Math.max(0, app.chat.length - seen);
 
