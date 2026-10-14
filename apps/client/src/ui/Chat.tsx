@@ -84,6 +84,7 @@ export function Chat({
                 }
               >
                 {message.name}
+                {message.userId === you && ' (you)'}
               </strong>{' '}
               {message.text}
             </p>

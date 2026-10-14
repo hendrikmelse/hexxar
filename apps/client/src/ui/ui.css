@@ -1305,14 +1305,29 @@
   z-index: 5;
 }
 
+/*
+ * The text is painted in the page's own layer, just as the name beneath it is, which is what keeps
+ * the two exactly on top of each other: fading the text itself (opacity) would move it into a
+ * layer of its own, snapped to whole pixels. So the text fades by its color, and the box behind it
+ * (the skin) by opacity.
+ */
 #ui .name-full {
   position: absolute;
   z-index: 30;
-  box-sizing: content-box;
+  isolation: isolate;
   white-space: nowrap;
   font-weight: 700;
-  color: #eef5ff;
+  color: transparent;
   pointer-events: none;
+  /* Fades away quickly when the pointer leaves */
+  transition: color 0.12s ease-out;
+}
+
+#ui .name-full::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
   background: linear-gradient(180deg, #1d212c 0%, #12151d 100%);
@@ -1320,26 +1335,26 @@
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
     0 3px 0 #0b0d12,
     0 10px 20px rgba(0, 0, 0, 0.5);
-  /* Fades away quickly when the pointer leaves */
   opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 0.12s ease-out,
-    visibility 0s linear 0.12s;
+  transition: opacity 0.12s ease-out;
 }
 
 /* Fades in after a short pause, so brushing past a box shows nothing */
 #ui .name-full.shown {
+  color: var(--tip-color, #eef5ff);
+  transition: color 0.15s ease-out 0.3s;
+}
+
+#ui .name-full.shown::before {
   opacity: 1;
-  visibility: visible;
-  transition:
-    opacity 0.15s ease-out 0.3s,
-    visibility 0s linear 0.3s;
+  transition: opacity 0.15s ease-out 0.3s;
 }
 
 @media (prefers-reduced-motion: reduce) {
   #ui .name-full,
-  #ui .name-full.shown {
+  #ui .name-full::before,
+  #ui .name-full.shown,
+  #ui .name-full.shown::before {
     transition: none;
   }
 }
@@ -3030,12 +3045,9 @@
   margin: 0 0 3px;
 }
 
+/* Spectators have no player color: light grey */
 #ui .chat-log strong {
-  color: #8fb4ff;
-}
-
-#ui .chat-log .mine strong {
-  color: #ffd27a;
+  color: #c9cedb;
 }
 
 #ui .chat-log .chat-empty {

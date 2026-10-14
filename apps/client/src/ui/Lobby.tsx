@@ -330,8 +330,6 @@ interface NameTip {
 /** How far the name tooltip's box reaches out around the name it covers. */
 const TIP_PAD_X = 10;
 const TIP_PAD_Y = 6;
-/** The width of its border, which pushes the name in from the box's edge as well. */
-const TIP_BORDER = 1;
 
 /**
  * One player's box. A name too long for it is cut off with "...", and hovering the box lays a
@@ -393,15 +391,17 @@ function PlayerBox({
         <span
           className={`name-full ${tipShown ? 'shown' : ''}`}
           aria-hidden="true"
-          style={{
-            left: (tip?.left ?? 0) - TIP_PAD_X - TIP_BORDER,
-            top: (tip?.top ?? 0) - TIP_PAD_Y - TIP_BORDER,
-            padding: `${TIP_PAD_Y}px ${TIP_PAD_X}px`,
-            height: tip?.height ?? 0,
-            lineHeight: `${tip?.height ?? 0}px`,
-            fontSize: tip?.fontSize,
-            color: nameColor(room, player),
-          }}
+          style={
+            {
+              left: (tip?.left ?? 0) - TIP_PAD_X,
+              top: (tip?.top ?? 0) - TIP_PAD_Y,
+              padding: `${TIP_PAD_Y}px ${TIP_PAD_X}px`,
+              height: tip?.height ?? 0,
+              lineHeight: `${tip?.height ?? 0}px`,
+              fontSize: tip?.fontSize,
+              '--tip-color': nameColor(room, player),
+            } as CSSProperties
+          }
         >
           {player.name}
         </span>
