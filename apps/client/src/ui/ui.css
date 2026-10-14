@@ -3434,3 +3434,22 @@
     transition: none;
   }
 }
+
+#ui a.admin-spectate {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #5aa5ff 0%, #2f7be6 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 2px 0 #151922;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#ui a.admin-spectate:hover {
+  filter: brightness(1.08);
+}

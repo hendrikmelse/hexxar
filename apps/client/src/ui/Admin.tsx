@@ -214,6 +214,7 @@ function Overview({ stats }: { stats: AdminStats | null }) {
               <th>Watching</th>
               <th>Age</th>
               <th>Who</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -229,6 +230,22 @@ function Overview({ stats }: { stats: AdminStats | null }) {
                 <td>{room.spectators}</td>
                 <td>{duration(stats.serverTime - room.createdAt)}</td>
                 <td>{room.names.join(', ')}</td>
+                <td>
+                  {/* Opening the invite link in a new tab joins as a spectator once the match is on;
+                      before that it would take a place, and afterwards the game is over. */}
+                  {room.state === 'running' ? (
+                    <a
+                      className="admin-spectate"
+                      href={`/?join=${room.code}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Spectate
+                    </a>
+                  ) : (
+                    <span className="muted">{room.state === 'lobby' ? 'Not started' : 'Over'}</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
