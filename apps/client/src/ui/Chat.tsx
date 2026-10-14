@@ -7,8 +7,9 @@ import type { Actions } from './App.js';
 const STICK_PX = 40;
 
 /**
- * A chat panel: the lobby's, beside its card, or a spectator's during a match (`match`), laid over
- * the board. The button left of the input makes it taller.
+ * The chat: a button the size of the sound and fullscreen buttons, which opens into the chat
+ * window and, from the same spot, folds back. The lobby's hangs off the card; a spectator's
+ * (`match`) is laid over the board. While it is shut, the button counts what it missed.
  */
 export function Chat({
   actions,
@@ -24,9 +25,11 @@ export function Chat({
 }) {
   const app = useApp();
   const you = app.room?.you;
-  const [big, setBig] = useState(false);
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
+  const [seen, setSeen] = useState(app.chat.length);
   const log = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const stuck = useRef(true);
 
   // Keep up with new messages, unless the reader has scrolled up to look at older ones.
@@ -34,7 +37,15 @@ export function Chat({
   useEffect(() => {
     const el = log.current;
     if (el && stuck.current) el.scrollTop = el.scrollHeight;
-  }, [last, big]);
+  }, [last, open]);
+  useEffect(() => {
+    if (open) setSeen(app.chat.length);
+  }, [open, last]);
+  // Opening it is for writing something.
+  useEffect(() => {
+    if (open) input.current?.focus();
+  }, [open]);
+  const unread = open ? 0 : Math.max(0, app.chat.length - seen);
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -44,53 +55,76 @@ export function Chat({
     stuck.current = true;
   };
 
+  const label = open ? 'Close the chat' : 'Open the chat';
   return (
-    <div className={`chat ${match ? 'match' : 'lobby-chat'} ${big ? 'big' : ''}`}>
-      <h3 className="chat-head">{title}</h3>
-      {note && <p className="chat-note">{note}</p>}
-      <div
-        className="chat-log"
-        ref={log}
-        role="log"
-        aria-live="polite"
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-        }}
-      >
-        {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
-        {app.chat.map((message) => (
-          <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
-            <strong>{message.name}</strong> {message.text}
-          </p>
-        ))}
-      </div>
+    <div className={`chat ${match ? 'match' : 'lobby-chat'} ${open ? 'open' : 'closed'}`}>
+      {open && (
+        <>
+          <h3 className="chat-head">{title}</h3>
+          {note && <p className="chat-note">{note}</p>}
+          <div
+            className="chat-log"
+            ref={log}
+            role="log"
+            aria-live="polite"
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+            }}
+          >
+            {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
+            {app.chat.map((message) => (
+              <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
+                <strong>{message.name}</strong> {message.text}
+              </p>
+            ))}
+          </div>
+        </>
+      )}
       <form className="chat-form" onSubmit={submit}>
+        {/* In the bottom left of the window; shut, it is all there is. */}
         <button
           type="button"
-          className="chat-expand"
+          className="chat-toggle"
           data-sound="none"
-          aria-pressed={big}
-          aria-label={big ? 'Make the chat smaller' : 'Make the chat bigger'}
-          title={big ? 'Smaller' : 'Bigger'}
-          onClick={() => setBig(!big)}
+          aria-expanded={open}
+          aria-label={label}
+          title={label}
+          onClick={() => setOpen(!open)}
         >
-          {big ? '\u2199' : '\u2197'}
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              d={
+                open
+                  ? 'M9 4v5H4m16 0h-5V4M4 15h5v5m6 0v-5h5'
+                  : 'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'
+              }
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </svg>
+          {unread > 0 && <b className="chat-unread">{unread > 9 ? '9+' : unread}</b>}
         </button>
-        <input
-          type="text"
-          value={text}
-          maxLength={CHAT_MAX_LENGTH}
-          placeholder="Say something..."
-          aria-label="Chat message"
-          autoComplete="off"
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            // Typing must not trigger the game's shortcuts.
-            event.stopPropagation();
-            if (event.key === 'Escape') event.currentTarget.blur();
-          }}
-        />
+        {open && (
+          <input
+            ref={input}
+            type="text"
+            value={text}
+            maxLength={CHAT_MAX_LENGTH}
+            placeholder="Say something..."
+            aria-label="Chat message"
+            autoComplete="off"
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              // Typing must not trigger the game's shortcuts.
+              event.stopPropagation();
+              if (event.key === 'Escape') event.currentTarget.blur();
+            }}
+          />
+        )}
       </form>
     </div>
   );

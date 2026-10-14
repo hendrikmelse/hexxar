@@ -2816,11 +2816,16 @@
   box-sizing: border-box;
 }
 
+/* Shut, the chat is a button; open, a window. Either way it grows from the bottom left corner. */
 #ui .chat {
   display: flex;
   flex-direction: column;
   gap: 8px;
   box-sizing: border-box;
+  font-size: 14px;
+}
+
+#ui .chat.open {
   padding: 16px;
   border-radius: 12px;
   background: linear-gradient(180deg, #262b39 0%, #1c202b 100%);
@@ -2829,24 +2834,24 @@
     0 1px 0 rgba(255, 255, 255, 0.09) inset,
     0 6px 0 #10131a,
     0 22px 38px rgba(0, 0, 0, 0.55);
-  font-size: 14px;
 }
 
-/* Beside the card: as wide as it, and as tall unless made taller */
+/* Beside the card, as wide as it; open, as tall as it too */
 #ui .chat.lobby-chat {
   position: absolute;
-  top: 0;
   bottom: 0;
   left: calc(100% + 20px);
   width: 100%;
+  pointer-events: auto;
+}
+
+#ui .chat.lobby-chat.open {
+  top: 0;
   min-height: 300px;
 }
 
-#ui .chat.lobby-chat.big {
-  top: 50%;
-  bottom: auto;
-  height: min(80vh, 640px);
-  transform: translateY(-50%);
+#ui .chat.lobby-chat.closed {
+  width: auto;
 }
 
 /* Too narrow to hang beside the card (the card is centered, so it needs room on both sides) */
@@ -2857,21 +2862,17 @@
     gap: 20px;
   }
 
-  #ui .chat.lobby-chat,
-  #ui .chat.lobby-chat.big {
+  #ui .chat.lobby-chat {
     position: static;
-    transform: none;
-    width: 100%;
-    height: auto;
+  }
+
+  #ui .chat.lobby-chat.closed {
+    align-self: flex-start;
   }
 
   #ui .chat.lobby-chat .chat-log {
     flex: none;
-    height: 160px;
-  }
-
-  #ui .chat.lobby-chat.big .chat-log {
-    height: min(50vh, 420px);
+    height: 200px;
   }
 }
 
@@ -2886,12 +2887,13 @@
   pointer-events: auto;
 }
 
-#ui .chat.match .chat-log {
-  height: 160px;
+#ui .chat.match.closed {
+  width: auto;
 }
 
-#ui .chat.match.big .chat-log {
-  height: min(50vh, 420px);
+#ui .chat.match .chat-log {
+  flex: none;
+  height: min(40vh, 280px);
 }
 
 #ui .chat-head {
@@ -2937,7 +2939,6 @@
   color: #6f7890;
 }
 
-/* The expand button in the bottom left, level with the input */
 #ui .chat-form {
   display: flex;
   gap: 8px;
@@ -2949,10 +2950,30 @@
   font-size: 14px;
 }
 
-#ui .chat-expand {
+/* The same size as the sound and fullscreen buttons */
+#ui .chat-toggle {
+  position: relative;
   flex: none;
-  width: 36px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  font-size: 17px;
-  line-height: 1;
+  display: grid;
+  place-items: center;
+  color: #e8eaf0;
+}
+
+/* How many messages came in while it was shut */
+#ui .chat-unread {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #3f8cf0;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
 }
