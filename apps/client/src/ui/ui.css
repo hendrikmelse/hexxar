@@ -3059,7 +3059,8 @@
 }
 
 #ui .chat-note {
-  margin: 0;
+  /* Leaves it about halfway between the title and the log's top edge, which is below this row */
+  margin: 8px 0 0;
   font-size: 11px;
   color: #6f7890;
 }
