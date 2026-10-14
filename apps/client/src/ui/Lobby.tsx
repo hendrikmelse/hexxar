@@ -353,6 +353,8 @@ function PlayerBox({
   const box = useRef<HTMLDivElement>(null);
   const [clipped, setClipped] = useState(false);
   const [tip, setTip] = useState<NameTip | null>(null);
+  // Kept in place once measured, so it can fade away as well as in.
+  const [tipShown, setTipShown] = useState(false);
   const { player } = entry;
 
   const showTip = (): void => {
@@ -366,6 +368,7 @@ function PlayerBox({
       height: inner.height,
       fontSize: getComputedStyle(name).fontSize,
     });
+    setTipShown(true);
   };
 
   return (
@@ -375,7 +378,7 @@ function PlayerBox({
       style={meStyle(room, player)}
       className={`${base} name-tip ${boxClass(entry, player.connected)} ${player.userId === room.you ? 'me' : ''}`}
       onMouseEnter={showTip}
-      onMouseLeave={() => setTip(null)}
+      onMouseLeave={() => setTipShown(false)}
     >
       <FitText
         className="name"
@@ -386,17 +389,17 @@ function PlayerBox({
         onClip={setClipped}
       />
       {!player.connected && <em>disconnected</em>}
-      {tip && (
+      {clipped && (
         <span
-          className="name-full"
+          className={`name-full ${tipShown ? 'shown' : ''}`}
           aria-hidden="true"
           style={{
-            left: tip.left - TIP_PAD_X - TIP_BORDER,
-            top: tip.top - TIP_PAD_Y - TIP_BORDER,
+            left: (tip?.left ?? 0) - TIP_PAD_X - TIP_BORDER,
+            top: (tip?.top ?? 0) - TIP_PAD_Y - TIP_BORDER,
             padding: `${TIP_PAD_Y}px ${TIP_PAD_X}px`,
-            height: tip.height,
-            lineHeight: `${tip.height}px`,
-            fontSize: tip.fontSize,
+            height: tip?.height ?? 0,
+            lineHeight: `${tip?.height ?? 0}px`,
+            fontSize: tip?.fontSize,
             color: nameColor(room, player),
           }}
         >

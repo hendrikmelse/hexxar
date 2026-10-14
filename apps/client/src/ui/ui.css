@@ -1313,13 +1313,35 @@
   font-weight: 700;
   color: #eef5ff;
   pointer-events: none;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
-  background: linear-gradient(180deg, #2a2f3f 0%, #1e222d 100%);
+  background: linear-gradient(180deg, #1d212c 0%, #12151d 100%);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.09) inset,
-    0 3px 0 #10131a,
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 3px 0 #0b0d12,
     0 10px 20px rgba(0, 0, 0, 0.5);
+  /* Fades away quickly when the pointer leaves */
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.12s ease-out,
+    visibility 0s linear 0.12s;
+}
+
+/* Fades in after a short pause, so brushing past a box shows nothing */
+#ui .name-full.shown {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.15s ease-out 0.3s,
+    visibility 0s linear 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .name-full,
+  #ui .name-full.shown {
+    transition: none;
+  }
 }
 
 /* Slider rows: the slider, with its value large on the right instead of small above it */
