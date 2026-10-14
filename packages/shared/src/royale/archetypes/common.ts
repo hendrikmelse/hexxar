@@ -7,12 +7,11 @@ export const SPAWN_GAP = 1.4;
 export const SPAWN_START_RADIUS = 4;
 /** The least open ground between two chambers, so a corridor is long enough to read as one. */
 export const MIN_GAP = 2;
-/** Corridor widths, in hexes, and how often each is picked. The wide ones are not chokes. */
+/** Corridor widths, in hexes, and how often each is picked (30%, 45% and 25%). */
 export const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number])[] = [
-  [1, 3],
-  [2, 3],
-  [3, 2.5],
-  [4, 1.5],
+  [1, 30],
+  [2, 45],
+  [3, 25],
 ];
 
 /** A random corridor width, by the weights above. */

@@ -102,7 +102,7 @@ A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRo
 | Second relaxing: pairs not joined by a tree corridor kept at least | `2 × radius + 1.4` tiles                                                          | `tighten` in `scattered.ts`                    |
 | Most relaxing rounds (each of the two)                             | 2000                                                                              | `RELAX_ROUNDS` in `scattered.ts`               |
 | Neutral chambers                                                   | none (the code is kept for another archetype)                                     | `neutralRooms()`                               |
-| Corridor widths and weights                                        | 1: 3, 2: 3, 3: 2.5, 4: 1.5 (30%, 30%, 25%, 15%)                                   | `CORRIDOR_WIDTHS`                              |
+| Corridor widths and weights                                        | 1: 30, 2: 45, 3: 25 (30%, 45%, 25%; no 4-wide)                                    | `CORRIDOR_WIDTHS`                              |
 | Corridor bend                                                      | uniform in ±0.15 × the corridor's length                                          | `connect` in `scattered.ts`                    |
 | Extra "loop" corridors                                             | `round(0.3 × chambers)`                                                           | `connect`                                      |
 | Coast roughness / detail / warp                                    | 1 / 5 / 1.5                                                                       | `DEFAULT_GENERATION_PARAMS`                    |
