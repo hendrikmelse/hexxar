@@ -1931,6 +1931,13 @@
   margin-top: 4px;
 }
 
+/* Three buttons in a row (the defeat card of a quick game): a little smaller, so none of them wraps */
+#ui .end-buttons.three button {
+  padding-inline: 16px;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
 /* While watching after being knocked out */
 #ui .spectating {
   position: absolute;

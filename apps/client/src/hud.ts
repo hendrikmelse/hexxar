@@ -49,9 +49,9 @@ export class Hud {
   private readonly defeatedHeading = el('li', 'defeated-heading');
   private readonly banner = el('div', 'banner');
   private readonly surrender = el('button', 'surrender');
-  /** The code of a private game, in a small box beside the surrender button. */
+  /** The code of a private game, in a small box above the surrender button. */
   private readonly roomCode = el('span', 'room-code');
-  /** How many people are watching this game, in small print beside the surrender button. */
+  /** How many people are watching this game, in small print above the room code. */
   private readonly tally = el('span', 'spectator-tally');
   /** A short remark in a bubble above the surrender button. */
   private readonly remark = el('div', 'surrender-remark');
@@ -152,7 +152,8 @@ export class Hud {
     this.tally.hidden = true;
     this.roomCode.hidden = true;
     const bottom = el('div', 'bottom-left');
-    bottom.append(this.surrender, this.roomCode, this.tally);
+    // Stacked, the surrender button at the bottom, the room code above it and the tally above that.
+    bottom.append(this.tally, this.roomCode, this.surrender);
     root.append(left, top, bottom, this.remark, camera, this.referenceAnchor);
     const frame = (): void => {
       this.updateTimer();
@@ -365,7 +366,7 @@ export class Hud {
     this.roomCode.replaceChildren();
     if (code === null) return;
     const label = el('small', '');
-    label.textContent = 'Code';
+    label.textContent = 'Room code';
     const value = el('strong', '');
     value.textContent = code;
     this.roomCode.append(label, value);
@@ -374,7 +375,7 @@ export class Hud {
   /** Show how many people are watching (nothing, when no one is). */
   setSpectators(count: number): void {
     this.tally.hidden = count === 0;
-    this.tally.textContent = `${count} spectating`;
+    this.tally.textContent = `${count} ${count === 1 ? 'spectator' : 'spectators'}`;
   }
 
   /** Say something in a little bubble above the surrender button, for a few seconds. */

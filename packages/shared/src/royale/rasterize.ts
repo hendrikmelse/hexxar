@@ -18,8 +18,6 @@ export interface RasterOptions {
   readonly coastDetail: number;
   /** How far noise bends rooms out of round, in tiles. */
   readonly warpStrength: number;
-  /** Added to the field before the land is decided: positive grows the land, negative shrinks it. */
-  readonly offset?: number;
 }
 
 /** How softly two shapes blend where they meet, in tiles. */
@@ -47,7 +45,7 @@ export function rasterize(
   blueprint: Blueprint,
   options: RasterOptions,
 ): { land: Land; protectedKeys: Set<string> } {
-  const { noise, coastRoughness, coastDetail, warpStrength, offset = 0 } = options;
+  const { noise, coastRoughness, coastDetail, warpStrength } = options;
   const paths = blueprint.corridors.map((corridor) => corridorPath(blueprint, corridor));
 
   // The area worth testing: everything within reach of a shape, with a margin for the noise.
@@ -94,7 +92,7 @@ export function rasterize(
       const width = blueprint.corridors[i]!.width;
       blend(width / 2 - pathDistance(p, paths[i]!) + coastRoughness * CORRIDOR_NOISE * bump);
     }
-    return field + offset > 0;
+    return field > 0;
   }
 
   // Every spawn chamber keeps its city and the ring around it.

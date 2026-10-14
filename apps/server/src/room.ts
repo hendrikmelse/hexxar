@@ -1,8 +1,8 @@
 import {
-  DUEL_TILES,
-  ROYALE_START_DISTANCE,
-  royaleTilesPerPlayer,
+  bowlRadiusFor,
   createFreeForAllMatch,
+  extraSetsFor,
+  FAIR_BOWL_RADIUS,
   createRng,
   createDuelMatch,
   diffTiles,
@@ -440,7 +440,10 @@ export class Room {
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
       youVoted: this.votes.has(session.userId),
-      spectators: this.members.filter((m) => m.spectator && !m.left).map((m) => m.session.name),
+      // Anyone out of the running match is watching it, as much as someone who came to watch.
+      spectators: this.members
+        .filter((m) => !m.left && (m.spectator || this.isOut(m)))
+        .map((m) => m.session.name),
       spectating: this.memberOf(session)?.spectator === true,
       serverTime: Date.now(),
       you: session.userId,
@@ -682,11 +685,15 @@ export class Room {
           seed,
           config,
           params: {
-            tilesPerPlayer: royaleTilesPerPlayer(mapSize, players.length),
-            minStartDistance: ROYALE_START_DISTANCE[mapSize],
+            bowlRadius: bowlRadiusFor(mapSize, players.length),
           },
         })
-      : createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize], config });
+      : createDuelMatch({
+          players,
+          seed,
+          config,
+          params: { bowlRadius: FAIR_BOWL_RADIUS[mapSize], extraSets: extraSetsFor(mapSize, 2) },
+        });
   }
 
   private scheduleTick(): void {
@@ -694,9 +701,19 @@ export class Room {
     this.tickTimer = setTimeout(() => this.runTick(), Math.max(0, this.nextTickAt - Date.now()));
   }
 
+  /** Knocked out of the match that is running (or surrendered from it), and still in the room. */
+  private isOut(member: Member): boolean {
+    return (
+      this.state === 'running' &&
+      member.playerId !== null &&
+      this.match?.state.eliminated.includes(member.playerId) === true
+    );
+  }
+
   private runTick(): void {
     const match = this.match;
     if (!match || this.nextTickAt === null) return;
+    const outBefore = match.state.eliminated.length;
     const { previous, state, moves } = match.step();
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
     const { config } = match;
@@ -728,7 +745,11 @@ export class Room {
     }
 
     if (match.isOver) this.finish();
-    else this.scheduleTick();
+    else {
+      // Someone who is out is now a spectator, for everyone to see.
+      if (state.eliminated.length > outBefore) this.broadcastRoom();
+      this.scheduleTick();
+    }
   }
 
   private surrenderMember(member: Member): void {
@@ -737,6 +758,7 @@ export class Room {
     match.surrender(member.playerId);
     this.broadcastSnapshots();
     if (match.isOver) this.finish();
+    else this.broadcastRoom();
   }
 
   /** The match is over: stop ticking and leave the room open for the result. */

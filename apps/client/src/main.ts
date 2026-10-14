@@ -4,6 +4,7 @@ import {
   type ClientMessage,
   parseMatchConfig,
   type Hex,
+  type RoomMode,
   type RoomSettingsPatch,
   type RoomView,
 } from '@hexxar/shared';
@@ -424,25 +425,35 @@ function sendName(): void {
   connection.send({ type: 'setName', name: playerName() });
 }
 
+/** Look for a quick game of this mode. */
+function startQuickPlay(mode: RoomMode): void {
+  appStore.set({ error: null });
+  sendName();
+  if (mode === 'duel') {
+    // The empty lobby first, and only then the join: so the player who was already waiting and
+    // the one who just clicked see the same countdown, starting when the join really happens.
+    showSearching();
+    searchTimer = setTimeout(() => {
+      searchTimer = null;
+      connection.send({ type: 'quickPlay', mode });
+    }, SEARCH_DELAY_MS);
+  } else {
+    connection.send({ type: 'quickPlay', mode });
+  }
+}
+
+/** Set when leaving a quick game to play another of this mode: the search starts once the server has let go. */
+let playAgainMode: RoomMode | null = null;
+
 mountUi(document.getElementById('ui')!, {
   setName(name) {
     appStore.set({ name });
     saveName(name);
   },
-  quickPlay(mode) {
-    appStore.set({ error: null });
-    sendName();
-    if (mode === 'duel') {
-      // The empty lobby first, and only then the join: so the player who was already waiting and
-      // the one who just clicked see the same countdown, starting when the join really happens.
-      showSearching();
-      searchTimer = setTimeout(() => {
-        searchTimer = null;
-        connection.send({ type: 'quickPlay', mode });
-      }, SEARCH_DELAY_MS);
-    } else {
-      connection.send({ type: 'quickPlay', mode });
-    }
+  quickPlay: startQuickPlay,
+  playAgain(mode) {
+    playAgainMode = mode;
+    connection.send({ type: 'leaveRoom' });
   },
   createRoom() {
     appStore.set({ error: null });
@@ -541,6 +552,12 @@ const connection = connect(url, playerName, {
           return;
         }
         applyRoom(room, previous);
+        // Out of the old game: now look for the next one.
+        if (room === null && playAgainMode !== null) {
+          const mode = playAgainMode;
+          playAgainMode = null;
+          startQuickPlay(mode);
+        }
         return;
       }
       case 'stats':

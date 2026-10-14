@@ -1,14 +1,7 @@
 import { parseMatchConfig, tileRules, type MatchConfig } from './config.js';
 import { hexDistance, hexKey, hexNeighbors, hexagonalBoard, type Hex } from './hex.js';
 import { createRng, type Rng } from './rng.js';
-import {
-  DUEL_TILES,
-  QUAD_TILES,
-  SEXTET_TILES,
-  TRIO_TILES,
-  withDefaults,
-  type GenerationParams,
-} from './params.js';
+import { withDefaults, type GenerationParams } from './params.js';
 import {
   generateDuelLayout,
   hexImage,
@@ -163,15 +156,13 @@ export interface DuelMatchOptions {
   /** Exactly two players. */
   readonly players: readonly PlayerId[];
   readonly seed: number;
-  /** About how many tiles the board has; by default the normal duel size. */
-  readonly tiles?: number;
   /** Defaults to one of the two, picked by the seed. */
   readonly symmetry?: DuelSymmetry;
   /** Which line a mirror board is mirrored across; by default one of the two, picked by the seed. */
   readonly axis?: DuelAxis;
   /** How far a mirror board is turned, in steps of 60 degrees (0 to 5); by default random. */
   readonly turns?: number;
-  /** Overrides for the generation settings; anything left out uses its default. */
+  /** Overrides for the generation settings (`bowlRadius` sets the size); anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
   readonly config?: unknown;
@@ -188,10 +179,9 @@ export function createDuelMatch(options: DuelMatchOptions): {
   /** How the board was made (the blobs it is drawn from). */
   duel: DuelReport;
 } {
-  const { players, seed, tiles = DUEL_TILES.normal } = options;
+  const { players, seed } = options;
   if (players.length !== 2) throw new Error('a duel is for exactly 2 players');
   if (new Set(players).size !== 2) throw new Error('player ids must be unique');
-  if (tiles < 20) throw new Error('a duel board needs at least 20 tiles');
   // The same seed gives the same board, and different games get both kinds.
   const symmetry: DuelSymmetry =
     options.symmetry ?? (createRng(seed ^ 0x2b1d).next() < 0.5 ? 'mirror' : 'rotational');
@@ -203,7 +193,6 @@ export function createDuelMatch(options: DuelMatchOptions): {
     symmetry,
     axis: options.axis,
     turns: options.turns,
-    targetTiles: tiles,
     params,
   });
   return {
@@ -225,8 +214,6 @@ export interface TrioMatchOptions {
   /** Exactly three players. */
   readonly players: readonly PlayerId[];
   readonly seed: number;
-  /** About how many tiles the board has; by default the normal size for three players. */
-  readonly tiles?: number;
   /** Overrides for the generation settings; anything left out uses its default. */
   readonly params?: Partial<GenerationParams>;
   /** Partial match settings; defaults fill the rest. */
@@ -245,13 +232,12 @@ export function createTrioMatch(options: TrioMatchOptions): {
   /** How the board was made (the blobs it is drawn from). */
   trio: TrioReport;
 } {
-  const { players, seed, tiles = TRIO_TILES.normal } = options;
+  const { players, seed } = options;
   if (players.length !== 3) throw new Error('a three-player board is for exactly 3 players');
   if (new Set(players).size !== 3) throw new Error('player ids must be unique');
-  if (tiles < 30) throw new Error('a three-player board needs at least 30 tiles');
   const config = parseMatchConfig(options.config);
   const params = withDefaults(options.params);
-  const trio = generateTrioLayout({ seed, targetTiles: tiles, params });
+  const trio = generateTrioLayout({ seed, params });
   return {
     config,
     trio: trio.report,
@@ -271,8 +257,6 @@ export interface QuadMatchOptions {
   /** Exactly four players. */
   readonly players: readonly PlayerId[];
   readonly seed: number;
-  /** About how many tiles the board has; by default the normal size for four players. */
-  readonly tiles?: number;
   /** How far the finished board is turned, in steps of 60 degrees (0 to 2); by default random. */
   readonly turns?: number;
   /** Overrides for the generation settings; anything left out uses its default. */
@@ -293,13 +277,12 @@ export function createQuadMatch(options: QuadMatchOptions): {
   /** How the board was made (the blobs it is drawn from). */
   quad: QuadReport;
 } {
-  const { players, seed, tiles = QUAD_TILES.normal } = options;
+  const { players, seed } = options;
   if (players.length !== 4) throw new Error('a four-player board is for exactly 4 players');
   if (new Set(players).size !== 4) throw new Error('player ids must be unique');
-  if (tiles < 40) throw new Error('a four-player board needs at least 40 tiles');
   const config = parseMatchConfig(options.config);
   const params = withDefaults(options.params);
-  const quad = generateQuadLayout({ seed, targetTiles: tiles, turns: options.turns, params });
+  const quad = generateQuadLayout({ seed, turns: options.turns, params });
   return {
     config,
     quad: quad.report,
@@ -319,8 +302,6 @@ export interface SextetMatchOptions {
   /** Exactly six players. */
   readonly players: readonly PlayerId[];
   readonly seed: number;
-  /** About how many tiles the board has; by default the normal size for six players. */
-  readonly tiles?: number;
   /** Defaults to one of the two, picked by the seed. */
   readonly symmetry?: SextetSymmetry;
   /** The kind of line of a mirror board; by default one of the two, picked by the seed. */
@@ -344,10 +325,9 @@ export function createSextetMatch(options: SextetMatchOptions): {
   /** How the board was made (the blobs it is drawn from). */
   sextet: SextetReport;
 } {
-  const { players, seed, tiles = SEXTET_TILES.normal } = options;
+  const { players, seed } = options;
   if (players.length !== 6) throw new Error('a six-player board is for exactly 6 players');
   if (new Set(players).size !== 6) throw new Error('player ids must be unique');
-  if (tiles < 60) throw new Error('a six-player board needs at least 60 tiles');
   // The same seed gives the same board, and different games get both kinds.
   const symmetry: SextetSymmetry =
     options.symmetry ?? (createRng(seed ^ 0x2b1d).next() < 0.5 ? 'rotational' : 'mirror');
@@ -357,7 +337,6 @@ export function createSextetMatch(options: SextetMatchOptions): {
     seed,
     symmetry,
     axis: options.axis,
-    targetTiles: tiles,
     params,
   });
   return {
@@ -444,7 +423,7 @@ export interface FreeForAllOptions {
 /**
  * A battle royale board: random terrain with no symmetry, drawn from a blueprint of rooms and
  * passages (see `royale/`), with a starting city in every spawn chamber. Cities are never on
- * the edge and never closer than `minStartDistance`. The same terrain rules apply as on
+ * the edge. The same terrain rules apply as on
  * symmetric boards. Players are assigned to the starting cities at random.
  */
 export function createFreeForAllMatch(options: FreeForAllOptions): {

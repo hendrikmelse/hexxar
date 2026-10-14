@@ -426,26 +426,38 @@
 
 /* ---- Buttons: surrender and the camera ------------------------------------------------------- */
 
-/* The surrender button, with the number of spectators in small print beside it */
+/* The surrender button at the bottom, a private game's code above it, and the spectator tally above that */
 #hud .bottom-left {
   position: fixed;
   left: 14px;
   bottom: 18px;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-/* A private game's code, in a small sunken box between the surrender button and the tally */
-#hud .room-code {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
+/* A private game's code and the spectator count: small sunken boxes above the surrender button */
+#hud .room-code,
+#hud .spectator-tally {
   padding: 5px 10px;
   border-radius: 8px;
   background: var(--well);
   box-shadow: var(--well-shadow);
   color: var(--muted);
+}
+
+#hud .room-code[hidden],
+#hud .spectator-tally[hidden] {
+  display: none;
+}
+
+/* The label sits above the code */
+#hud .room-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 #hud .room-code small {
@@ -456,13 +468,13 @@
 }
 
 #hud .room-code strong {
-  font-size: 15px;
+  font-size: 19px;
+  line-height: 1.1;
   letter-spacing: 0.14em;
   color: #eef5ff;
 }
 
 #hud .spectator-tally {
-  color: #8a93a8;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;

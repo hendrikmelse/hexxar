@@ -34,18 +34,18 @@ export function Results({ actions }: { actions: Actions }) {
           </div>
         )}
         <div className="end-buttons">
-          {room.visibility === 'private' && (
+          <button data-sound="ui.back" onClick={actions.leaveRoom}>
+            Main menu
+          </button>
+          {room.visibility === 'private' ? (
             <button className="primary" data-sound="ui.back" onClick={actions.returnToRoom}>
               Back to room
             </button>
+          ) : (
+            <button className="primary" onClick={() => actions.playAgain(room.settings.mode)}>
+              Play again
+            </button>
           )}
-          <button
-            className={room.visibility === 'private' ? '' : 'primary'}
-            data-sound="ui.back"
-            onClick={actions.leaveRoom}
-          >
-            Main menu
-          </button>
         </div>
       </div>
     </div>
