@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '@hexxar/shared';
+import { paletteColor } from '../board.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 
@@ -75,7 +76,16 @@ export function Chat({
           {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
           {app.chat.map((message) => (
             <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
-              <strong>{message.name}</strong> {message.text}
+              <strong
+                style={
+                  message.color === null
+                    ? undefined
+                    : { color: `#${paletteColor(message.color).toString(16).padStart(6, '0')}` }
+                }
+              >
+                {message.name}
+              </strong>{' '}
+              {message.text}
             </p>
           ))}
         </div>

@@ -177,7 +177,7 @@ function showSearching(): void {
     state: 'lobby',
     host: userId,
     settings: { mode: 'duel', size: 2, mapSize: 'normal', config: parseMatchConfig({}) },
-    players: [{ userId, name, connected: true, playerId: null }],
+    players: [{ userId, name, connected: true, playerId: null, color: 0 }],
     minPlayers: 2,
     waitMs: 5000,
     earlyStartAt: null,

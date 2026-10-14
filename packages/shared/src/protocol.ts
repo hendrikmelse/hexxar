@@ -90,6 +90,8 @@ export const roomPlayerSchema = z.object({
   connected: z.boolean(),
   /** The player's id in the match, once it has started. */
   playerId: z.string().nullable(),
+  /** The player's color (an index into the palette), the same in the lobby and in the match. */
+  color: z.number().int().nonnegative().nullable(),
 });
 export type RoomPlayer = z.infer<typeof roomPlayerSchema>;
 
@@ -111,6 +113,8 @@ export const chatMessageSchema = z.object({
   /** The sender's user id (compare with `you`). */
   userId: z.string(),
   name: z.string(),
+  /** The sender's color in the game (a palette index), or null for a spectator. */
+  color: z.number().int().nonnegative().nullable(),
   text: z.string(),
   /** Server time, ms since epoch. */
   at: z.number(),

@@ -11,6 +11,7 @@ import {
   roomMinPlayers,
   roomSettingsSchema,
   CHAT_HISTORY,
+  FFA_MAX_PLAYERS,
   type ChatChannel,
   type ChatMessage,
   scoresOf,
@@ -189,6 +190,7 @@ export class Room {
       lastChatAt: 0,
       afkTimer: null,
     });
+    this.claimColor(this.members[this.members.length - 1]!);
     session.room = this;
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
     if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
@@ -252,6 +254,7 @@ export class Room {
       if (this.activeMembers().length >= this.capacity) return 'that game is full';
       member.spectator = false;
       member.watching = false;
+      this.claimColor(member);
     }
     this.broadcastRoom();
     return null;
@@ -337,6 +340,7 @@ export class Room {
     }
     member.reviewing = false;
     member.playerId = null;
+    if (!member.spectator) this.claimColor(member);
     // The host stays the host while they read the result: the role passes on only once they have
     // gone (back to the menu, or the tab closed).
     const hostMember = this.memberOf(this.host);
@@ -457,6 +461,8 @@ export class Room {
       id: ++this.chatSeq,
       userId: session.userId,
       name: session.name,
+      // Spectators have no color in the game.
+      color: member.spectator ? null : member.colorSlot,
       text,
       at: now,
     };
@@ -520,6 +526,7 @@ export class Room {
               name: m.session.name,
               connected: !m.left && m.session.connection !== null,
               playerId: m.playerId,
+              color: m.colorSlot,
             })),
       minPlayers: this.minPlayers,
       // How long the wait on screen starts from: a battle royale's, or a duel's short pause.
@@ -739,6 +746,30 @@ export class Room {
     this.broadcastRoom();
     this.broadcastSnapshots();
     this.scheduleTick();
+  }
+
+  /**
+   * Give a new player their color, which they keep for as long as they are in the room, so it is
+   * the same in the lobby, the chat and the match. A spectator keeps the color they had as a
+   * player in reserve for if they come back, so it goes to someone else only when every other
+   * color is taken; then it is the lowest reserved one, and its spectator will get a new color
+   * when they come back.
+   */
+  private claimColor(member: Member): void {
+    if (member.colorSlot !== null) return;
+    const others = this.members.filter((m) => m !== member && !m.left && m.colorSlot !== null);
+    const playing = new Set(others.filter((m) => !m.spectator).map((m) => m.colorSlot));
+    const reserved = new Set(others.filter((m) => m.spectator).map((m) => m.colorSlot));
+    let slot = 0;
+    while (playing.has(slot) || reserved.has(slot)) slot++;
+    if (slot >= FFA_MAX_PLAYERS) {
+      // Nothing unreserved is left (there are never more players than colors, so a reserved one is).
+      slot = 0;
+      while (playing.has(slot)) slot++;
+      const holder = others.find((m) => m.spectator && m.colorSlot === slot);
+      if (holder) holder.colorSlot = null;
+    }
+    member.colorSlot = slot;
   }
 
   /**
