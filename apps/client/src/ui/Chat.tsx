@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '@hexxar/shared';
 import { paletteColor } from '../board.js';
-import { useApp } from '../store.js';
+import { setChatOpen, useApp } from '../store.js';
 import type { Actions } from './App.js';
 
 /** How close to the bottom the log has to be scrolled for new messages to keep it there. */
@@ -34,7 +34,9 @@ export function Chat({
 }) {
   const app = useApp();
   const you = app.room?.you;
-  const [open, setOpen] = useState(false);
+  // Kept in the app's store, not here: the lobby's chat and the match's are the same window to
+  // the player, so what one was left as, the other starts as.
+  const open = app.chatOpen;
   const [text, setText] = useState('');
   const [seen, setSeen] = useState(app.chat.length);
   const log = useRef<HTMLDivElement>(null);
@@ -61,13 +63,6 @@ export function Chat({
   useEffect(() => {
     if (open) setSeen(app.chat.length);
   }, [open, last]);
-  // Opening it is for writing something. The field only becomes visible a moment after the window
-  // starts to open (see ui.css), and a browser will not focus what is hidden: so wait for that.
-  useEffect(() => {
-    if (!open) return;
-    const id = setTimeout(() => input.current?.focus({ preventScroll: true }), FOCUS_DELAY_MS);
-    return () => clearTimeout(id);
-  }, [open]);
   const unread = open ? 0 : Math.max(0, app.chat.length - seen);
 
   // The log scrolls at a gentler pace than the browser's own, which suits so small a window, and
@@ -147,9 +142,25 @@ export function Chat({
   // nothing is, so the button's tooltip can show outside it.
   const [moving, setMoving] = useState(false);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (settle.current && clearTimeout(settle.current)), []);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (settle.current) clearTimeout(settle.current);
+      if (focusTimer.current) clearTimeout(focusTimer.current);
+    },
+    [],
+  );
   const toggle = (): void => {
-    setOpen(!open);
+    setChatOpen(!open);
+    // Opening it is for writing something. The field only becomes visible a moment after the
+    // window starts to open (see ui.css), and a browser will not focus what is hidden: so wait.
+    if (!open) {
+      if (focusTimer.current) clearTimeout(focusTimer.current);
+      focusTimer.current = setTimeout(
+        () => input.current?.focus({ preventScroll: true }),
+        FOCUS_DELAY_MS,
+      );
+    }
     setMoving(true);
     if (settle.current) clearTimeout(settle.current);
     settle.current = setTimeout(() => setMoving(false), SETTLE_MS);

@@ -4,6 +4,7 @@ import { randomName } from './names.js';
 import type { TutorialView } from './tutorial/runner.js';
 
 const NAME_KEY = 'hexxar.name';
+const CHAT_OPEN_KEY = 'hexxar.chatOpen';
 
 /** What the menu, lobby and results screens need to know. The match itself lives in `GameView`. */
 export interface AppState {
@@ -21,6 +22,8 @@ export interface AppState {
   room: RoomView | null;
   /** What the room's chat has said that you may read, oldest first. */
   chat: ChatMessage[];
+  /** The chat window is open (rather than shut to a button): the same in the lobby and in the match, and kept by the browser. */
+  chatOpen: boolean;
   /** Add to `Date.now()` to get the server's clock. */
   clockOffset: number;
   /** The last thing the server refused, shown as a toast. */
@@ -59,6 +62,24 @@ function loadName(): string {
   return randomName();
 }
 
+function loadChatOpen(): boolean {
+  try {
+    return localStorage.getItem(CHAT_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Open or shut the chat window, for good: the browser remembers it. */
+export function setChatOpen(open: boolean): void {
+  appStore.set({ chatOpen: open });
+  try {
+    localStorage.setItem(CHAT_OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // Not remembering it is harmless.
+  }
+}
+
 export function saveName(name: string): void {
   try {
     localStorage.setItem(NAME_KEY, name);
@@ -75,6 +96,7 @@ class Store {
     name: loadName(),
     room: null,
     chat: [],
+    chatOpen: loadChatOpen(),
     clockOffset: 0,
     error: null,
     errorSeq: 0,
