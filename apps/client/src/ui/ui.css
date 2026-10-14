@@ -2888,12 +2888,14 @@
 #ui .lobby-layout {
   position: relative;
   width: 100%;
-  max-width: 380px;
+  /* As wide as the title screen's card: 380px of room inside it, its padding and its border */
+  max-width: 430px;
   margin: auto;
 }
 
 #ui .lobby-layout > .card {
   box-sizing: border-box;
+  max-width: 430px;
 }
 
 /*
@@ -3006,7 +3008,7 @@
 }
 
 /* Too narrow to hang beside the card (the card is centered, so it needs room on both sides) */
-@media (max-width: 1200px) {
+@media (max-width: 1260px) {
   #ui .lobby-layout {
     display: flex;
     flex-direction: column;
