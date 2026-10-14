@@ -2878,8 +2878,9 @@
 
 /* ---- Chat ------------------------------------------------------------------------------------ */
 
-/* The lobby's card stays centered on the screen */
+/* The lobby's card stays centered on the screen; its chat hangs off its right side */
 #ui .lobby-layout {
+  position: relative;
   width: 100%;
   max-width: 380px;
   margin: auto;
@@ -2890,16 +2891,12 @@
 }
 
 /*
- * Shut, the chat is a button; open, a window. Either way it is in the bottom left corner of the
- * screen, in the lobby and over the match alike, and the window grows from that corner: the size,
- * the skin and the writing all animate. The sizes are fixed so they can.
+ * Shut, the chat is a button; open, a window. It grows from its bottom left corner, and the size,
+ * the skin and the writing all animate. The sizes are fixed so they can. The lobby's hangs off the
+ * right of the card (as tall as it when open); a spectator's is in the corner of the screen.
  */
 #ui .chat {
-  position: fixed;
-  left: 14px;
-  bottom: 14px;
-  z-index: 20;
-  pointer-events: auto;
+  position: relative;
   isolation: isolate;
   box-sizing: border-box;
   width: 40px;
@@ -2974,7 +2971,50 @@
   transition-delay: 0.03s;
 }
 
-#ui .chat.open {
+/* Beside the card, as wide and as tall as it when open */
+#ui .chat.lobby-chat {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + 20px);
+  pointer-events: auto;
+}
+
+#ui .chat.lobby-chat.open {
+  width: 100%;
+  height: 100%;
+}
+
+/* Too narrow to hang beside the card (the card is centered, so it needs room on both sides) */
+@media (max-width: 1200px) {
+  #ui .lobby-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  #ui .chat.lobby-chat {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    align-self: flex-start;
+  }
+
+  #ui .chat.lobby-chat.open {
+    width: 100%;
+    height: 340px;
+  }
+}
+
+/* A spectator's, over the board, in the bottom left corner of the screen */
+#ui .chat.match {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+#ui .chat.match.open {
   width: min(380px, calc(100vw - 28px));
   height: min(calc(40vh + 110px), 400px);
 }
