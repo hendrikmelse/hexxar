@@ -1,8 +1,8 @@
 import {
+  CHAT_HISTORY,
   hexEquals,
   hexKey,
   type ClientMessage,
-  parseMatchConfig,
   type Hex,
   type RoomMode,
   type RoomSettingsPatch,
@@ -157,48 +157,15 @@ function announceOut(before: readonly string[]): void {
   appStore.set({ info: { players }, infoSeq: infoSeq + 1 });
 }
 
-/** How long a quick-play duel shows an empty opponent box before it tells the server it is joining. */
-const SEARCH_DELAY_MS = 1200;
-/** The join is waiting to be sent. */
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
-/** The empty lobby is on screen, standing in for a room the server has not told us about yet. */
-let placeholderShown = false;
-
-/** Show a duel lobby with nobody across the table at once, before the server has heard of us. */
-function showSearching(): void {
-  const { userId, name } = appStore.get();
-  if (userId === null) return;
-  placeholderShown = true;
-  const placeholder: RoomView = {
-    id: 'searching',
-    code: '',
-    visibility: 'public',
-    state: 'lobby',
-    host: userId,
-    settings: { mode: 'duel', size: 2, mapSize: 'normal', config: parseMatchConfig({}) },
-    players: [{ userId, name, connected: true, playerId: null }],
-    minPlayers: 2,
-    waitMs: 5000,
-    earlyStartAt: null,
-    startVotes: 0,
-    votesNeeded: 0,
-    youVoted: false,
-    spectators: [],
-    spectating: false,
-    serverTime: Date.now(),
-    you: userId,
-  };
-  appStore.set({ room: placeholder });
-}
-
 /** Take the server's word on which room we are in. */
 function applyRoom(room: RoomView | null, previous: RoomView | null): void {
-  placeholderShown = false;
   // From the lobby into the match: a loading bar covers the board for a moment first.
   const launching =
     previous?.state === 'lobby' && room?.state === 'running' && !appStore.get().tutorial;
   appStore.set({
     room,
+    // Another room, or none, has another chat (the server sends the log when it applies).
+    ...(room && previous?.id === room.id ? {} : { chat: [] }),
     clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,
     launching,
   });
@@ -429,17 +396,7 @@ function sendName(): void {
 function startQuickPlay(mode: RoomMode): void {
   appStore.set({ error: null });
   sendName();
-  if (mode === 'duel') {
-    // The empty lobby first, and only then the join: so the player who was already waiting and
-    // the one who just clicked see the same countdown, starting when the join really happens.
-    showSearching();
-    searchTimer = setTimeout(() => {
-      searchTimer = null;
-      connection.send({ type: 'quickPlay', mode });
-    }, SEARCH_DELAY_MS);
-  } else {
-    connection.send({ type: 'quickPlay', mode });
-  }
+  connection.send({ type: 'quickPlay', mode });
 }
 
 /** Set when leaving a quick game to play another of this mode: the search starts once the server has let go. */
@@ -474,18 +431,9 @@ mountUi(document.getElementById('ui')!, {
   },
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
-  leaveRoom: () => {
-    if (searchTimer) {
-      // Still on the empty lobby, and the server has not heard of us: just go back.
-      clearTimeout(searchTimer);
-      searchTimer = null;
-      placeholderShown = false;
-      appStore.set({ room: null });
-      return;
-    }
-    connection.send({ type: 'leaveRoom' });
-  },
+  leaveRoom: () => connection.send({ type: 'leaveRoom' }),
   returnToRoom: () => connection.send({ type: 'returnToRoom' }),
+  sendChat: (text) => connection.send({ type: 'chat', text }),
   becomeSpectator: () => connection.send({ type: 'becomeSpectator' }),
   becomePlayer: () => connection.send({ type: 'becomePlayer' }),
   spectate: () => appStore.set({ spectating: true }),
@@ -560,17 +508,21 @@ const connection = connect(url, playerName, {
         }
         return;
       }
+      case 'chat': {
+        const { chat } = appStore.get();
+        appStore.set({
+          chat: message.replace
+            ? message.messages
+            : [...chat, ...message.messages].slice(-CHAT_HISTORY),
+        });
+        return;
+      }
       case 'stats':
         appStore.set({ activity: { duel: message.duel, ffa: message.ffa } });
         return;
       case 'rejected':
         if (inMatch()) render(applyMessage(game, message));
         else {
-          if (placeholderShown) {
-            // The server said no to the search: back to the menu.
-            placeholderShown = false;
-            appStore.set({ room: null });
-          }
           appStore.set({ error: message.reason, errorSeq: appStore.get().errorSeq + 1 });
         }
         return;

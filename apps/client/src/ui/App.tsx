@@ -33,6 +33,7 @@ export interface Actions {
   voteStart(vote: boolean): void;
   leaveRoom(): void;
   returnToRoom(): void;
+  sendChat(text: string): void;
   becomeSpectator(): void;
   becomePlayer(): void;
   spectate(): void;
@@ -183,7 +184,12 @@ function Screen({ actions }: { actions: Actions }) {
   if (room.state === 'lobby') return withFooter(<Lobby actions={actions} />);
   if (room.state === 'running' && app.launching) return withFooter(<Loading actions={actions} />);
   // The end-of-match cards wait for their moment (see `cardReady`).
-  if (room.state === 'finished') return app.cardReady ? <Results actions={actions} /> : null;
+  // Once the card has been closed, the player is a spectator of the finished match, with nothing
+  // left to watch but the chat to carry on in.
+  if (room.state === 'finished') {
+    if (!app.cardReady) return null;
+    return app.spectating ? <Out actions={actions} /> : <Results actions={actions} />;
+  }
   if (room.spectating) return <Out actions={actions} />;
   return app.eliminated && app.cardReady ? <Out actions={actions} /> : null;
 }
