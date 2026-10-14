@@ -104,7 +104,7 @@ A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRo
 | Setting                                                                             | Value                                           | Where                                    |
 | ----------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------- |
 | Start chamber radius                                                                | 1.6 tiles                                       | `SPAWN_RADIUS` in `archetypes/common.ts` |
-| Start chambers kept at least this far apart (centers)                               | 4.6 tiles                                       | `SPAWN_SPACING`                          |
+| Start chambers are pushed this far apart (centers); nothing guarantees it           | 4.6 tiles                                       | `SPAWN_SPACING`                          |
 | Open ground wanted between chambers (only used for neutral chambers, which are off) | 2 tiles                                         | `MIN_GAP`                                |
 | Neutral chambers                                                                    | none                                            | `neutralRooms()` in `scattered.ts`       |
 | Corridor widths and weights                                                         | 1: 3, 2: 3, 3: 2.5, 4: 1.5 (30%, 30%, 25%, 15%) | `CORRIDOR_WIDTHS`                        |
@@ -114,8 +114,6 @@ A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRo
 | Attempts per board                                                                  | 80                                              | `MAX_ATTEMPTS`                           |
 | Area passes per attempt                                                             | up to 6; stop within 6% of target               | `AREA_ITERATIONS`, `AREA_TOLERANCE`      |
 | Candidate thrown away if area is more than this far off                             | 12%                                             | `AREA_LIMIT`                             |
-| Fewest chokes                                                                       | 2                                               | `MIN_CHOKES`                             |
-| Most "deep inland" land                                                             | 40% (hexes at least 4 from the coast)           | `MAX_INTERIOR_SHARE`                     |
 
 There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the code allows more.
 
@@ -131,7 +129,7 @@ _Start chambers_ (`placeSpawns`), one per player:
 
 - Each player's point is the best of 40 uniformly random points in a disc of radius `scale` around the origin: the one furthest from the points placed so far.
 - Then the points are **relaxed**: for up to 400 rounds, every pair closer than 4.6 is pushed apart by half the shortfall each (plus 0.01), and points are clamped inside a disc of radius `1.15 × scale`. Rounds stop early when nothing moves.
-- Each point is snapped to the nearest hex center, so the city sits exactly on a hex. If any two snapped centers are closer than 4.0 tiles, the blueprint fails (the attempt may still succeed at a larger scale, see step 3).
+- Each point is snapped to the nearest hex center, so the city sits exactly on a hex. Nothing checks the spacing afterwards: on a board too small for its players the bowls simply overlap (two starts on one hex is rejected, see step 4).
 - Each becomes a chamber of radius 1.6.
 
 _Corridors_ (`connect`):
@@ -139,50 +137,39 @@ _Corridors_ (`connect`):
 - **Spanning tree:** Prim's algorithm from chamber 0 over true center-to-center distances (nearest unlinked chamber first). Every chamber is reachable.
 - **Loops:** let `reach = 1.4 ×` the median tree corridor length. Candidate extra corridors are all pairs that are not already joined, are at most `reach` long, and whose straight line does not run through another chamber (within that chamber's radius + 0.5). The shortest `round(0.3 × chambers)` of them are added (ties broken randomly).
 - **Widths and bend:** each corridor gets a random width from the weights above and a random bend.
-- **No long tails** (`royale/topology.ts`): a dead-end chamber (one corridor) may hang off a junction, but not at the end of a chain of chambers that each have exactly two corridors ("snakes", or a dead end behind a dead end). Up to `4 × chambers` times, the worst remaining tail end is joined to the nearest chamber it is not yet joined to (a straight line through another chamber costs 1000 extra, so is only a last resort), which closes a loop. Dead-end chambers at a junction ("peninsulas", which can be a player's start) are fine, and nothing adds them on purpose.
+- **Long tails are repaired** (`royale/topology.ts`; this is a repair, there is no check afterwards, so a rare layout can keep one): a dead-end chamber (one corridor) may hang off a junction, but not at the end of a chain of chambers that each have exactly two corridors ("snakes", or a dead end behind a dead end). Up to `4 × chambers` times, the worst remaining tail end is joined to the nearest chamber it is not yet joined to (a straight line through another chamber costs 1000 extra, so is only a last resort), which closes a loop. Dead-end chambers at a junction ("peninsulas", which can be a player's start) are fine, and nothing adds them on purpose.
 
-**3. Draw, tidy and correct the area.** The blueprint is rasterized (see above) and tidied. Then, if the land is not within 6% of the target, `scale *= clamp((target / area) ^ 0.6, 0.7, 1.4)` and steps 2 and 3 repeat, up to 6 passes in all. If a pass cannot place the starts (a blueprint failure), `scale *= 1.1` instead. The result is what the _last_ pass drew. If the last pass could not place the starts, the attempt is rejected as **`cramped`**.
+**3. Draw, tidy and correct the area.** The blueprint is rasterized (see above) and tidied. Then, if the land is not within 6% of the target, `scale *= clamp((target / area) ^ 0.6, 0.7, 1.4)` and steps 2 and 3 repeat, up to 6 passes in all. The result is what the _last_ pass drew.
 
 Only the spacing of chambers scales, never their size or the corridor widths, so the area responds to the scale only through how much open ground there is between chambers.
 
-**4. Checks on the finished candidate**, in this order (the first failure is the reason it is rejected):
+**4. Checks on the finished candidate**, in this order (the first failure is the reason it is rejected). There are only two:
 
-| Reason     | Check                                                                                      |
-| ---------- | ------------------------------------------------------------------------------------------ |
-| `cramped`  | the last pass could not place the start chambers (see above)                               |
-| `topology` | a tail longer than one corridor is left (the repair ran out of steps)                      |
-| `area`     | the land is more than 12% from the target                                                  |
-| `spawns`   | a start hex is on the edge (depth 1); the city and its ring are protected, so this is rare |
-| `chokes`   | fewer than 2 chokes (below)                                                                |
-| `blobby`   | more than 40% of the land is at least 4 tiles from the coast                               |
+| Reason   | Check                                                                                                                         |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `area`   | the land is more than 12% from the target                                                                                     |
+| `spawns` | two starts are on the same hex, or a start hex is on the edge (depth 1); the city and its ring are protected, so this is rare |
 
-Once the area check passes, the board is moved so its middle (the centroid, rounded) is on the origin; then `spawns` is checked, and the finished board is **analyzed** (`royale/analyze.ts`), measuring the hexes, not the blueprint: for each corridor, the land width at right angles to the centerline is probed every 0.5 tile units along the stretch that is clear of the chambers at its ends (starting 0.8 past each chamber's edge; if no stretch is clear, 0.3, then −0.4), by stepping 0.2 at a time out each side, up to 10, until water. The corridor's width is the narrowest of those cross sections (at least 1). It is a **choke** if that width is at most 3, and a **cut** if removing a slice of land at that spot would split the board in two pieces of at least 4 tiles. The report also has: loops (corridors minus chambers plus 1), dead ends (chambers with one corridor), the share of deep inland land, and the closest pair of starts.
+Once the area check passes, the board is moved so its middle (the centroid, rounded) is on the origin; then `spawns` is checked, and the finished board is **analyzed** (`royale/analyze.ts`) for the report only, measuring the hexes, not the blueprint (nothing is rejected for what it finds): for each corridor, the land width at right angles to the centerline is probed every 0.5 tile units along the stretch that is clear of the chambers at its ends (starting 0.8 past each chamber's edge; if no stretch is clear, 0.3, then −0.4), by stepping 0.2 at a time out each side, up to 10, until water. The corridor's width is the narrowest of those cross sections (at least 1). It is a **choke** if that width is at most 3, and a **cut** if removing a slice of land at that spot would split the board in two pieces of at least 4 tiles. The report also has: loops (corridors minus chambers plus 1), dead ends (chambers with one corridor), the share of deep inland land, and the closest pair of starts.
 
 **5. Result and terrain.** The first candidate that passes is used. If none of the 80 attempts does, `generateRoyaleLayout` throws "could not make a battle royale board that fits". The start order is shuffled with the match's rng and players are given the starts in that order. Terrain is then placed (see below): the starts are cities with the starting troops, there are no other cities, and villages use the standard rules with every hex its own group.
 
-### Why attempts are retried: measured rejection rates
+### How often attempts are retried: measured
 
-Measured over 40 seeds per cell with the settings above: how many attempts it took per successful board on average, how many of the 40 boards could not be made in 80 attempts, and the most common reasons.
+Measured over 40 seeds per cell with the settings above: attempts per successful board on average, and what the rejections were. No board failed (80 attempts) in any cell.
 
-| Board            | Tiles per player | Attempts per board | Failed boards | Main reasons for rejection         |
-| ---------------- | ---------------- | ------------------ | ------------- | ---------------------------------- |
-| small, 3 players | 18               | 7.5                | 0             | `chokes` (most), `area`, `cramped` |
-| small, 4         | 17               | 4.3                | 0             | `cramped`, `chokes`, `area`        |
-| small, 5         | 16               | 7.0                | 0             | `cramped`, `area`, `chokes`        |
-| small, 6         | 15               | 16.8               | 0             | `cramped`, `area`, `chokes`        |
-| small, 7         | 14               | 33                 | 17 of 40      | `cramped`, `area`                  |
-| small, 8         | 14               | 32                 | 10 of 40      | `cramped`, `area`                  |
-| small, 10        | 13               | 40                 | 38 of 40      | `cramped`                          |
-| small, 12        | 13               | n/a                | 40 of 40      | `cramped`                          |
-| normal, 3 to 12  | 21 to 30         | 1.0 to 1.5         | 0             | `chokes`, rarely `area`            |
-| large, 3 to 12   | 38 to 54         | 1.0 to 1.1         | 0             | almost none                        |
+| Board            | Tiles per player | Attempts per board | Rejections (all `area`) | Average bridge (tiles) |
+| ---------------- | ---------------- | ------------------ | ----------------------- | ---------------------- |
+| small, 3 players | 18               | 1.30               | 12 in 40 boards         | 1.7                    |
+| small, 4         | 17               | 1.18               | 7                       | 1.2                    |
+| small, 5 to 6    | 16 to 15         | 1.0                | 1 to 2                  | 0.6 to 0.5             |
+| small, 7 to 12   | 14 to 13         | 1.0                | 0 to 2                  | 0.2 to −0.2            |
+| normal, 3 to 12  | 30 to 21         | 1.0                | 0 to 2                  | 6.0 down to 1.7        |
+| large, 3 to 12   | 54 to 38         | 1.0                | 0 to 1                  | 15.1 down to 6.3       |
 
-What the reasons mean in practice:
-
-- **`cramped` and `area` (small boards with many players).** Chamber radius, corridor widths and the 4.0 minimum between starts do not scale with the board. A small board with many players has too little land per player (13 to 15 tiles) for that many 1.6-radius bowls and their corridors, so the starts cannot be placed far enough apart even when the layout is stretched, or the stretched layout cannot be made small enough. **With the current settings, small boards with 7 or more players often fail, and with 10 or more almost never work.** Small is only dependable up to about 6 players (with many retries), and a small room with more players than that may fail to start.
-- **`chokes` (small and normal boards with few players).** A choke is a passage 3 or fewer hexes wide, and a board needs 2. With 3 players there are only a few corridors (3 or 4), and the wider ones, or ones that merge into their chambers once the land has been drawn, do not count. This is the cause of most of the retries on small 3-player boards.
-- **`blobby`** and **`topology`** were not seen in these runs; they guard against rare layouts.
-- **Bridge length, measured (average open ground between chambers along a corridor):** about 1.8 tiles at 12 players on normal boards, 6.9 at 3 players on normal, 6.6 at 12 players on large and 14.6 at 3 players on large. With these settings, boards with few players or on large maps have long, thin bridges between the start chambers: only the spacing responds to the tile target.
+- **Retries are rare.** Only `area` ever happens, mostly on small boards with 3 or 4 players, where a few big bowls and a little open ground make the area jump around as the layout is stretched.
+- **Small boards with many players are overlapping blobs.** The bowls are a fixed size (radius 1.6) and the spacing target is 4.6, but a small board with 6 or more players has too little land per player for that. The bowls are not stopped from overlapping (the average open ground between chambers is below zero at 10 and 12 players), so the land is one lump with starts inside it.
+- **Boards with few players or on large maps have long, thin bridges:** the average open ground between chambers is about 6 tiles on normal boards with 3 players and 15 on large ones, because only the spacing responds to the tile target.
 
 ## Fair boards
 
@@ -323,6 +310,6 @@ The address sets where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123
 
 ## Tests
 
-- `royale/royale.test.ts`: topology, royale layouts (determinism, one connected piece, about the wanted area, starts away from the edge, size at each map size for the player counts a size can hold, no long tails, peninsulas now and then).
+- `royale/royale.test.ts`: topology (the tail finder), royale layouts (determinism, one connected piece, about the wanted area, starts away from the edge, size at each map size, chokes measured on the board, peninsulas now and then).
 - `duel/duel.test.ts`, `duel/symmetry.test.ts`: the symmetry groups (closed, distinct, hex and point maps agree), blueprint rules (starts never joined directly, only small boards are only starts, middle blobs, blobs on lines).
 - `generate.test.ts`: the five match functions: determinism, exact symmetry of the finished boards, one start city per player and twin starts, about the right number of tiles, terrain rules (cities never too close or on the edge, villages never touching, villages placed until nowhere is left), and rejecting the wrong number of players.

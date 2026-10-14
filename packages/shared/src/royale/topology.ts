@@ -43,7 +43,3 @@ export function topologyIssues(count: number, links: readonly Link[]): TopologyI
   }
   return { tails };
 }
-
-/** Does the layout have no tail or peninsula longer than one corridor? */
-export const topologyOk = (count: number, links: readonly Link[]): boolean =>
-  topologyIssues(count, links).tails.length === 0;

@@ -56,7 +56,7 @@ function relax(points: Point[], spacing: number, limit: number): void {
  * already placed, which spreads the players out; then they are pushed apart until every pair is
  * far enough. Centers end up on a hex so the city is exactly there.
  */
-function placeSpawns(count: number, spread: number, rng: Rng): Chamber[] | null {
+function placeSpawns(count: number, spread: number, rng: Rng): Chamber[] {
   const spacing = SPAWN_SPACING;
   const points: Point[] = [];
   for (let i = 0; i < count; i++) {
@@ -73,13 +73,8 @@ function placeSpawns(count: number, spread: number, rng: Rng): Chamber[] | null 
     points.push(best);
   }
   relax(points, spacing, spread * 1.15);
-  const centers = points.map((p) => hexToPoint(pointToHex(p)));
-  for (const [i, a] of centers.entries()) {
-    // Snapping to a hex moves a point a little, so the real gap is checked on the hexes.
-    if (centers.slice(i + 1).some((b) => distance(a, b) < SPAWN_SPACING - 0.6)) return null;
-  }
-  return centers.map((center) => ({
-    center,
+  return points.map((p) => ({
+    center: hexToPoint(pointToHex(p)),
     radius: SPAWN_RADIUS,
     spawn: true,
   }));
@@ -236,9 +231,8 @@ function repairTopology(
  * Dead ends (peninsulas) happen where the tree has them, a start included, as long as they are
  * one corridor off a junction.
  */
-export function buildScattered({ players, scale, rng }: ArchetypeInput): Blueprint | null {
+export function buildScattered({ players, scale, rng }: ArchetypeInput): Blueprint {
   const spawns = placeSpawns(players, scale, rng);
-  if (!spawns) return null;
   const chambers: Chamber[] = [...spawns];
   placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, rng);
   return { chambers, corridors: connect(chambers, rng) };

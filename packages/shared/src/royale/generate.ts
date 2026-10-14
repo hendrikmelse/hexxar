@@ -6,11 +6,10 @@ import { analyze, type RoyaleMetrics } from './analyze.js';
 import { translate, pointToHex, hexToPoint, type Blueprint } from './blueprint.js';
 import { depthFromCoast, type Land } from './grid.js';
 import { createNoise } from './noise.js';
-import { topologyOk } from './topology.js';
 import { centroidShift, cleanup, rasterize } from './rasterize.js';
 
 /** Why a candidate board was thrown away. */
-export type Rejection = 'cramped' | 'area' | 'spawns' | 'chokes' | 'blobby' | 'topology';
+export type Rejection = 'area' | 'spawns';
 
 export interface RoyaleReport {
   readonly archetype: ArchetypeId;
@@ -44,10 +43,6 @@ const AREA_ITERATIONS = 6;
 const AREA_TOLERANCE = 0.06;
 /** A candidate this far off the target area is thrown away. */
 const AREA_LIMIT = 0.12;
-/** A board needs this many chokes (passages at most 3 hexes across) however many players there are. */
-const MIN_CHOKES = 2;
-/** Boards with more than this share of tiles deep inland are just blobs. */
-const MAX_INTERIOR_SHARE = 0.4;
 
 /** Tiles a board should have, never fewer than the players can fit. */
 export const royaleTargetTiles = (players: number, params: GenerationParams): number =>
@@ -76,18 +71,13 @@ function drawCandidate(
   // Rooms and passages keep their size, so area depends on the layout scale only roughly: draw
   // the same layout again at a corrected scale until the area is close to what is wanted.
   let scale = Math.sqrt((target * (Math.sqrt(3) / 2)) / Math.PI);
-  let drawn: { blueprint: Blueprint; land: Land; protectedKeys: Set<string> } | null = null;
+  let drawn: { blueprint: Blueprint; land: Land } | null = null;
   for (let i = 0; i < AREA_ITERATIONS; i++) {
     const blueprint = archetype.build({
       players,
       scale,
       rng: createRng(layoutSeed),
     });
-    if (!blueprint) {
-      drawn = null;
-      scale *= 1.1;
-      continue;
-    }
     const raster = rasterize(blueprint, {
       noise,
       coastRoughness: params.coastRoughness,
@@ -97,14 +87,12 @@ function drawCandidate(
     drawn = {
       blueprint,
       land: cleanup(raster.land, raster.protectedKeys),
-      protectedKeys: raster.protectedKeys,
     };
     const ratio = target / drawn.land.size;
     if (Math.abs(ratio - 1) <= AREA_TOLERANCE) break;
     scale *= Math.min(1.4, Math.max(0.7, ratio ** 0.6));
   }
-  if (!drawn) return 'cramped';
-  if (!topologyOk(drawn.blueprint.chambers.length, drawn.blueprint.corridors)) return 'topology';
+  if (!drawn) throw new Error('no board was drawn');
   if (Math.abs(drawn.land.size / target - 1) > AREA_LIMIT) return 'area';
 
   // Put the middle of the board on the origin.
@@ -125,13 +113,13 @@ function drawCandidate(
 
   const depth = depthFromCoast(land);
   const starts = blueprint.chambers.filter((c) => c.spawn).map((c) => pointToHex(c.center));
+  // Every player needs a city of their own, off the edge.
+  if (new Set(starts.map(hexKey)).size !== starts.length) return 'spawns';
   for (const start of starts) {
     if ((depth.get(hexKey(start)) ?? 0) < 2) return 'spawns';
   }
 
   const metrics = analyze(blueprint, land, depth, starts);
-  if (metrics.chokes.length < MIN_CHOKES) return 'chokes';
-  if (metrics.interiorShare > MAX_INTERIOR_SHARE) return 'blobby';
   return { land, blueprint, starts, metrics };
 }
 

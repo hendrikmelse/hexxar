@@ -14,9 +14,9 @@ export interface ArchetypeInput {
 
 /**
  * A kind of board. It lays out the rooms and passages (never touching hexes), with one spawn
- * chamber for each player, or returns `null` when it cannot fit them at this scale.
+ * chamber for each player, .
  */
 export interface Archetype {
   readonly id: string;
-  readonly build: (input: ArchetypeInput) => Blueprint | null;
+  readonly build: (input: ArchetypeInput) => Blueprint;
 }

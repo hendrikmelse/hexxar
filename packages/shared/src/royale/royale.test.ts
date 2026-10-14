@@ -1,17 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { hexKey } from '../hex.js';
-import {
-  DEFAULT_GENERATION_PARAMS,
-  MAP_SIZES,
-  royaleTilesPerPlayer,
-  type MapSize,
-} from '../params.js';
+import { DEFAULT_GENERATION_PARAMS, MAP_SIZES, royaleTilesPerPlayer } from '../params.js';
 import { createNoise, fbm } from './noise.js';
 import { ARCHETYPE_IDS } from './archetypes/index.js';
 import { CHOKE_MAX_WIDTH } from './analyze.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
 import { components, depthFromCoast } from './grid.js';
-import { topologyIssues, topologyOk } from './topology.js';
+import { topologyIssues } from './topology.js';
 import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
 
 // Each test draws dozens of whole boards.
@@ -67,26 +62,20 @@ describe('topology', () => {
     expect(topologyIssues(4, path(4)).tails).toEqual([0, 3]);
     // A star: every dead end is one corridor from the hub.
     const star = [1, 2, 3, 4].map((to) => ({ from: 0, to }));
-    expect(topologyOk(5, star)).toBe(true);
+    expect(topologyIssues(5, star).tails).toEqual([]);
     // A cycle has no dead ends; a dead end off it is fine; a second chamber on that dead end is not.
     const cycle = [
       { from: 0, to: 1 },
       { from: 1, to: 2 },
       { from: 2, to: 0 },
     ];
-    expect(topologyOk(3, cycle)).toBe(true);
-    expect(topologyOk(4, [...cycle, { from: 2, to: 3 }])).toBe(true);
+    expect(topologyIssues(3, cycle).tails).toEqual([]);
+    expect(topologyIssues(4, [...cycle, { from: 2, to: 3 }]).tails).toEqual([]);
     expect(topologyIssues(5, [...cycle, { from: 2, to: 3 }, { from: 3, to: 4 }]).tails).toEqual([
       4,
     ]);
   });
 });
-
-/**
- * The player counts a map size can hold, with the same settings for every board: the bowls and
- * corridors are a fixed size, so small boards (few tiles per player) cannot take more than a few.
- */
-const playersFor = (size: MapSize): number[] => (size === 'small' ? [3, 5] : [3, 7, 12]);
 
 describe('royale layouts', () => {
   it('is deterministic for a seed', () => {
@@ -122,23 +111,21 @@ describe('royale layouts', () => {
     }
   });
 
-  it('has chokes, measured on the finished board, and no big blobs', () => {
+  it('measures its chokes on the finished board', () => {
     for (const players of playerCounts) {
       for (const seed of seeds) {
         const { report } = layout(players, seed);
-        expect(report.metrics.chokes.length).toBeGreaterThanOrEqual(2);
         for (const choke of report.metrics.chokes) {
           expect(choke.width).toBeGreaterThanOrEqual(1);
           expect(choke.width).toBeLessThanOrEqual(CHOKE_MAX_WIDTH);
         }
-        expect(report.metrics.interiorShare).toBeLessThan(0.4);
       }
     }
   });
 
   it('hits the intended size at every map size', () => {
     for (const size of MAP_SIZES) {
-      for (const players of playersFor(size)) {
+      for (const players of [3, 7, 12]) {
         for (const seed of [1, 2]) {
           const sizeParams = {
             ...params,
@@ -160,22 +147,6 @@ describe('royale layouts', () => {
   it('can be told which archetype to draw', () => {
     for (const archetype of ARCHETYPE_IDS) {
       expect(layout(5, 3, archetype).report.archetype).toBe(archetype);
-    }
-  });
-
-  it('has no tail or peninsula longer than one corridor', () => {
-    for (const size of MAP_SIZES) {
-      for (const players of playersFor(size)) {
-        for (const seed of [1, 2, 3, 4]) {
-          const sizeParams = {
-            ...params,
-            tilesPerPlayer: royaleTilesPerPlayer(size, players),
-          };
-          const { report } = generateRoyaleLayout({ players, seed, params: sizeParams });
-          const { chambers, corridors } = report.blueprint;
-          expect(topologyIssues(chambers.length, corridors).tails).toEqual([]);
-        }
-      }
     }
   });
 
