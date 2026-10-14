@@ -170,14 +170,14 @@ export class Room {
   // -- Membership ----------------------------------------------------------
 
   join(session: Session): string | null {
-    // A private room that is full, or has begun, takes people as spectators.
+    // A game that has begun takes people as spectators, public or private; a private room that is
+    // full does too. (A public lobby that is full, or about to start, just turns people away.)
     if (
-      this.visibility === 'private' &&
-      (this.state !== 'lobby' || this.activeMembers().length >= this.capacity)
+      this.state !== 'lobby' ||
+      (this.visibility === 'private' && this.activeMembers().length >= this.capacity)
     ) {
       return this.watch(session);
     }
-    if (this.state !== 'lobby') return 'that game has already started';
     if (this.lockedIn) return 'that game is about to start';
     if (this.activeMembers().length >= this.capacity) return 'that game is full';
     this.members.push({
@@ -579,10 +579,14 @@ export class Room {
     return this.state === 'lobby' && !this.lockedIn && this.activeMembers().length < this.capacity;
   }
 
-  /** People currently in this game, lobby or match, and connected. Finished games count for nobody. */
+  /**
+   * People currently playing in this game, lobby or match, and connected. People who only came to
+   * watch do not count, and neither do finished games.
+   */
   get activePlayers(): number {
     if (this.state === 'finished') return 0;
-    return this.members.filter((m) => !m.left && m.session.connection !== null).length;
+    return this.members.filter((m) => !m.left && !m.spectator && m.session.connection !== null)
+      .length;
   }
 
   get mode(): RoomMode {
