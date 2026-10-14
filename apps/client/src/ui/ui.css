@@ -3038,6 +3038,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* A slim dark scrollbar, as in the rest of the app, rather than the browser's white one */
+  scrollbar-width: thin;
+  scrollbar-color: #3a4156 transparent;
   padding: 6px 8px;
   border-radius: 8px;
   background: #0f1117;
