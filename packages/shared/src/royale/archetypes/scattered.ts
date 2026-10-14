@@ -89,10 +89,10 @@ function spanningTree(points: readonly Point[]): [number, number][] {
 
 /**
  * How long a tree corridor's bridge is meant to be, in tiles of open ground between the two bowls:
- * 3 plus or minus a little, from the sum of two random numbers (so most are between 2 and 4, about
- * 3 in 4, and a few are shorter or longer, from 1 to 5).
+ * 4 plus or minus a little, from the sum of two random numbers (so most are between 3 and 5, about
+ * 3 in 4, and a few are shorter or longer, from 2 to 6).
  */
-const bridgeLength = (rng: Rng): number => 3 + (rng.next() + rng.next() - 1) * 2;
+const bridgeLength = (rng: Rng): number => 4 + (rng.next() + rng.next() - 1) * 2;
 
 /**
  * Pull the points together along the tree: each corridor tries to bring its two points to a target
