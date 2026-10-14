@@ -231,11 +231,6 @@
   padding-right: 14px;
 }
 
-/* A private game's row can hold Leave, Start game and Join as player at once: smaller lettering so they fit */
-#ui .lobby.compact .buttons button {
-  font-size: 15px;
-}
-
 #ui .muted {
   margin: 0;
   color: #8a93a8;
