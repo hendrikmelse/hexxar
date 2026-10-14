@@ -28,12 +28,12 @@ All the generators live in `packages/shared/src/`. `generate.ts` has the entry p
 Every board is made the same way, in three stages:
 
 1. **Blueprint:** a layout of round **chambers** ("blobs") joined by **corridors**, in "tile units" (never touching hexes). Battle royale blueprints come from `royale/archetypes/`; fair board blueprints from `duel/`.
-2. **Drawing:** the blueprint is drawn onto hexes with noise (`royale/rasterize.ts`), tidied, checked against the target size and rules, and redrawn with other seeds until a candidate passes.
+2. **Drawing:** the blueprint is drawn onto hexes with noise (`royale/rasterize.ts`) and tidied. Fair boards are also checked against a target size and drawn again until they pass; battle royale boards have no target size and no checks, and are drawn once.
 3. **Terrain:** every land tile becomes a city, a village or farmland (`placeTerrain` in `generate.ts`), shared by all five kinds of board.
 
-**Determinism.** Given the same options and seed, a generator always makes the same board. All randomness comes from `createRng(seed)` (`rng.ts`, mulberry32), and from `createNoise(seed)` (`royale/noise.ts`) for the coast. Different attempts of one board use the seeds `seed + attempt × 0x9e3779b1` (as an unsigned 32-bit number).
+**Determinism.** Given the same options and seed, a generator always makes the same board. All randomness comes from `createRng(seed)` (`rng.ts`, mulberry32), and from `createNoise(seed)` (`royale/noise.ts`) for the coast. Fair boards are drawn again when a candidate fails; attempt `k` uses the seed `seed + k × 0x9e3779b1` (as an unsigned 32-bit number). Battle royale boards are drawn once, from the seed itself.
 
-**Rooms** (`apps/server/src/room.ts`): a duel room calls `createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize] })`; a battle royale room calls `createFreeForAllMatch` with `tilesPerPlayer = royaleTilesPerPlayer(mapSize, players)` and nothing else overridden. The seed is random per match. If generation throws, the room tries up to 100 more seeds (`seed + attempt`), for at most 2 seconds; if none works the room is closed with "the game could not be set up, please try again". Players are shuffled before being given ids `P1 … Pn` (so who starts where is random), and board generation then gives the player with id `Pk` the k-th start.
+**Rooms** (`apps/server/src/room.ts`): a duel room calls `createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize] })`; a battle royale room calls `createFreeForAllMatch` with `bowlRadius = royaleBowlRadius(mapSize, players)` and nothing else overridden. The seed is random per match. If generation throws, the room tries up to 100 more seeds (`seed + attempt`), for at most 2 seconds; if none works the room is closed with "the game could not be set up, please try again". Players are shuffled before being given ids `P1 … Pn` (so who starts where is random), and board generation then gives the player with id `Pk` the k-th start.
 
 ## Shared machinery
 
@@ -72,65 +72,66 @@ Two rules, applied for 3 passes (`royale/rasterize.ts: cleanup`, `duel/layout.ts
 
 In each pass both rules look at the board as it was before the step, never hex by hex, so the result does not depend on the order hexes are visited in. That is what keeps a symmetric board exactly symmetric.
 
-Then only one connected piece is kept: for battle royale boards the biggest; for fair boards the one holding the starts (all starts must be in it). `depthFromCoast` (`royale/grid.ts`) gives each land hex its distance from the coast: 1 for an **edge** tile (one touching water), 2 for the next ring in, and so on. Cities never stand on edge tiles.
+Then only one connected piece is kept: for battle royale boards the biggest (always the whole board, see below); for fair boards the one holding the starts (all starts must be in it). An **edge** tile is a land tile with a neighbor that is not on the board; cities never stand on edge tiles.
 
-### Map sizes and tile targets (`params.ts`)
+### Map sizes (`params.ts`)
 
-`MAP_SIZES` are `small`, `normal` and `large`. Each kind of board has a table of tiles per player:
+`MAP_SIZES` are `small`, `normal` and `large`. Fair boards are asked for a number of tiles; each kind of board has a table:
 
-| Board                        | Per player (small / normal / large) | Whole board (small / normal / large) |
-| ---------------------------- | ----------------------------------- | ------------------------------------ |
-| Duel (2)                     | 18 / 50 / 80                        | 36 / 100 / 160                       |
-| Trio (3)                     | 16 / 40 / 70                        | 48 / 120 / 210                       |
-| Quad (4)                     | 15 / 35 / 60                        | 60 / 140 / 240                       |
-| Sextet (6)                   | 15 / 30 / 50                        | 90 / 180 / 300                       |
-| Battle royale (at 6 players) | 15 / 25 / 45                        | players × per player (below)         |
+| Board      | Tiles per player (small / normal / large) | Whole board (small / normal / large) |
+| ---------- | ----------------------------------------- | ------------------------------------ |
+| Duel (2)   | 18 / 50 / 80                              | 36 / 100 / 160                       |
+| Trio (3)   | 16 / 40 / 70                              | 48 / 120 / 210                       |
+| Quad (4)   | 15 / 35 / 60                              | 60 / 140 / 240                       |
+| Sextet (6) | 15 / 30 / 50                              | 90 / 180 / 300                       |
 
-For battle royales the per-player number falls as the player count rises: `royaleTilesPerPlayer(size, players) = round(base[size] × (6 / max(players, 2)) ^ 0.25)`. For example:
-
-| Players | small | normal | large |
-| ------- | ----- | ------ | ----- |
-| 3       | 18    | 30     | 54    |
-| 6       | 15    | 25     | 45    |
-| 8       | 14    | 23     | 42    |
-| 12      | 13    | 21     | 38    |
+Battle royale boards are not asked for any number of tiles: the map size sets the size of the players' starting bowls instead (see below), and the area is whatever comes out.
 
 ## Battle royale boards
 
-A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRoyaleLayout` (`royale/generate.ts`), then places terrain. **Every setting is the same for every map size and every number of players.** The only things that differ are the tiles per player (above); nothing else is tuned by size or player count.
+A battle royale board has no symmetry. `createFreeForAllMatch` calls `generateRoyaleLayout` (`royale/generate.ts`), then places terrain. **There is no target size, no check and no retry.** A board is drawn once, from the seed, and its area is whatever the settings come to. Every setting is the same for every map size and every number of players, except the bowl radius, which is the one thing that tells map sizes apart (and shrinks a little with more players).
 
 ### The settings
 
-| Setting                                                                             | Value                                           | Where                                    |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------- |
-| Start chamber radius                                                                | 1.6 tiles                                       | `SPAWN_RADIUS` in `archetypes/common.ts` |
-| Start chambers are pushed this far apart (centers); nothing guarantees it           | 4.6 tiles                                       | `SPAWN_SPACING`                          |
-| Open ground wanted between chambers (only used for neutral chambers, which are off) | 2 tiles                                         | `MIN_GAP`                                |
-| Neutral chambers                                                                    | none                                            | `neutralRooms()` in `scattered.ts`       |
-| Corridor widths and weights                                                         | 1: 3, 2: 3, 3: 2.5, 4: 1.5 (30%, 30%, 25%, 15%) | `CORRIDOR_WIDTHS`                        |
-| Corridor bend                                                                       | uniform in ±0.15 × the corridor's length        | `connect` in `scattered.ts`              |
-| Extra "loop" corridors                                                              | `round(0.3 × chambers)`                         | `connect`                                |
-| Coast roughness / detail / warp                                                     | 1 / 5 / 1.5                                     | `DEFAULT_GENERATION_PARAMS`              |
-| Attempts per board                                                                  | 80                                              | `MAX_ATTEMPTS`                           |
-| Area passes per attempt                                                             | up to 6; stop within 6% of target               | `AREA_ITERATIONS`, `AREA_TOLERANCE`      |
-| Candidate thrown away if area is more than this far off                             | 12%                                             | `AREA_LIMIT`                             |
+| Setting                                              | Value                                                                             | Where                                          |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Start bowl radius                                    | `bowlRadius`: 1.6 by default; rooms use `royaleBowlRadius(size, players)` (below) | `params.ts`                                    |
+| Start bowls are first placed inside a disc of radius | 4 tiles                                                                           | `SPAWN_START_RADIUS` in `archetypes/common.ts` |
+| Start bowl centers are relaxed apart to              | `2 × radius + 1.4` tiles                                                          | `SPAWN_GAP`                                    |
+| Most relaxing rounds                                 | 2000                                                                              | `RELAX_ROUNDS` in `scattered.ts`               |
+| Neutral chambers                                     | none (the code is kept for another archetype)                                     | `neutralRooms()`                               |
+| Corridor widths and weights                          | 1: 3, 2: 3, 3: 2.5, 4: 1.5 (30%, 30%, 25%, 15%)                                   | `CORRIDOR_WIDTHS`                              |
+| Corridor bend                                        | uniform in ±0.15 × the corridor's length                                          | `connect` in `scattered.ts`                    |
+| Extra "loop" corridors                               | `round(0.3 × chambers)`                                                           | `connect`                                      |
+| Coast roughness / detail / warp                      | 1 / 5 / 1.5                                                                       | `DEFAULT_GENERATION_PARAMS`                    |
 
 There is one **archetype**, `scattered` (`royale/archetypes/scattered.ts`); the code allows more.
 
+### The bowl radius, which sets the size
+
+`royaleBowlRadius(size, players) = ROYALE_BOWL_RADIUS[size] × (6 / max(players, 2)) ^ 0.17`, with `ROYALE_BOWL_RADIUS` = small 1.15, normal 2.0, large 3.1 (the radius at 6 players). It has the same form as the tiles-per-player formula it replaced (a base per map size, times a power of `6 / players`), and the numbers were fitted so that boards come out about as big as the old targets did: 15, 25 and 45 tiles per player at 6 players, falling with the player count as `(6 / players) ^ 0.25`. (Area grows faster than the radius, so the exponent on the radius is smaller.)
+
+| Players | Radius (small / normal / large) | Tiles per player now (small / normal / large) | Old targets (small / normal / large) |
+| ------- | ------------------------------- | --------------------------------------------- | ------------------------------------ |
+| 3       | 1.29 / 2.25 / 3.49              | 17 / 28 / 53                                  | 18 / 30 / 54                         |
+| 4       | 1.23 / 2.14 / 3.32              | 15 / 26 / 49                                  | 17 / 28 / 50                         |
+| 6       | 1.15 / 2.00 / 3.10              | 15 / 25 / 45                                  | 15 / 25 / 45                         |
+| 8       | 1.10 / 1.90 / 2.95              | 14 / 23 / 42                                  | 14 / 23 / 42                         |
+| 12      | 1.02 / 1.78 / 2.76              | 13 / 22 / 38                                  | 13 / 21 / 38                         |
+
+(Measured: the average over 40 seeds per cell.) Individual boards vary a lot, since nothing controls the area: for example normal boards with 3 players have between 19 and 38 tiles per player, and with 12 players between 19 and 25.
+
 ### Step by step
 
-Everything in steps 1 to 4 happens once per attempt. An attempt is thrown away (a "rejection", with a reason) if any check fails, and the next attempt uses the next seed.
+**1. Setup.** The archetype is picked by `createRng(seed ^ 0xa11ce)` (there is only one). A noise field is created from `createRng(seed)`, and a `layoutSeed` is drawn from the same rng.
 
-**1. Setup.** The target is `players × tilesPerPlayer`. A noise field is created from the attempt's rng, and a `layoutSeed` is drawn. The starting **scale** is the radius of a disc with the target's area: `sqrt(target × (√3/2) / π)`.
-
-**2. Blueprint at the current scale** (`buildScattered`). The same `layoutSeed` is used every time, so a redraw at a new scale makes the same random choices with stretched geometry.
+**2. Blueprint** (`buildScattered`), using `createRng(layoutSeed)`.
 
 _Start chambers_ (`placeSpawns`), one per player:
 
-- Each player's point is the best of 40 uniformly random points in a disc of radius `scale` around the origin: the one furthest from the points placed so far.
-- Then the points are **relaxed**: for up to 400 rounds, every pair closer than 4.6 is pushed apart by half the shortfall each (plus 0.01), and points are clamped inside a disc of radius `1.15 × scale`. Rounds stop early when nothing moves.
-- Each point is snapped to the nearest hex center, so the city sits exactly on a hex. Nothing checks the spacing afterwards: on a board too small for its players the bowls simply overlap (two starts on one hex is rejected, see step 4).
-- Each becomes a chamber of radius 1.6.
+- Every player's point starts at a uniformly random place inside a disc of radius 4 around the origin (`SPAWN_START_RADIUS`), so they all start piled up in the middle. There is no scale or size parameter: the layout is as spread out as the relaxing makes it.
+- The points are then **relaxed**: for up to 2000 rounds, every pair closer than `2 × radius + 1.4` is pushed apart by half the shortfall each (plus 0.01), the pairs taken in order, until a round moves nothing. Two points on exactly the same place are pushed apart along the x axis. Nothing keeps the points inside any disc, so they spread out as far as they need to.
+- Each point is snapped to the nearest hex center, so the city sits exactly on a hex, and becomes a chamber of the bowl radius.
 
 _Corridors_ (`connect`):
 
@@ -139,37 +140,34 @@ _Corridors_ (`connect`):
 - **Widths and bend:** each corridor gets a random width from the weights above and a random bend.
 - **Long tails are repaired** (`royale/topology.ts`; this is a repair, there is no check afterwards, so a rare layout can keep one): a dead-end chamber (one corridor) may hang off a junction, but not at the end of a chain of chambers that each have exactly two corridors ("snakes", or a dead end behind a dead end). Up to `4 × chambers` times, the worst remaining tail end is joined to the nearest chamber it is not yet joined to (a straight line through another chamber costs 1000 extra, so is only a last resort), which closes a loop. Dead-end chambers at a junction ("peninsulas", which can be a player's start) are fine, and nothing adds them on purpose.
 
-**3. Draw, tidy and correct the area.** The blueprint is rasterized (see above) and tidied. Then, if the land is not within 6% of the target, `scale *= clamp((target / area) ^ 0.6, 0.7, 1.4)` and steps 2 and 3 repeat, up to 6 passes in all. The result is what the _last_ pass drew.
+**3. Draw and tidy** (`rasterize` and `cleanup`, see Shared machinery): once, with no offset and no correction.
 
-Only the spacing of chambers scales, never their size or the corridor widths, so the area responds to the scale only through how much open ground there is between chambers.
+**4. Recenter.** The board and its blueprint are moved so the middle of the land (the centroid, rounded to a hex) is on the origin. The start hexes are the spawn chambers' centers, in the order of the chambers.
 
-**4. Checks on the finished candidate**, in this order (the first failure is the reason it is rejected). There are only two:
+**5. Terrain.** The starts are shuffled with the match's rng and given to the players in that order. The starts are cities with the starting troops, there are no other cities, and villages use the standard rules with every hex its own group (see Terrain).
 
-| Reason   | Check                                                                                                                         |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `area`   | the land is more than 12% from the target                                                                                     |
-| `spawns` | two starts are on the same hex, or a start hex is on the edge (depth 1); the city and its ring are protected, so this is rare |
+That is all: `generateRoyaleLayout` always returns a board.
 
-Once the area check passes, the board is moved so its middle (the centroid, rounded) is on the origin; then `spawns` is checked, and the finished board is **analyzed** (`royale/analyze.ts`) for the report only, measuring the hexes, not the blueprint (nothing is rejected for what it finds): for each corridor, the land width at right angles to the centerline is probed every 0.5 tile units along the stretch that is clear of the chambers at its ends (starting 0.8 past each chamber's edge; if no stretch is clear, 0.3, then −0.4), by stepping 0.2 at a time out each side, up to 10, until water. The corridor's width is the narrowest of those cross sections (at least 1). It is a **choke** if that width is at most 3, and a **cut** if removing a slice of land at that spot would split the board in two pieces of at least 4 tiles. The report also has: loops (corridors minus chambers plus 1), dead ends (chambers with one corridor), the share of deep inland land, and the closest pair of starts.
+### Why the starts are always safe
 
-**5. Result and terrain.** The first candidate that passes is used. If none of the 80 attempts does, `generateRoyaleLayout` throws "could not make a battle royale board that fits". The start order is shuffled with the match's rng and players are given the starts in that order. Terrain is then placed (see below): the starts are cities with the starting troops, there are no other cities, and villages use the standard rules with every hex its own group.
+Nothing checks the starts, because nothing can remove what they need:
 
-### How often attempts are retried: measured
+- **The city and its six neighbors are land.** `rasterize` sets them as land after drawing everything else, and lists them as protected. Tidying only ever _adds_ land when filling bays, and never removes a protected hex when trimming spurs.
+- **They stay in the one piece that is kept.** Cleanup keeps the biggest connected piece. Every chamber has at least one corridor (the spanning tree), and a corridor's core, every hex within 0.58 of its centerline (more than the 0.5774 a hex can be from a line that crosses it), is land whatever the noise says. That makes an unbroken chain of land from each chamber's center to the next chamber's center, so all the chambers and their rings are one piece, and the piece kept is the whole board.
+- **A start is never on the edge**, because all six neighbors of the city are land.
+- **Two starts are never on one hex**, because relaxing leaves every pair at least `2 × radius + 1.4` apart (at least 3.4 for the smallest bowl), far more than the half-tile rounding to a hex can close. The tests draw 180 boards across sizes and player counts and check every ring, and that the starts are all different.
 
-Measured over 40 seeds per cell with the settings above: attempts per successful board on average, and what the rejections were. No board failed (80 attempts) in any cell.
+### Measured
 
-| Board            | Tiles per player | Attempts per board | Rejections (all `area`) | Average bridge (tiles) |
-| ---------------- | ---------------- | ------------------ | ----------------------- | ---------------------- |
-| small, 3 players | 18               | 1.30               | 12 in 40 boards         | 1.7                    |
-| small, 4         | 17               | 1.18               | 7                       | 1.2                    |
-| small, 5 to 6    | 16 to 15         | 1.0                | 1 to 2                  | 0.6 to 0.5             |
-| small, 7 to 12   | 14 to 13         | 1.0                | 0 to 2                  | 0.2 to −0.2            |
-| normal, 3 to 12  | 30 to 21         | 1.0                | 0 to 2                  | 6.0 down to 1.7        |
-| large, 3 to 12   | 54 to 38         | 1.0                | 0 to 1                  | 15.1 down to 6.3       |
+Over 40 seeds per cell, the average open ground between two chambers along a corridor ("bridge"):
 
-- **Retries are rare.** Only `area` ever happens, mostly on small boards with 3 or 4 players, where a few big bowls and a little open ground make the area jump around as the layout is stretched.
-- **Small boards with many players are overlapping blobs.** The bowls are a fixed size (radius 1.6) and the spacing target is 4.6, but a small board with 6 or more players has too little land per player for that. The bowls are not stopped from overlapping (the average open ground between chambers is below zero at 10 and 12 players), so the land is one lump with starts inside it.
-- **Boards with few players or on large maps have long, thin bridges:** the average open ground between chambers is about 6 tiles on normal boards with 3 players and 15 on large ones, because only the spacing responds to the tile target.
+| Board                   | Bridge (tiles)  |
+| ----------------------- | --------------- |
+| small, 3 to 12 players  | 2.4 down to 1.4 |
+| normal, 3 to 12 players | 2.2 down to 1.5 |
+| large, 3 to 12 players  | 2.6 down to 1.5 |
+
+Boards are compact at every size and player count (the old, fixed bowl size gave bridges of 6 to 15 tiles on boards with few players or on large maps). A small board with many players has bowls that touch or overlap slightly.
 
 ## Fair boards
 
@@ -280,7 +278,7 @@ Neutral tiles start with their type's base garrison: farmland 1, village 4, city
 
 ## Settings
 
-`GenerationParams` in `params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`. Matches use the defaults, except for the tile target, which follows the map size (`DUEL_TILES[size]` and so on, or `royaleTilesPerPlayer(size, players)`). The generators take a `params` option with overrides, which the tests and the previewer use.
+`GenerationParams` in `params.ts`, with the defaults in `DEFAULT_GENERATION_PARAMS`. Matches use the defaults, except for the size, which follows the map size (the tile target `DUEL_TILES[size]` and so on, or `royaleBowlRadius(size, players)`). The generators take a `params` option with overrides, which the tests and the previewer use.
 
 | Setting                | Default | Meaning                                                                                                             |
 | ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -289,12 +287,12 @@ Neutral tiles start with their type's base garrison: farmland 1, village 4, city
 | `villageChance`        | 40      | percent chance a village is placed where one fits                                                                   |
 | `minVillageDistance`   | 2       | villages are never closer than this (2: never touching)                                                             |
 | `villagesNextToCities` | false   | may villages touch cities                                                                                           |
-| `tilesPerPlayer`       | 25      | battle royale tiles per player (rooms override it by map size and player count)                                     |
+| `bowlRadius`           | 1.6     | battle royale start bowl radius, which sets the board size (rooms override it by map size and player count)         |
 | `coastRoughness`       | 1       | how far noise pushes the coast in and out, in tiles                                                                 |
 | `coastDetail`          | 5       | size of the coast's bumps, in tiles                                                                                 |
 | `warpStrength`         | 1.5     | how far noise bends the chambers out of round, in tiles                                                             |
 
-Constants that are not settings (blob size, spacing, corridor widths and weights, retry limits, and so on) are named constants in the code, listed in the sections above.
+Constants that are not settings (blob size, spacing, corridor widths and weights, relaxing rounds, retry limits of fair boards, and so on) are named constants in the code, listed in the sections above.
 
 ## The map previewer
 
@@ -303,13 +301,12 @@ Constants that are not settings (blob size, spacing, corridor widths and weights
 - **Show blueprint** draws the chambers and corridors over the board.
 - **Show fog** draws the board as one random player sees it, covered in fog: the viewer is `players[floor(createRng(seed).next() × count)]`.
 - **Generation parameters** shows and edits the settings above. Changed ones are marked.
-- **Statistics over 100 seeds** (royale): attempts, tiles, chokes, deep inland share, widths, rejections and time.
-- The report line under the controls says how the board was made: tiles, seed, symmetry, attempts, blobs; for royale boards also chokes, loops, dead ends and deep inland share.
+- The report line under the controls says how the board was made: tiles, seed, symmetry, attempts, blobs for fair boards; for royale boards the archetype and the bowl radius.
 
 The address sets where it starts: `/?maps&mode=ffa&size=large&players=8&seed=123&archetype=scattered&blueprint&fog`. `mode` is `duel`, `trio`, `quad`, `six` or `ffa`; fair boards also take `tiles`; duels and sextets take `symmetry` and `axis`; duels and quads take `turns`. A seed in the address reproduces a board exactly.
 
 ## Tests
 
-- `royale/royale.test.ts`: topology (the tail finder), royale layouts (determinism, one connected piece, about the wanted area, starts away from the edge, size at each map size, chokes measured on the board, peninsulas now and then).
+- `royale/royale.test.ts`: topology (the tail finder), royale layouts (determinism, one connected piece, every start city and its ring kept at every size and player count, the starts all different, about the old size per player at each map size, the bowl radius formula, peninsulas now and then).
 - `duel/duel.test.ts`, `duel/symmetry.test.ts`: the symmetry groups (closed, distinct, hex and point maps agree), blueprint rules (starts never joined directly, only small boards are only starts, middle blobs, blobs on lines).
 - `generate.test.ts`: the five match functions: determinism, exact symmetry of the finished boards, one start city per player and twin starts, about the right number of tiles, terrain rules (cities never too close or on the edge, villages never touching, villages placed until nowhere is left), and rejecting the wrong number of players.

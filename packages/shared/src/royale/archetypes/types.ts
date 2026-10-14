@@ -3,12 +3,8 @@ import type { Blueprint } from '../blueprint.js';
 
 export interface ArchetypeInput {
   readonly players: number;
-  /**
-   * Roughly the radius of the board in tiles. Rooms and corridors keep their size whatever the
-   * scale is; the scale only decides how far apart they sit, which is what makes a bigger
-   * board hold more land.
-   */
-  readonly scale: number;
+  /** The radius of every start chamber, in tiles. This is what sets the size of the board. */
+  readonly bowlRadius: number;
   readonly rng: Rng;
 }
 

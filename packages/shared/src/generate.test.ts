@@ -834,13 +834,12 @@ describe('battle royale boards', () => {
   });
 
   it('scales the board with the number of players', () => {
+    // The default bowls give about 20 tiles per player, whatever the number of players.
     for (const n of counts) {
-      const perPlayer = DEFAULT_GENERATION_PARAMS.tilesPerPlayer;
-      for (let seed = 1; seed <= 3; seed++) {
-        const tiles = Object.keys(board(n, seed).tiles).length;
-        expect(tiles / (n * perPlayer)).toBeGreaterThan(0.85);
-        expect(tiles / (n * perPlayer)).toBeLessThan(1.15);
-      }
+      let tiles = 0;
+      for (let seed = 1; seed <= 6; seed++) tiles += Object.keys(board(n, seed).tiles).length;
+      expect(tiles / 6 / n).toBeGreaterThan(14);
+      expect(tiles / 6 / n).toBeLessThan(28);
     }
   });
 

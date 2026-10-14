@@ -8,7 +8,7 @@ import {
   type Point,
 } from '../blueprint.js';
 import { topologyIssues } from '../topology.js';
-import { blocked, distance, MIN_GAP, pickWidth, SPAWN_RADIUS, SPAWN_SPACING } from './common.js';
+import { blocked, distance, MIN_GAP, pickWidth, SPAWN_GAP, SPAWN_START_RADIUS } from './common.js';
 import type { ArchetypeInput } from './types.js';
 
 /** How many random spots are tried for each room before it is given up on. */
@@ -22,11 +22,12 @@ function inDisc(radius: number, rng: Rng): Point {
 }
 
 /**
- * Push apart any points closer than `spacing`, keeping them inside a disc, until none are (or
- * the rounds run out). Plain random spots cannot pack bowls tightly; this can.
+ * Push apart any points closer than `spacing`, until none are (or the rounds run out): each pair
+ * that is too close moves half the shortfall apart. The points are free to spread out as far as
+ * they need to, so this is what sets how far apart the start chambers end up.
  */
-function relax(points: Point[], spacing: number, limit: number): void {
-  for (let round = 0; round < 400; round++) {
+function relax(points: Point[], spacing: number): void {
+  for (let round = 0; round < RELAX_ROUNDS; round++) {
     let moved = false;
     for (let i = 0; i < points.length; i++) {
       for (let j = i + 1; j < points.length; j++) {
@@ -42,42 +43,23 @@ function relax(points: Point[], spacing: number, limit: number): void {
         points[j] = { x: b.x + dx * push, y: b.y + dy * push };
       }
     }
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]!;
-      const out = Math.hypot(p.x, p.y);
-      if (out > limit) points[i] = { x: (p.x / out) * limit, y: (p.y / out) * limit };
-    }
     if (!moved) return;
   }
 }
 
+/** The most rounds of relaxing; far more than a board needs. */
+const RELAX_ROUNDS = 2000;
+
 /**
- * Spawn chambers: each starts as the best of a few random spots, the one furthest from the spawns
- * already placed, which spreads the players out; then they are pushed apart until every pair is
- * far enough. Centers end up on a hex so the city is exactly there.
+ * Spawn chambers: every point starts at a random place inside a disc of radius 4 (so they all
+ * start piled up in the middle), and relaxing pushes them apart until every pair is `2 × radius +
+ * 1.4` apart. Centers end up on a hex so the city is exactly there.
  */
-function placeSpawns(count: number, spread: number, rng: Rng): Chamber[] {
-  const spacing = SPAWN_SPACING;
+function placeSpawns(count: number, radius: number, rng: Rng): Chamber[] {
   const points: Point[] = [];
-  for (let i = 0; i < count; i++) {
-    let best: Point = inDisc(spread, rng);
-    let bestGap = -1;
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const spot = inDisc(spread, rng);
-      const gap = Math.min(Infinity, ...points.map((other) => distance(spot, other)));
-      if (gap > bestGap) {
-        best = spot;
-        bestGap = gap;
-      }
-    }
-    points.push(best);
-  }
-  relax(points, spacing, spread * 1.15);
-  return points.map((p) => ({
-    center: hexToPoint(pointToHex(p)),
-    radius: SPAWN_RADIUS,
-    spawn: true,
-  }));
+  for (let i = 0; i < count; i++) points.push(inDisc(SPAWN_START_RADIUS, rng));
+  relax(points, 2 * radius + SPAWN_GAP);
+  return points.map((p) => ({ center: hexToPoint(pointToHex(p)), radius, spawn: true }));
 }
 
 /**
@@ -94,9 +76,10 @@ function placeNeutrals(
   count: number,
   spread: number,
   maxRadius: number,
+  bowlRadius: number,
   rng: Rng,
 ): void {
-  const smallest = SPAWN_RADIUS;
+  const smallest = bowlRadius;
   const gap = MIN_GAP;
   for (let i = 0; i < count; i++) {
     const radius = smallest + rng.next() * Math.max(0, maxRadius - smallest);
@@ -231,9 +214,11 @@ function repairTopology(
  * Dead ends (peninsulas) happen where the tree has them, a start included, as long as they are
  * one corridor off a junction.
  */
-export function buildScattered({ players, scale, rng }: ArchetypeInput): Blueprint {
-  const spawns = placeSpawns(players, scale, rng);
+export function buildScattered({ players, bowlRadius, rng }: ArchetypeInput): Blueprint {
+  const spawns = placeSpawns(players, bowlRadius, rng);
   const chambers: Chamber[] = [...spawns];
-  placeNeutrals(chambers, neutralRooms(), scale, 2.2 + 0.15 * scale, rng);
+  // Neutral rooms (none are asked for) are scattered over the ground the starts cover.
+  const spread = Math.max(...spawns.map((c) => Math.hypot(c.center.x, c.center.y)));
+  placeNeutrals(chambers, neutralRooms(), spread, 2.2 + 0.15 * spread, bowlRadius, rng);
   return { chambers, corridors: connect(chambers, rng) };
 }

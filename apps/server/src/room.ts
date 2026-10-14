@@ -1,6 +1,6 @@
 import {
   DUEL_TILES,
-  royaleTilesPerPlayer,
+  royaleBowlRadius,
   createFreeForAllMatch,
   createRng,
   createDuelMatch,
@@ -684,7 +684,7 @@ export class Room {
           seed,
           config,
           params: {
-            tilesPerPlayer: royaleTilesPerPlayer(mapSize, players.length),
+            bowlRadius: royaleBowlRadius(mapSize, players.length),
           },
         })
       : createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize], config });

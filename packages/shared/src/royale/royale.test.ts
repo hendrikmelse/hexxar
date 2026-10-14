@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { hexKey } from '../hex.js';
-import { DEFAULT_GENERATION_PARAMS, MAP_SIZES, royaleTilesPerPlayer } from '../params.js';
+import { hexKey, hexNeighbors } from '../hex.js';
+import {
+  DEFAULT_GENERATION_PARAMS,
+  MAP_SIZES,
+  ROYALE_BOWL_RADIUS,
+  royaleBowlRadius,
+} from '../params.js';
 import { createNoise, fbm } from './noise.js';
 import { ARCHETYPE_IDS } from './archetypes/index.js';
-import { CHOKE_MAX_WIDTH } from './analyze.js';
 import { hexToPoint, pointToHex } from './blueprint.js';
-import { components, depthFromCoast } from './grid.js';
+import { components } from './grid.js';
 import { topologyIssues } from './topology.js';
-import { generateRoyaleLayout, royaleTargetTiles } from './generate.js';
+import { generateRoyaleLayout } from './generate.js';
 
 // Each test draws dozens of whole boards.
 vi.setConfig({ testTimeout: 60000 });
@@ -83,65 +87,62 @@ describe('royale layouts', () => {
     expect(layout(6, 11).hexes).not.toEqual(layout(6, 12).hexes);
   });
 
-  it('is one connected piece with about the wanted area', () => {
+  it('is one connected piece', () => {
     for (const players of playerCounts) {
       for (const seed of seeds) {
-        const { hexes, report } = layout(players, seed);
+        const { hexes } = layout(players, seed);
         expect(components(new Map(hexes.map((h) => [hexKey(h), h])))).toHaveLength(1);
-        const target = royaleTargetTiles(players, params);
-        expect(hexes.length / target).toBeGreaterThan(0.85);
-        expect(hexes.length / target).toBeLessThan(1.15);
-        expect(report.targetTiles).toBe(target);
       }
     }
   });
 
-  it('puts one city per player inside the board and well apart', () => {
-    for (const players of playerCounts) {
-      for (const seed of seeds) {
-        const { hexes, starts } = layout(players, seed);
-        const land = new Map(hexes.map((h) => [hexKey(h), h]));
-        const depth = depthFromCoast(land);
-        expect(starts).toHaveLength(players);
-        for (const start of starts) {
-          // Never on the edge: every neighbor is land.
-          expect(depth.get(hexKey(start))).toBeGreaterThanOrEqual(2);
-        }
-      }
-    }
-  });
-
-  it('measures its chokes on the finished board', () => {
-    for (const players of playerCounts) {
-      for (const seed of seeds) {
-        const { report } = layout(players, seed);
-        for (const choke of report.metrics.chokes) {
-          expect(choke.width).toBeGreaterThanOrEqual(1);
-          expect(choke.width).toBeLessThanOrEqual(CHOKE_MAX_WIDTH);
-        }
-      }
-    }
-  });
-
-  it('hits the intended size at every map size', () => {
+  it('keeps every start city and the ring around it, whatever the size and player count', () => {
     for (const size of MAP_SIZES) {
       for (const players of [3, 7, 12]) {
-        for (const seed of [1, 2]) {
-          const sizeParams = {
-            ...params,
-            tilesPerPlayer: royaleTilesPerPlayer(size, players),
-          };
+        for (let seed = 1; seed <= 20; seed++) {
+          const sizeParams = { ...params, bowlRadius: royaleBowlRadius(size, players) };
           const { hexes, starts } = generateRoyaleLayout({ players, seed, params: sizeParams });
-          const target = royaleTargetTiles(players, sizeParams);
-          expect(hexes.length / target).toBeGreaterThan(0.85);
-          expect(hexes.length / target).toBeLessThan(1.15);
-          const depth = depthFromCoast(new Map(hexes.map((h) => [hexKey(h), h])));
+          const land = new Set(hexes.map(hexKey));
+          expect(starts).toHaveLength(players);
+          // Every player has a city of their own.
+          expect(new Set(starts.map(hexKey)).size).toBe(players);
           for (const start of starts) {
-            expect(depth.get(hexKey(start))).toBeGreaterThanOrEqual(2);
+            // Never on the edge: the city and all six neighbors are land.
+            expect(land.has(hexKey(start))).toBe(true);
+            for (const neighbor of hexNeighbors(start))
+              expect(land.has(hexKey(neighbor))).toBe(true);
           }
         }
       }
     }
+  });
+
+  it('makes boards of about the size each map size stands for', () => {
+    // What a map size used to be asked for: tiles per player at 6 players, falling with more players.
+    const wanted = { small: 15, normal: 25, large: 45 };
+    for (const size of MAP_SIZES) {
+      for (const players of [3, 6, 12]) {
+        let tiles = 0;
+        const runs = 12;
+        for (let seed = 1; seed <= runs; seed++) {
+          const sizeParams = { ...params, bowlRadius: royaleBowlRadius(size, players) };
+          tiles += generateRoyaleLayout({ players, seed, params: sizeParams }).hexes.length;
+        }
+        const old = wanted[size] * (6 / players) ** 0.25;
+        expect(tiles / runs / players / old).toBeGreaterThan(0.8);
+        expect(tiles / runs / players / old).toBeLessThan(1.2);
+      }
+    }
+  });
+
+  it('has smaller bowls for more players and bigger bowls for bigger maps', () => {
+    for (const size of MAP_SIZES) {
+      expect(royaleBowlRadius(size, 12)).toBeLessThan(royaleBowlRadius(size, 6));
+      expect(royaleBowlRadius(size, 6)).toBeLessThan(royaleBowlRadius(size, 3));
+      expect(royaleBowlRadius(size, 6)).toBe(ROYALE_BOWL_RADIUS[size]);
+    }
+    expect(ROYALE_BOWL_RADIUS.small).toBeLessThan(ROYALE_BOWL_RADIUS.normal);
+    expect(ROYALE_BOWL_RADIUS.normal).toBeLessThan(ROYALE_BOWL_RADIUS.large);
   });
 
   it('can be told which archetype to draw', () => {
@@ -160,7 +161,7 @@ describe('royale layouts', () => {
       const degree = chambers.map(
         (_, i) => corridors.filter((c) => c.from === i || c.to === i).length,
       );
-      if (report.metrics.deadEnds >= 1) withPeninsula++;
+      if (degree.some((d) => d === 1)) withPeninsula++;
       if (chambers.some((c, i) => c.spawn && degree[i] === 1)) startOnPeninsula++;
     }
     expect(withPeninsula).toBeGreaterThanOrEqual(3);

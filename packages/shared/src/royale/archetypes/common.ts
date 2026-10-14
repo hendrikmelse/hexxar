@@ -1,10 +1,10 @@
 import type { Rng } from '../../rng.js';
 import { segmentDistance, type Chamber, type Point } from '../blueprint.js';
 
-/** Spawn chambers are all the same size, so no player starts with a roomier bowl than another. */
-export const SPAWN_RADIUS = 1.6;
-/** Spawn chamber centers are pushed at least this far apart. */
-export const SPAWN_SPACING = 4.6;
+/** Open ground between the start bowls that relaxing pushes them apart to: their centers end up `2 × radius + this` apart. */
+export const SPAWN_GAP = 1.4;
+/** The start bowls are all placed inside a disc of this radius at first, and pushed apart from there. */
+export const SPAWN_START_RADIUS = 4;
 /** The least open ground between two chambers, so a corridor is long enough to read as one. */
 export const MIN_GAP = 2;
 /** Corridor widths, in hexes, and how often each is picked. The wide ones are not chokes. */

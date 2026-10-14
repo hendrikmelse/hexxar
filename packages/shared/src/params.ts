@@ -18,8 +18,12 @@ export interface GenerationParams {
 
   // -- Battle royale boards ----------------------------------------------------------
 
-  /** Battle Royale boards: tiles of board per player, which decides the board size. */
-  tilesPerPlayer: number;
+  /**
+   * Battle Royale boards: the radius of every player's starting bowl, in tiles. This is what
+   * makes a board big or small: the board's area is whatever the bowls, corridors and the
+   * spacing between them come to.
+   */
+  bowlRadius: number;
 
   // -- Coast (battle royale and duel boards) -------------------------------------------
 
@@ -38,7 +42,7 @@ export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   minVillageDistance: 2,
   villagesNextToCities: false,
 
-  tilesPerPlayer: 25,
+  bowlRadius: 1.6,
 
   coastRoughness: 1,
   coastDetail: 5,
@@ -115,16 +119,17 @@ export const SEXTET_TILES: Readonly<Record<MapSize, number>> = {
 };
 
 /**
- * Tiles per player in a battle royale at each map size with 6 players, which decides the board
- * size. Normal is what quick play uses. See `royaleTilesPerPlayer` for other player counts.
+ * The radius of a player's starting bowl in a battle royale at each map size with 6 players, which
+ * is what tells the map sizes apart. Normal is what quick play uses. See `royaleBowlRadius` for
+ * other player counts.
  */
-export const ROYALE_TILES_PER_PLAYER: Readonly<Record<MapSize, number>> = {
-  small: 15,
-  normal: 25,
-  large: 45,
+export const ROYALE_BOWL_RADIUS: Readonly<Record<MapSize, number>> = {
+  small: 1.15,
+  normal: 2,
+  large: 3.1,
 };
 
-/** Tiles per player in a battle royale: fewer for each player when there are many of them. */
-export function royaleTilesPerPlayer(size: MapSize, players: number): number {
-  return Math.round(ROYALE_TILES_PER_PLAYER[size] * (6 / Math.max(players, 2)) ** 0.25);
+/** The bowl radius in a battle royale: smaller for each player when there are many of them. */
+export function royaleBowlRadius(size: MapSize, players: number): number {
+  return ROYALE_BOWL_RADIUS[size] * (6 / Math.max(players, 2)) ** 0.17;
 }

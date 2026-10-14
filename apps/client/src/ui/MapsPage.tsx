@@ -18,7 +18,7 @@ import {
   createRng,
   createDuelMatch,
   parseMatchConfig,
-  royaleTilesPerPlayer,
+  royaleBowlRadius,
   type ArchetypeId,
   type GameState,
   type GenerationParams,
@@ -151,23 +151,6 @@ function generate(
   }
 }
 
-/** What many seeds of one set of settings add up to, to judge a generator by more than one board. */
-interface Stats {
-  runs: number;
-  failures: number;
-  attempts: number;
-  maxAttempts: number;
-  tiles: number;
-  chokes: number;
-  cutChokes: number;
-  interiorShare: number;
-  widths: number[];
-  rejections: Record<string, number>;
-  milliseconds: number;
-}
-
-const STATS_RUNS = 100;
-
 type NumberKey = {
   [K in keyof GenerationParams]: GenerationParams[K] extends number ? K : never;
 }[keyof GenerationParams];
@@ -177,7 +160,7 @@ const PARAM_GROUPS: { title: string; fields: { key: NumberKey; hint: string }[] 
   {
     title: 'Battle royale terrain',
     fields: [
-      { key: 'tilesPerPlayer', hint: 'Tiles of board per player, which decides the board size' },
+      { key: 'bowlRadius', hint: 'Radius of every start bowl, which decides the board size' },
     ],
   },
   {
@@ -252,45 +235,6 @@ function NumberField({
   );
 }
 
-/** The numbers from a batch of boards. */
-function StatsTable({ stats }: { stats: Stats }) {
-  const ok = Math.max(1, stats.runs - stats.failures);
-  const rejected = Object.entries(stats.rejections)
-    .map(([reason, n]) => `${reason} ${n}`)
-    .join(', ');
-  const rows: [string, string][] = [
-    ['boards made', `${stats.runs - stats.failures} of ${stats.runs} (${stats.failures} failed)`],
-    ['attempts per board', `${(stats.attempts / ok).toFixed(2)} (worst ${stats.maxAttempts})`],
-    ['rejected candidates', rejected || 'none'],
-    ['tiles', (stats.tiles / ok).toFixed(0)],
-    [
-      'chokes per board',
-      `${(stats.chokes / ok).toFixed(1)} (${(stats.cutChokes / ok).toFixed(1)} cut the map)`,
-    ],
-    [
-      'chokes by width',
-      stats.widths
-        .slice(1)
-        .map((n, i) => `${i + 1}: ${(n / ok).toFixed(1)}`)
-        .join(', '),
-    ],
-    ['deep inland', `${Math.round((stats.interiorShare / ok) * 100)}%`],
-    ['time per board', `${(stats.milliseconds / stats.runs).toFixed(0)} ms`],
-  ];
-  return (
-    <table className="maps-stats">
-      <tbody>
-        {rows.map(([label, value]) => (
-          <tr key={label}>
-            <th>{label}</th>
-            <td>{value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 /** Open with `/?maps`. Generates boards with the same settings a room uses, to look them over. */
 export function MapsPage() {
   // The address can set where to start (`?maps&mode=ffa&size=large&players=8&seed=123`), to get
@@ -332,14 +276,12 @@ export function MapsPage() {
   );
   const [showBlueprint, setShowBlueprint] = useState(query.has('blueprint'));
   const [showFog, setShowFog] = useState(query.has('fog'));
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [statsRunning, setStatsRunning] = useState(false);
 
   // What a room would use for this map size and number of players; anything changed by hand is
   // shown against it.
   const sizeDefaults = (size: MapSize, royalePlayers: number): GenerationParams => ({
     ...DEFAULT_GENERATION_PARAMS,
-    tilesPerPlayer: royaleTilesPerPlayer(size, royalePlayers),
+    bowlRadius: royaleBowlRadius(size, royalePlayers),
   });
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
   /** About how many tiles a fair board has at a map size, for as many players as the mode has. */
@@ -367,7 +309,7 @@ export function MapsPage() {
     setPlayers(count);
     setParams((current) => ({
       ...current,
-      tilesPerPlayer: royaleTilesPerPlayer(mapSize, count),
+      bowlRadius: royaleBowlRadius(mapSize, count),
     }));
   };
   const baseline = sizeDefaults(mapSize, players);
@@ -383,63 +325,6 @@ export function MapsPage() {
     () => generate(mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns),
     [mode, tiles, count, seed, params, archetype, duelSymmetry, duelAxis, duelTurns],
   );
-
-  /** Make many boards one slice at a time, so the page stays usable while it works. */
-  const runStats = (): void => {
-    setStatsRunning(true);
-    const total: Stats = {
-      runs: 0,
-      failures: 0,
-      attempts: 0,
-      maxAttempts: 0,
-      tiles: 0,
-      chokes: 0,
-      cutChokes: 0,
-      interiorShare: 0,
-      widths: [],
-      rejections: {},
-      milliseconds: 0,
-    };
-    const first = randomSeed();
-    const step = (done: number): void => {
-      const started = performance.now();
-      for (let i = done; i < Math.min(done + 5, STATS_RUNS); i++) {
-        const board = generate(
-          'ffa',
-          tiles,
-          players,
-          first + i,
-          params,
-          archetype,
-          duelSymmetry,
-          duelAxis,
-        );
-        total.runs++;
-        if (typeof board === 'string' || !board.report) {
-          total.failures++;
-          continue;
-        }
-        const { report } = board;
-        total.attempts += report.attempts;
-        total.maxAttempts = Math.max(total.maxAttempts, report.attempts);
-        total.tiles += report.metrics.tiles;
-        total.chokes += report.metrics.chokes.length;
-        total.cutChokes += report.metrics.chokes.filter((choke) => choke.cut).length;
-        total.interiorShare += report.metrics.interiorShare;
-        report.metrics.widths.forEach((n, width) => {
-          total.widths[width] = (total.widths[width] ?? 0) + n;
-        });
-        for (const [reason, n] of Object.entries(report.rejections)) {
-          total.rejections[reason] = (total.rejections[reason] ?? 0) + n;
-        }
-      }
-      total.milliseconds += performance.now() - started;
-      setStats({ ...total, widths: [...total.widths], rejections: { ...total.rejections } });
-      if (done + 5 < STATS_RUNS) setTimeout(() => step(done + 5), 0);
-      else setStatsRunning(false);
-    };
-    step(0);
-  };
 
   const tileCount = typeof result === 'string' ? 0 : Object.keys(result.state.tiles).length;
   const report = typeof result === 'string' ? null : result.report;
@@ -652,31 +537,8 @@ export function MapsPage() {
           {duel &&
             ` · ${duel.symmetry}${duel.symmetry === 'mirror' ? ` (through tile ${duel.axis}, turned ${duel.turns * 60}°)` : ''}, ${duel.attempts} ${duel.attempts === 1 ? 'attempt' : 'attempts'}` +
               ` · ${duel.blueprint.chambers.length} blobs`}
-          {report &&
-            ` · ${report.archetype}, ${report.attempts} ${report.attempts === 1 ? 'attempt' : 'attempts'}` +
-              ` · ${report.metrics.chokes.length} chokes (${report.metrics.widths
-                .slice(1)
-                .map((n, i) => `${n}×${i + 1}`)
-                .join(
-                  ', ',
-                )} wide, ${report.metrics.chokes.filter((c) => c.cut).length} cut the map)` +
-              ` · ${report.metrics.loops} loops, ${report.metrics.deadEnds} dead ends` +
-              ` · ${Math.round(report.metrics.interiorShare * 100)}% deep inland`}
+          {report && ` · ${report.archetype} · bowl radius ${params.bowlRadius.toFixed(2)}`}
         </p>
-
-        {mode === 'ffa' && (
-          <details className="maps-params">
-            <summary>
-              Statistics over {STATS_RUNS} seeds{stats ? ` (${stats.runs} done)` : ''}
-            </summary>
-            <div className="maps-actions">
-              <button data-sound="none" disabled={statsRunning} onClick={runStats}>
-                {statsRunning ? 'Working…' : 'Run'}
-              </button>
-            </div>
-            {stats && stats.runs > 0 && <StatsTable stats={stats} />}
-          </details>
-        )}
       </div>
     </div>
   );

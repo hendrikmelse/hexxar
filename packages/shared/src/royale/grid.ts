@@ -32,33 +32,3 @@ export function components(land: ReadonlyMap<string, Hex>): string[][] {
   }
   return pieces;
 }
-
-/**
- * How many tiles each land tile is from the coast: 1 for a tile touching the outside (an
- * "edge" tile, where no city may stand), 2 for the next ring in, and so on.
- */
-export function depthFromCoast(land: ReadonlyMap<string, Hex>): Map<string, number> {
-  const depth = new Map<string, number>();
-  let frontier: Hex[] = [];
-  for (const [key, hex] of land) {
-    if (neighborKeys(hex).some((n) => !land.has(n))) {
-      depth.set(key, 1);
-      frontier.push(hex);
-    }
-  }
-  while (frontier.length > 0) {
-    const next: Hex[] = [];
-    for (const hex of frontier) {
-      const here = depth.get(hexKey(hex))!;
-      for (const neighbor of hexNeighbors(hex)) {
-        const key = hexKey(neighbor);
-        if (land.has(key) && !depth.has(key)) {
-          depth.set(key, here + 1);
-          next.push(neighbor);
-        }
-      }
-    }
-    frontier = next;
-  }
-  return depth;
-}
