@@ -225,7 +225,10 @@ export function Chat({
           >
             {app.chat.length === 0 && <p className="chat-empty">Nothing said yet.</p>}
             {app.chat.map((message) => (
-              <p key={message.id} className={message.userId === you ? 'mine' : undefined}>
+              <p
+                key={message.id}
+                className={`${message.userId === you ? 'mine' : ''} ${message.system ? 'system' : ''}`}
+              >
                 <strong style={nameStyle(colors.get(message.userId))}>
                   {message.name}
                   {message.userId === you && ' (you)'}

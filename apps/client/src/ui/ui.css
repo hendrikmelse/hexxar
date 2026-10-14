@@ -3123,6 +3123,12 @@
   color: #a9afbf;
 }
 
+/* News ("Ann surrendered"), not something someone said */
+#ui .chat-log .system {
+  color: #8a93a8;
+  font-style: italic;
+}
+
 #ui .chat-log .chat-empty {
   color: #6f7890;
 }

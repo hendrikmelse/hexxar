@@ -123,4 +123,30 @@ describe('player colors', () => {
     expect(ann.last('chat').messages[0]).toMatchObject({ name: 'Watcher' });
     expect(colorsOf(ann)).not.toHaveProperty('Watcher');
   });
+
+  it('tells the spectators when a player surrenders, but not the players', () => {
+    const { host, guests } = royale('Ann', 'Bob');
+    const watcher = new FakeClient(lobby).hello('Watcher');
+    watcher.say({ type: 'joinRoom', code: host.room!.code });
+    watcher.say({ type: 'becomeSpectator' });
+    host.say({ type: 'startGame' });
+    const [ann, bob] = guests as [FakeClient, FakeClient];
+    ann.say({ type: 'surrender' });
+    // The spectator, and Ann herself (who is a spectator now), read it as news about Ann.
+    for (const reader of [watcher, ann]) {
+      expect(reader.last('chat').messages[0]).toMatchObject({
+        system: true,
+        name: 'Ann',
+        userId: ann.room!.you,
+        text: 'surrendered',
+      });
+    }
+    // The players still in the match see nothing.
+    expect(host.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
+      'surrendered',
+    );
+    expect(bob.all('chat').flatMap((m) => m.messages.map((x) => x.text))).not.toContain(
+      'surrendered',
+    );
+  });
 });

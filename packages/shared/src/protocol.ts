@@ -114,6 +114,8 @@ export const chatMessageSchema = z.object({
   userId: z.string(),
   name: z.string(),
   text: z.string(),
+  /** News, not something the sender said: "was eliminated", "surrendered" (`userId` is who it is about). */
+  system: z.boolean().optional(),
   /** Server time, ms since epoch. */
   at: z.number(),
 });

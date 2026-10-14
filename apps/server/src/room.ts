@@ -465,6 +465,12 @@ export class Room {
       text,
       at: now,
     };
+    this.publish(channel, message);
+    return null;
+  }
+
+  /** Add a message to a chat's log, and send it to everyone who reads that chat. */
+  private publish(channel: ChatChannel, message: ChatMessage): void {
     const log = this.chatLogs[channel];
     log.push(message);
     if (log.length > CHAT_HISTORY) log.splice(0, log.length - CHAT_HISTORY);
@@ -474,7 +480,20 @@ export class Room {
       if (other.chatSent !== channel) this.syncChat(other);
       else other.session.connection?.send({ type: 'chat', messages: [message], replace: false });
     }
-    return null;
+  }
+
+  /** Tell the spectators' chat that a player is out of the match ("was eliminated", "surrendered"). */
+  private announceOut(playerId: string, text: string): void {
+    const member = this.members.find((m) => m.playerId === playerId);
+    if (!member) return;
+    this.publish('spectators', {
+      id: ++this.chatSeq,
+      userId: member.session.userId,
+      name: member.session.name,
+      text,
+      system: true,
+      at: Date.now(),
+    });
   }
 
   private canChat(session: Session): boolean {
@@ -868,8 +887,11 @@ export class Room {
 
     if (match.isOver) this.finish();
     else {
-      // Someone who is out is now a spectator, for everyone to see.
-      if (state.eliminated.length > outBefore) this.broadcastRoom();
+      // Someone who is out is now a spectator, for everyone to see (and the spectators' chat says so).
+      if (state.eliminated.length > outBefore) {
+        for (const id of state.eliminated.slice(outBefore)) this.announceOut(id, 'was eliminated');
+        this.broadcastRoom();
+      }
       this.scheduleTick();
     }
   }
@@ -880,7 +902,10 @@ export class Room {
     match.surrender(member.playerId);
     this.broadcastSnapshots();
     if (match.isOver) this.finish();
-    else this.broadcastRoom();
+    else {
+      this.announceOut(member.playerId, 'surrendered');
+      this.broadcastRoom();
+    }
   }
 
   /** The match is over: stop ticking and leave the room open for the result. */
