@@ -2804,37 +2804,16 @@
 
 /* ---- Chat ------------------------------------------------------------------------------------ */
 
-/* The lobby's card and its chat, side by side and centered together */
+/* The lobby's card stays centered on the screen; its chat hangs off its right side */
 #ui .lobby-layout {
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  gap: 20px;
+  position: relative;
   width: 100%;
-  /* Two cards, plus the gap between them */
-  max-width: 780px;
+  max-width: 380px;
   margin: auto;
 }
 
 #ui .lobby-layout > .card {
-  /* The same width as the chat beside it, padding included */
   box-sizing: border-box;
-  flex: 0 1 380px;
-}
-
-/* Too narrow for two: the chat goes under the card */
-@media (max-width: 820px) {
-  #ui .lobby-layout {
-    flex-direction: column;
-    align-items: center;
-    max-width: 380px;
-  }
-
-  #ui .lobby-layout > .card,
-  #ui .chat.lobby-chat {
-    flex: none;
-    width: 100%;
-  }
 }
 
 #ui .chat {
@@ -2855,13 +2834,45 @@
 
 /* Beside the card: as wide as it, and as tall unless made taller */
 #ui .chat.lobby-chat {
-  flex: 0 1 380px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% + 20px);
+  width: 100%;
   min-height: 300px;
 }
 
 #ui .chat.lobby-chat.big {
-  align-self: center;
+  top: 50%;
+  bottom: auto;
   height: min(80vh, 640px);
+  transform: translateY(-50%);
+}
+
+/* Too narrow to hang beside the card (the card is centered, so it needs room on both sides) */
+@media (max-width: 1200px) {
+  #ui .lobby-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  #ui .chat.lobby-chat,
+  #ui .chat.lobby-chat.big {
+    position: static;
+    transform: none;
+    width: 100%;
+    height: auto;
+  }
+
+  #ui .chat.lobby-chat .chat-log {
+    flex: none;
+    height: 160px;
+  }
+
+  #ui .chat.lobby-chat.big .chat-log {
+    height: min(50vh, 420px);
+  }
 }
 
 /* A spectator's, over the board, centered above the "Spectating" bar */
