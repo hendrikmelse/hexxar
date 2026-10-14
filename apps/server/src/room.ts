@@ -10,6 +10,9 @@ import {
   roomCapacity,
   roomMinPlayers,
   roomSettingsSchema,
+  CHAT_HISTORY,
+  type ChatChannel,
+  type ChatMessage,
   scoresOf,
   visibleMoves,
   visibleState,
@@ -36,6 +39,8 @@ const BOARD_ATTEMPTS = 100;
 /** Most people who may watch one private game. */
 const MAX_SPECTATORS = 20;
 const BOARD_BUDGET_MS = 2000;
+/** The least time between one person's chat messages. */
+const CHAT_GAP_MS = 400;
 
 /**
  * Apply a settings patch on top of the current settings. Returns the new settings, or a
@@ -105,6 +110,9 @@ interface Member {
   spectator: boolean;
   /** The color this person plays in, kept from match to match for as long as they are in the room. */
   colorSlot: number | null;
+  /** Which chat this person has been sent the log of (and so gets new messages of), if any. */
+  chatSent: ChatChannel | null;
+  lastChatAt: number;
   afkTimer: Timer | null;
 }
 
@@ -144,6 +152,9 @@ export class Room {
   private resultPlayers: RoomView['players'] | null = null;
   /** The color slot of each player of the current match, by player id. */
   private matchColors: Record<string, number> = {};
+  /** What was said in each chat. The lobby's is gone once the match starts; the spectators' ends with it. */
+  private chatLogs: Record<ChatChannel, ChatMessage[]> = { lobby: [], spectators: [] };
+  private chatSeq = 0;
 
   constructor(private readonly options: RoomOptions) {
     this.id = options.id;
@@ -174,6 +185,8 @@ export class Room {
       watching: false,
       spectator: false,
       colorSlot: null,
+      chatSent: null,
+      lastChatAt: 0,
       afkTimer: null,
     });
     session.room = this;
@@ -209,6 +222,8 @@ export class Room {
       watching: true,
       spectator: true,
       colorSlot: null,
+      chatSent: null,
+      lastChatAt: 0,
       afkTimer: null,
     };
     this.members.push(member);
@@ -292,6 +307,8 @@ export class Room {
     if (!member || member.left) return;
     if (member.afkTimer) clearTimeout(member.afkTimer);
     member.afkTimer = null;
+    // The new connection has seen no chat yet.
+    member.chatSent = null;
     this.broadcastRoom();
     if (!member.reviewing) this.sendSnapshot(member);
   }
@@ -336,6 +353,7 @@ export class Room {
     this.lingerTimer = null;
     this.resetEarlyStart();
     this.state = 'lobby';
+    this.clearChat();
     this.match = null;
     this.nextTickAt = null;
     for (let i = this.members.length - 1; i >= 0; i--) {
@@ -411,6 +429,76 @@ export class Room {
     if (member && !member.left) this.surrenderMember(member);
   }
 
+  // -- Chat ----------------------------------------------------------------
+
+  /**
+   * Who can chat with whom. Everyone gathered in the room talks together until the match starts;
+   * then the players are silent and only the spectators talk, among themselves, out of the
+   * players' sight. Nobody chats once the match is over, or while reading its result.
+   */
+  private chatChannelOf(member: Member): ChatChannel | null {
+    if (member.left || member.reviewing) return null;
+    if (this.state === 'lobby') return 'lobby';
+    if (this.state === 'running' && member.spectator) return 'spectators';
+    return null;
+  }
+
+  chat(session: Session, raw: string): string | null {
+    const member = this.memberOf(session);
+    const channel = member ? this.chatChannelOf(member) : null;
+    if (!member || !channel) return 'you cannot chat right now';
+    // Line breaks and other control characters would only break the layout.
+    const text = raw.replace(/\p{Cc}+/gu, ' ').trim();
+    if (text === '') return null;
+    const now = Date.now();
+    if (now - member.lastChatAt < CHAT_GAP_MS) return 'you are chatting too fast';
+    member.lastChatAt = now;
+    const message: ChatMessage = {
+      id: ++this.chatSeq,
+      userId: session.userId,
+      name: session.name,
+      text,
+      at: now,
+    };
+    const log = this.chatLogs[channel];
+    log.push(message);
+    if (log.length > CHAT_HISTORY) log.splice(0, log.length - CHAT_HISTORY);
+    for (const other of this.members) {
+      if (this.chatChannelOf(other) !== channel) continue;
+      // Someone who has not been sent this chat yet gets all of it, this message included.
+      if (other.chatSent !== channel) this.syncChat(other);
+      else other.session.connection?.send({ type: 'chat', messages: [message], replace: false });
+    }
+    return null;
+  }
+
+  private canChat(session: Session): boolean {
+    const member = this.memberOf(session);
+    return member !== undefined && this.chatChannelOf(member) !== null;
+  }
+
+  /** Send this person the whole chat they may read, if what they may read has changed. */
+  private syncChat(member: Member): void {
+    const channel = this.chatChannelOf(member);
+    if (channel === member.chatSent) return;
+    member.chatSent = channel;
+    member.session.connection?.send({
+      type: 'chat',
+      messages: channel ? [...this.chatLogs[channel]] : [],
+      replace: true,
+    });
+  }
+
+  /** Forget everything said, and tell everyone to empty their chat (whatever they may read now). */
+  private clearChat(): void {
+    this.chatLogs = { lobby: [], spectators: [] };
+    for (const member of this.members) {
+      member.chatSent = this.chatChannelOf(member);
+      if (!member.left)
+        member.session.connection?.send({ type: 'chat', messages: [], replace: true });
+    }
+  }
+
   // -- Views ---------------------------------------------------------------
 
   view(session: Session): RoomView {
@@ -445,6 +533,7 @@ export class Room {
         .filter((m) => !m.left && (m.spectator || this.isOut(m)))
         .map((m) => m.session.name),
       spectating: this.memberOf(session)?.spectator === true,
+      canChat: this.canChat(session),
       serverTime: Date.now(),
       you: session.userId,
     };
@@ -643,6 +732,9 @@ export class Room {
 
     this.match = new Match(this.id, board.state, board.config);
     this.state = 'running';
+    // What was said while gathering stays behind: the players must not read it again, and the
+    // spectators start their own chat.
+    this.clearChat();
     this.nextTickAt = Date.now() + this.options.prepMs;
     this.broadcastRoom();
     this.broadcastSnapshots();
@@ -821,8 +913,9 @@ export class Room {
 
   private broadcastRoom(): void {
     for (const member of this.members) {
-      if (!member.left)
-        member.session.connection?.send({ type: 'room', room: this.view(member.session) });
+      if (member.left) continue;
+      member.session.connection?.send({ type: 'room', room: this.view(member.session) });
+      this.syncChat(member);
     }
   }
 }

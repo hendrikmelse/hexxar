@@ -33,6 +33,7 @@ export interface Actions {
   voteStart(vote: boolean): void;
   leaveRoom(): void;
   returnToRoom(): void;
+  sendChat(text: string): void;
   becomeSpectator(): void;
   becomePlayer(): void;
   spectate(): void;

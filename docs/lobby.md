@@ -49,10 +49,26 @@ A private room's host can change the game mode (duel or battle royale), the **ma
 - **Room ids are random UUIDs and are never reused**, even across server restarts, so replays can be saved under them. The match uses its room's id. The short join code is only unique among open rooms and is freed when the room closes.
 - Who starts where is decided randomly when the match starts.
 
+## Chat
+
+There is one chat per room, and who may read and write in it depends on where the room is (`chatChannelOf` in `apps/server/src/room.ts`):
+
+| Room state                    | Players                | Spectators                     |
+| ----------------------------- | ---------------------- | ------------------------------ |
+| Lobby (public and private)    | **lobby chat**, shared | **lobby chat**, shared         |
+| Running match                 | no chat                | **spectator chat**, among them |
+| Finished (reading the result) | no chat                | no chat                        |
+
+- **Players never see spectator chat**, and cannot write during a match. When the match starts the lobby's log is thrown away for everyone (the server sends an empty `replace`), so players do not keep reading it and spectators start a fresh chat. The next lobby (`returnToRoom`) starts empty too.
+- Players who are knocked out (and "spectate" the rest of their match) are still players of it: they have no chat. Only people who joined as spectators do.
+- Messages are at most 200 characters (`CHAT_MAX_LENGTH`); control characters (line breaks) are turned into spaces, empty messages are ignored, and one person can send one message every 0.4 seconds (`CHAT_GAP_MS`). The last 50 are kept (`CHAT_HISTORY`) so someone arriving late is caught up.
+- `RoomView.canChat` says whether the receiver may chat right now; the client shows the panel only then. The server sends a `chat` message with `replace: true` and the whole log whenever the chat someone may read changes (joining, becoming a spectator, the match starting) and with `replace: false` for each new message.
+- There is no moderation yet (no mute, no word filter), and chat in public lobbies is between strangers.
+
 ## Protocol
 
-- Client: `hello`, `setName`, `quickPlay` (with a mode), `voteStart`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, plus the in-match `order` and `surrender`.
-- Server: `welcome`, `denied` (see below), `room` (your room, or `null` for the menu; sent on every change), `stats` (online counts for the menu), `snapshot`, `tick`, `queued`, `rejected`.
+- Client: `hello`, `setName`, `quickPlay` (with a mode), `voteStart`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, `chat`, plus the in-match `order` and `surrender`.
+- Server: `welcome`, `denied` (see below), `room` (your room, or `null` for the menu; sent on every change), `stats` (online counts for the menu), `snapshot`, `tick`, `queued`, `chat` (see above), `rejected`.
 
 ## Beta access code
 
@@ -60,7 +76,7 @@ When the server has a `BETA_CODE`, `hello` must carry it (`code`). Without the r
 
 ## Not built yet
 
-A public game list, spectators, bots, ranked rooms and reconnecting after a server restart.
+A public game list, bots, ranked rooms and reconnecting after a server restart.
 
 ## Map sizes
 

@@ -10,6 +10,7 @@ import { type MapSize, type RoomMode, type RoomPlayer, type RoomView } from '@he
 import { playSound } from '../audio/audio.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
+import { Chat } from './Chat.js';
 import { FitText } from './FitText.js';
 import { SupportLink } from './Support.js';
 import { useFlip } from './useFlip.js';
@@ -177,6 +178,9 @@ export function Lobby({ actions }: { actions: Actions }) {
             </Tip>
           )}
         </div>
+
+        {/* Everyone in the room talks together until the match starts. */}
+        {room.canChat && <Chat actions={actions} title="Chat" />}
 
         {/* Laid over the card's bottom padding, as far from the edge as on the title screen. */}
         <SupportLink />

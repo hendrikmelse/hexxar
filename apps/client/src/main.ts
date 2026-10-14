@@ -1,4 +1,5 @@
 import {
+  CHAT_HISTORY,
   hexEquals,
   hexKey,
   type ClientMessage,
@@ -185,6 +186,7 @@ function showSearching(): void {
     youVoted: false,
     spectators: [],
     spectating: false,
+    canChat: false,
     serverTime: Date.now(),
     you: userId,
   };
@@ -199,6 +201,8 @@ function applyRoom(room: RoomView | null, previous: RoomView | null): void {
     previous?.state === 'lobby' && room?.state === 'running' && !appStore.get().tutorial;
   appStore.set({
     room,
+    // Another room, or none, has another chat (the server sends the log when it applies).
+    ...(room && previous?.id === room.id ? {} : { chat: [] }),
     clockOffset: room ? room.serverTime - Date.now() : appStore.get().clockOffset,
     launching,
   });
@@ -486,6 +490,7 @@ mountUi(document.getElementById('ui')!, {
     connection.send({ type: 'leaveRoom' });
   },
   returnToRoom: () => connection.send({ type: 'returnToRoom' }),
+  sendChat: (text) => connection.send({ type: 'chat', text }),
   becomeSpectator: () => connection.send({ type: 'becomeSpectator' }),
   becomePlayer: () => connection.send({ type: 'becomePlayer' }),
   spectate: () => appStore.set({ spectating: true }),
@@ -558,6 +563,15 @@ const connection = connect(url, playerName, {
           playAgainMode = null;
           startQuickPlay(mode);
         }
+        return;
+      }
+      case 'chat': {
+        const { chat } = appStore.get();
+        appStore.set({
+          chat: message.replace
+            ? message.messages
+            : [...chat, ...message.messages].slice(-CHAT_HISTORY),
+        });
         return;
       }
       case 'stats':

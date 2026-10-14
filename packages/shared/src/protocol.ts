@@ -93,6 +93,30 @@ export const roomPlayerSchema = z.object({
 });
 export type RoomPlayer = z.infer<typeof roomPlayerSchema>;
 
+/** The longest chat message, in characters. */
+export const CHAT_MAX_LENGTH = 200;
+/** How many chat messages a room keeps, and how many a client shows. */
+export const CHAT_HISTORY = 50;
+
+/**
+ * Who can read a chat message: everyone gathered in the room before the match, or (during a
+ * private game) only the people watching it, never the players.
+ */
+export const CHAT_CHANNELS = ['lobby', 'spectators'] as const;
+export type ChatChannel = (typeof CHAT_CHANNELS)[number];
+
+export const chatMessageSchema = z.object({
+  /** Counts up through the room's life, so the client can key the list. */
+  id: z.number().int(),
+  /** The sender's user id (compare with `you`). */
+  userId: z.string(),
+  name: z.string(),
+  text: z.string(),
+  /** Server time, ms since epoch. */
+  at: z.number(),
+});
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
 export const roomViewSchema = z.object({
   /** Never reused, so it can key saved replays. */
   id: z.string(),
@@ -122,6 +146,8 @@ export const roomViewSchema = z.object({
   spectators: z.array(z.string()),
   /** The receiving person is one of them. */
   spectating: z.boolean(),
+  /** The receiving person can chat right now (in the lobby, or as a spectator of a running match). */
+  canChat: z.boolean(),
   serverTime: z.number(),
   /** The receiving player's own user id. */
   you: z.string(),
@@ -165,6 +191,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('becomePlayer') }),
   /** Private rooms: after a match, go back to the room to set up the next one. */
   z.object({ type: z.literal('returnToRoom') }),
+  /** Say something in the room's chat. Only possible in the lobby, or as a spectator during a match. */
+  z.object({ type: z.literal('chat'), text: z.string().max(CHAT_MAX_LENGTH) }),
   /** Append an order to your queue. Queues are append-only. */
   z.object({ type: z.literal('order'), order: orderSchema }),
   z.object({ type: z.literal('surrender') }),
@@ -235,6 +263,11 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
       )
       .optional(),
   }),
+  /**
+   * Chat messages you may read. With `replace`, they are the whole log (sent when you can start
+   * or stop seeing a chat); otherwise they are new messages to add.
+   */
+  z.object({ type: z.literal('chat'), messages: z.array(chatMessageSchema), replace: z.boolean() }),
   /** How many people are playing each mode right now (sent to players in the main menu). */
   z.object({ type: z.literal('stats'), duel: z.number().int(), ffa: z.number().int() }),
   /**

@@ -1,5 +1,6 @@
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
+import { Chat } from './Chat.js';
 import { Logo } from './Logo.js';
 
 /**
@@ -13,12 +14,17 @@ export function Out({ actions }: { actions: Actions }) {
   // Someone in a private room to watch is a spectator from the start.
   if (app.spectating || app.room?.spectating) {
     return (
-      <div className="spectating">
-        <span>Spectating</span>
-        <button data-sound="ui.back" onClick={actions.leaveRoom}>
-          Main menu
-        </button>
-      </div>
+      <>
+        {app.room?.canChat && (
+          <Chat actions={actions} title="Spectator chat" note="Players cannot see this" match />
+        )}
+        <div className="spectating">
+          <span>Spectating</span>
+          <button data-sound="ui.back" onClick={actions.leaveRoom}>
+            Main menu
+          </button>
+        </div>
+      </>
     );
   }
 

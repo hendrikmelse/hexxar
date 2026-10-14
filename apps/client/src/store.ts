@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { PlayerId, RoomView } from '@hexxar/shared';
+import type { ChatMessage, PlayerId, RoomView } from '@hexxar/shared';
 import { randomName } from './names.js';
 import type { TutorialView } from './tutorial/runner.js';
 
@@ -19,6 +19,8 @@ export interface AppState {
   name: string;
   /** The room you are in, or `null` for the main menu. */
   room: RoomView | null;
+  /** What the room's chat has said that you may read, oldest first. */
+  chat: ChatMessage[];
   /** Add to `Date.now()` to get the server's clock. */
   clockOffset: number;
   /** The last thing the server refused, shown as a toast. */
@@ -72,6 +74,7 @@ class Store {
     userId: null,
     name: loadName(),
     room: null,
+    chat: [],
     clockOffset: 0,
     error: null,
     errorSeq: 0,
