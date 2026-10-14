@@ -8,6 +8,8 @@ import type { Actions } from './App.js';
 const STICK_PX = 40;
 /** How far one turn of the mouse wheel scrolls the log, compared with the browser's usual. */
 const WHEEL_SCALE = 0.5;
+/** Ticks of the wheel closer together than this belong to one glide. */
+const GLIDE_MS = 250;
 
 /**
  * The chat: a button the size of the sound and fullscreen buttons, which opens into the chat
@@ -55,15 +57,23 @@ export function Chat({
   useEffect(() => {
     const el = log.current;
     if (!el) return;
+    // Where a run of wheel ticks is heading, and when the last one came: a tick that arrives
+    // while the log is still gliding adds to where it is going, not to where it is.
+    let heading = 0;
+    let lastTick = 0;
     const onWheel = (event: WheelEvent): void => {
       if (event.ctrlKey) return;
       const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? el.clientHeight : 1;
       const step = event.deltaY * unit * WHEEL_SCALE;
-      const max = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const last = el.scrollHeight - el.clientHeight;
+      const from = event.timeStamp - lastTick < GLIDE_MS ? heading : el.scrollTop;
       // Already at the end it is heading for: the wheel carries on to the page as usual.
-      if (step === 0 || (step < 0 && el.scrollTop <= 0) || (step > 0 && max <= 0)) return;
+      if (step === 0 || (step < 0 && from <= 0) || (step > 0 && from >= last)) return;
       event.preventDefault();
-      el.scrollTop += step;
+      heading = Math.min(last, Math.max(0, from + step));
+      lastTick = event.timeStamp;
+      const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollTo({ top: heading, behavior: calm ? 'auto' : 'smooth' });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
