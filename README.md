@@ -88,7 +88,7 @@ Environment variables, or a `.env` file in the repository root (see `.env.exampl
 | `FEEDBACK_TO`        | (unset)                          | The email address the daily email goes to                                           |
 | `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on it: an address on a domain verified in Resend                   |
 | `DIGEST_HOUR`        | 7                                | The hour of the day the email goes out                                              |
-| `DIGEST_TIMEZONE`    | `Europe/Amsterdam`               | The time zone `DIGEST_HOUR` is read in                                              |
+| `DIGEST_TIMEZONE`    | `America/Los_Angeles`            | The time zone `DIGEST_HOUR` is read in                                              |
 | `PUBLIC_URL`         | `https://hexxar.io`              | The site's address, for the link to the admin panel in the email                    |
 | `RESEND_API_URL`     | (Resend's)                       | Where to send the email: only for trying it out against a stand-in                  |
 

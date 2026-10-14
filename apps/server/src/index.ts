@@ -41,7 +41,7 @@ if (resendKey && feedbackTo) {
       ...(process.env.RESEND_API_URL ? { endpoint: process.env.RESEND_API_URL } : {}),
     }),
     hour: Number(process.env.DIGEST_HOUR ?? 7),
-    timeZone: process.env.DIGEST_TIMEZONE ?? 'Europe/Amsterdam',
+    timeZone: process.env.DIGEST_TIMEZONE ?? 'America/Los_Angeles',
     adminUrl: `${process.env.PUBLIC_URL ?? 'https://hexxar.io'}/?admin`,
   }).start();
 } else {

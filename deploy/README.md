@@ -40,7 +40,7 @@ CI does not touch them.
 ## Admin panel and the daily feedback email
 
 `/?admin` on the site opens the admin panel once `ADMIN_PASSWORD` (in `/srv/hexxar/.env`) is
-entered. The same `.env` holds `RESEND_API_KEY` and `FEEDBACK_TO` for the 7am email (Amsterdam
+entered. The same `.env` holds `RESEND_API_KEY` and `FEEDBACK_TO` for the 7am email (Los Angeles
 time unless `DIGEST_TIMEZONE` says otherwise), which only goes out when something is unresolved.
 The first time, copy the new `compose.yaml` (it adds the data volume) and the new variables, then
 recreate the container as above. Put a long password in: it is the only thing protecting the panel.
