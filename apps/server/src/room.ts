@@ -1,6 +1,5 @@
 import {
   DUEL_TILES,
-  ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
   createFreeForAllMatch,
   createRng,
@@ -686,7 +685,6 @@ export class Room {
           config,
           params: {
             tilesPerPlayer: royaleTilesPerPlayer(mapSize, players.length),
-            minStartDistance: ROYALE_START_DISTANCE[mapSize],
           },
         })
       : createDuelMatch({ players, seed, tiles: DUEL_TILES[mapSize], config });

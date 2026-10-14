@@ -2,48 +2,13 @@ import type { Rng } from '../../rng.js';
 import { segmentDistance, type Chamber, type Point } from '../blueprint.js';
 
 /**
- * How crowded a board is with players, from 0 (6 players or fewer) rising evenly to 1 (12 or
- * more). Crowded boards get narrower corridors and bowls a little further apart, so that with
- * many players the land does not turn into one wide tangle.
- */
-export const crowding = (players: number): number => Math.min(1, Math.max(0, (players - 6) / 6));
-/**
  * Spawn chambers are all the same size, so no player starts with a roomier bowl than another.
- * Closer cities get smaller bowls, but never less than the city and the ring around it. Crowded
- * boards (see `crowding`) get bigger bowls, so the land is bowls and short bridges, not thin spindles.
+ * Closer cities get smaller bowls, but never less than the city and the ring around it.
  */
-export const spawnRadius = (startDistance: number, crowded = 0, players = Infinity): number => {
-  // Large boards (start distance 5) always have the bowls of a fully crowded board, whatever the
-  // number of players; normal boards grow with the crowding, and small ones not at all.
-  const large = Math.min(1, Math.max(0, startDistance - 4));
-  const growth = crowded + (1 - crowded) * large;
-  return (
-    Math.min(2, Math.max(1.2, startDistance * 0.4)) +
-    CROWDED_RADIUS * growth * Math.min(0.5, Math.max(0, (startDistance - 3) / 2)) +
-    LARGE_RADIUS * large +
-    LOW_COUNT_RADIUS * fewPlayers(players) * normalBoard(startDistance)
-  );
-};
-/**
- * How much bigger (in tiles) the bowls of a fully crowded board are than those of an empty one:
- * 0.2 on a normal board (start distance 4), growing evenly with the crowding, and none on small ones.
- */
-const CROWDED_RADIUS = 0.4;
-/** On top of that, the bowls of every large board are this much bigger. */
-const LARGE_RADIUS = 0.6;
-/**
- * Normal boards with few players are bigger-bowled too, or they turn into thin spindles: this much
- * bigger with 3 players, fading out evenly to nothing at 8 players.
- */
-const LOW_COUNT_RADIUS = 0.55;
-const fewPlayers = (players: number): number => Math.min(1, Math.max(0, (8 - players) / 5)) ** 2;
-/** 1 for a normal board (start distance 4), fading to 0 a whole tile either way. */
-const normalBoard = (startDistance: number): number => Math.max(0, 1 - Math.abs(startDistance - 4));
-/** How much further apart (in tiles) the bowls of a fully crowded board are than those of an empty one. */
-const CROWDED_SPACING = 0.6;
+export const spawnRadius = (startDistance: number): number =>
+  Math.min(2, Math.max(1.2, startDistance * 0.4));
 /** Spawn chamber centers are a little further apart than the cities are required to be. */
-export const spawnSpacing = (startDistance: number, crowded = 0): number =>
-  startDistance + 0.6 + CROWDED_SPACING * crowded;
+export const spawnSpacing = (startDistance: number): number => startDistance + 0.6;
 /** The least open ground between two chambers, so a corridor is long enough to read as one. */
 export const minGap = (startDistance: number): number =>
   Math.min(2.5, Math.max(1.5, startDistance * 0.5));
@@ -55,23 +20,11 @@ export const CORRIDOR_WIDTHS: readonly (readonly [width: number, weight: number]
   [4, 1.5],
 ];
 
-/**
- * A random corridor width. On a crowded board (see `crowding`) the narrow ones are likelier and
- * the wide ones rarer: at full crowding, 1 wide is picked 5 times in 10 (not 3 in 10) and 4 wide
- * only 0.5 in 10 (not 1.5).
- */
-export function pickWidth(rng: Rng, crowded = 0): number {
-  const weights = CORRIDOR_WIDTHS.map(([width, weight]): [number, number] => [
-    width,
-    width === 1
-      ? weight + 3 * crowded
-      : width >= 3
-        ? Math.max(0.2, weight - 1.5 * crowded)
-        : weight,
-  ]);
-  const total = weights.reduce((sum, [, weight]) => sum + weight, 0);
+/** A random corridor width, by the weights above. */
+export function pickWidth(rng: Rng): number {
+  const total = CORRIDOR_WIDTHS.reduce((sum, [, weight]) => sum + weight, 0);
   let roll = rng.next() * total;
-  for (const [width, weight] of weights) {
+  for (const [width, weight] of CORRIDOR_WIDTHS) {
     roll -= weight;
     if (roll < 0) return width;
   }

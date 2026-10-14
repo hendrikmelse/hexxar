@@ -18,7 +18,6 @@ import {
   createRng,
   createDuelMatch,
   parseMatchConfig,
-  ROYALE_START_DISTANCE,
   royaleTilesPerPlayer,
   type ArchetypeId,
   type GameState,
@@ -346,7 +345,6 @@ export function MapsPage() {
   const sizeDefaults = (size: MapSize, royalePlayers: number): GenerationParams => ({
     ...DEFAULT_GENERATION_PARAMS,
     tilesPerPlayer: royaleTilesPerPlayer(size, royalePlayers),
-    minStartDistance: ROYALE_START_DISTANCE[size],
   });
   const [params, setParams] = useState<GenerationParams>(() => sizeDefaults(mapSize, players));
   /** About how many tiles a fair board has at a map size, for as many players as the mode has. */
