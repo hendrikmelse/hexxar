@@ -438,10 +438,13 @@ export class Room {
   /**
    * Who can chat with whom. Everyone gathered in the room talks together until the match starts;
    * then the players are silent and only the spectators talk, among themselves, out of the
-   * players' sight. Nobody chats once the match is over, or while reading its result.
+   * players' sight. Once the match is over there is nothing left to keep from anyone: everyone
+   * still in the room joins that chat, which carries on while they read the result.
    */
   private chatChannelOf(member: Member): ChatChannel | null {
-    if (member.left || member.reviewing) return null;
+    if (member.left) return null;
+    if (this.state === 'finished') return 'spectators';
+    if (member.reviewing) return null;
     if (this.state === 'lobby') return 'lobby';
     // Someone knocked out of the match (or who gave up) is watching it from then on.
     if (this.state === 'running' && (member.spectator || this.isOut(member))) return 'spectators';
@@ -480,6 +483,12 @@ export class Room {
       if (other.chatSent !== channel) this.syncChat(other);
       else other.session.connection?.send({ type: 'chat', messages: [message], replace: false });
     }
+  }
+
+  /** Tell the chat who won the match, if anyone did. */
+  private announceWinner(): void {
+    const winner = this.match?.state.winner;
+    if (winner) this.announceOut(winner, 'won the match');
   }
 
   /** Tell the spectators' chat that a player is out of the match ("was eliminated", "surrendered"). */
@@ -885,13 +894,14 @@ export class Room {
       });
     }
 
-    if (match.isOver) this.finish();
-    else {
-      // Someone who is out is now a spectator, for everyone to see (and the spectators' chat says so).
-      if (state.eliminated.length > outBefore) {
-        for (const id of state.eliminated.slice(outBefore)) this.announceOut(id, 'was eliminated');
-        this.broadcastRoom();
-      }
+    // The spectators' chat says who is out, and, if that ends the match, who won.
+    for (const id of state.eliminated.slice(outBefore)) this.announceOut(id, 'was eliminated');
+    if (match.isOver) {
+      this.announceWinner();
+      this.finish();
+    } else {
+      // Someone who is out is now a spectator, for everyone to see.
+      if (state.eliminated.length > outBefore) this.broadcastRoom();
       this.scheduleTick();
     }
   }
@@ -901,9 +911,11 @@ export class Room {
     if (this.state !== 'running' || !match || !member.playerId) return;
     match.surrender(member.playerId);
     this.broadcastSnapshots();
-    if (match.isOver) this.finish();
-    else {
-      this.announceOut(member.playerId, 'surrendered');
+    this.announceOut(member.playerId, 'surrendered');
+    if (match.isOver) {
+      this.announceWinner();
+      this.finish();
+    } else {
       this.broadcastRoom();
     }
   }

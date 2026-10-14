@@ -173,14 +173,20 @@ describe('chat', () => {
       expect(readable(late)).toEqual(['spectator talk']);
     });
 
-    it('is closed again when the match is over, and starts afresh in the next lobby', () => {
+    it('is open to everyone when the match is over, and starts afresh in the next lobby', () => {
       const { ann, bob, cy } = startedRoom();
       cy.say({ type: 'chat', text: 'spectator talk' });
       bob.say({ type: 'surrender' });
-      expect(ann.room).toMatchObject({ state: 'finished', canChat: false });
-      expect(cy.room).toMatchObject({ state: 'finished', canChat: false });
-      cy.say({ type: 'chat', text: 'too late' });
-      expect(cy.last('rejected').reason).toMatch(/cannot chat/);
+      // Nothing is left to keep from the players: the winner and the loser read it, and write in it.
+      for (const client of [ann, bob, cy]) {
+        expect(client.room).toMatchObject({ state: 'finished', canChat: true });
+      }
+      const texts = readable(ann);
+      expect(texts).toEqual(['spectator talk', 'surrendered', 'won the match']);
+      wait();
+      ann.say({ type: 'chat', text: 'good game' });
+      expect(readable(cy).at(-1)).toBe('good game');
+      expect(readable(bob).at(-1)).toBe('good game');
       ann.say({ type: 'returnToRoom' });
       cy.say({ type: 'returnToRoom' });
       expect(cy.room).toMatchObject({ state: 'lobby', canChat: true });
