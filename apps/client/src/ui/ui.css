@@ -2847,12 +2847,14 @@
     0 6px 0 #10131a,
     0 22px 38px rgba(0, 0, 0, 0.55);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s 0.06s;
   pointer-events: none;
 }
 
 #ui .chat.open::before {
   opacity: 1;
+  /* Opening: quick and at once, as the size is already most of the way there early on */
+  transition: opacity 0.09s ease-out;
 }
 
 #ui .chat-body {
@@ -2894,7 +2896,7 @@
 #ui .chat.open .chat-note,
 #ui .chat.open .chat-log,
 #ui .chat.open .chat-form input {
-  transition-delay: 0.08s;
+  transition-delay: 0.03s;
 }
 
 /* Beside the card, as wide and as tall as it when open */
