@@ -64,7 +64,19 @@ describe.skipIf(!testDb)('the analytics report', () => {
       quickplayed: 3,
       completedThenQuickplayed: 1,
     });
-    expect(report.traffic).toMatchObject({ returningVisitors: 1, invitedSessions: 1 });
+    expect(report.traffic).toMatchObject({
+      returningVisitors: 1,
+      invitedSessions: 1,
+      phoneVisitors: 0,
+    });
+  });
+
+  it('counts the visitors who were turned away for being on a phone', async () => {
+    await put('ann', 'visit', { blocked: 'phone' });
+    await put('ann', 'visit', { blocked: 'phone' });
+    await put('bob', 'visit', { returning: false });
+    const report = await buildReport(db, 7);
+    expect(report.traffic).toMatchObject({ visitors: 2, phoneVisitors: 1 });
   });
 
   it('tells where visitors came from, and how far each source got', async () => {

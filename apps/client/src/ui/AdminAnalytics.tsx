@@ -194,6 +194,7 @@ function Report({ report }: { report: AnalyticsReport }) {
     ['Visitors', String(traffic.visitors)],
     ['Came back', pct(traffic.returningVisitors, traffic.visitors)],
     ['Page loads', String(traffic.sessions)],
+    ['Phones (turned away)', pct(traffic.phoneVisitors, traffic.visitors)],
     ['Matches', String(matches)],
     ['Average match', matches ? time(matchTime / matches) : '–'],
     ['Loads with match', pct(sessions.withMatch, sessions.total)],

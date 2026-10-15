@@ -122,6 +122,8 @@ export interface AnalyticsReport {
     readonly returningVisitors: number;
     /** Page loads that came from an invite link. */
     readonly invitedSessions: number;
+    /** Visitors on a phone, who were shown the notice that phones are not supported. They are counted in `visitors` too. */
+    readonly phoneVisitors: number;
   };
   readonly funnel: AnalyticsFunnel;
   /** Where visitors came from, most visitors first. A visitor counts under each source they came by. */

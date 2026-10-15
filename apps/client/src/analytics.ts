@@ -130,7 +130,7 @@ export function trackChoice(
 }
 
 /** Report that the page was opened: whether this browser has been here, how it got here, and what kind of screen it is. */
-export function trackVisit(invited: boolean): void {
+export function trackVisit(invited: boolean, extra: EventProps = {}): void {
   // A link can say where it was shared (hexxar.io/?ref=cool-games-list): kept as plain lowercase words.
   const ref = (new URLSearchParams(location.search).get('ref') ?? '')
     .toLowerCase()
@@ -150,6 +150,7 @@ export function trackVisit(invited: boolean): void {
     invited,
     referrer,
     ...(ref ? { ref } : {}),
+    ...extra,
     device: matchMedia('(pointer: coarse)').matches ? 'touch' : 'mouse',
     width: Math.round(innerWidth / 100) * 100,
   });

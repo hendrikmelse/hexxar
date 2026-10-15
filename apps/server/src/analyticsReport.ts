@@ -55,7 +55,8 @@ export async function buildReport(db: Db, days: number): Promise<AnalyticsReport
     q(`SELECT count(DISTINCT visitor_id)::int AS visitors,
               count(DISTINCT session_id)::int AS sessions,
               count(DISTINCT visitor_id) FILTER (WHERE name = 'visit' AND (props->>'returning')::boolean)::int AS returning,
-              count(DISTINCT session_id) FILTER (WHERE name = 'visit' AND (props->>'invited')::boolean)::int AS invited
+              count(DISTINCT session_id) FILTER (WHERE name = 'visit' AND (props->>'invited')::boolean)::int AS invited,
+              count(DISTINCT visitor_id) FILTER (WHERE name = 'visit' AND props->>'blocked' = 'phone')::int AS phones
        ${events}`),
     q(`SELECT count(DISTINCT visitor_id)::int AS visitors,
               count(DISTINCT visitor_id) FILTER (WHERE name = 'tutorial_start')::int AS tutorial_started,
@@ -294,6 +295,7 @@ export async function buildReport(db: Db, days: number): Promise<AnalyticsReport
       sessions: num(traffic[0]?.sessions),
       returningVisitors: num(traffic[0]?.returning),
       invitedSessions: num(traffic[0]?.invited),
+      phoneVisitors: num(traffic[0]?.phones),
     },
     funnel: funnelOut,
     sources: sources.map((row) => ({
