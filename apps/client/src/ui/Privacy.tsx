@@ -30,7 +30,7 @@ export function Privacy() {
                 hendrikmelse.com
               </a>
               ). In this policy, &ldquo;I&rdquo; and &ldquo;me&rdquo; mean him. You can reach me
-              with the speech-bubble button in the top right corner of the game.
+              with the bug button in the top right corner of the game.
             </p>
 
             <h2>What Hexxar keeps in your browser</h2>
