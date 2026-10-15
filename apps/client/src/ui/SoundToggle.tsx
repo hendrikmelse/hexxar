@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { track } from '../analytics.js';
 import { isMuted, playSound, setMuted, subscribeMuted } from '../audio/audio.js';
 
 /**
@@ -16,6 +17,7 @@ export function SoundToggle() {
       data-tip={label}
       data-tip-pos="below"
       onClick={() => {
+        track('sound_toggle', { on: muted });
         setMuted(!muted);
         // Turning sound off clicks as it goes (the page-wide click sound plays just before); turning
         // it on has to click once it is on, or the click would be heard by no one.

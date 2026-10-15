@@ -1,3 +1,4 @@
+import { track } from '../analytics.js';
 import { appStore, useApp } from '../store.js';
 
 /**
@@ -14,7 +15,10 @@ export function FeedbackToggle() {
       aria-pressed={open}
       data-tip={label}
       data-tip-pos="below-center"
-      onClick={() => appStore.set({ feedbackOpen: !open })}
+      onClick={() => {
+        if (!open) track('feedback_open');
+        appStore.set({ feedbackOpen: !open });
+      }}
     >
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
         {/* Material Design "pest control" */}

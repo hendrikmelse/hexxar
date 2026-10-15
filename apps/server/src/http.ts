@@ -2,7 +2,13 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
-import { feedbackSchema, type AdminStats } from '@hexxar/shared';
+import {
+  eventBatchSchema,
+  feedbackSchema,
+  type AdminStats,
+  type AnalyticsReport,
+} from '@hexxar/shared';
+import { noAnalytics, type Analytics } from './analytics.js';
 import { RateLimiter } from './feedback.js';
 import type { FeedbackStore } from './feedbackStore.js';
 import { sameSecret } from './secret.js';
@@ -29,14 +35,28 @@ export interface HttpOptions {
   staticDir?: string;
   /** Where feedback is kept; without it the feedback page is told it is not set up. */
   store?: FeedbackStore;
+  /** Where events reported by the page go; without it they are accepted and thrown away. */
+  analytics?: Analytics;
   /** The admin panel's password and live numbers; without it the panel is off. */
-  admin?: { password: string; stats: () => Omit<AdminStats, 'feedback'> };
+  admin?: {
+    password: string;
+    stats: () => Omit<AdminStats, 'feedback'>;
+    /** The analytics report for the last so many days; without it the analytics tab says it is not set up. */
+    report?: (days: number) => Promise<AnalyticsReport>;
+  };
 }
 
-export function createHttpHandler({ staticDir, store, admin }: HttpOptions = {}) {
+export function createHttpHandler({
+  staticDir,
+  store,
+  admin,
+  analytics = noAnalytics,
+}: HttpOptions = {}) {
   const root = staticDir ? resolve(staticDir) : null;
   // A few submissions an hour from one address is plenty.
   const limiter = new RateLimiter(5, 60 * 60_000);
+  // Events from one page: a busy session sends a few a minute, so this is far above any real use.
+  const eventLimiter = new RateLimiter(120, 60_000);
   // Wrong admin passwords: a few tries from one address, then it is locked out for a while.
   const guesses = new RateLimiter(10, 15 * 60_000);
 
@@ -123,6 +143,36 @@ export function createHttpHandler({ staticDir, store, admin }: HttpOptions = {})
     json(res, 200, { ok: true });
   };
 
+  /** POST /api/event: events the page reports about itself (the tutorial, the menus). Nothing is answered but "ok". */
+  const handleEvent = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    // The caller is looked at only to keep one address from flooding this; it is never stored.
+    if (!eventLimiter.allow(callerOf(req))) return json(res, 429, { error: 'Slow down.' });
+    const body = await readBody(req, 8 * 1024);
+    if (body === null) {
+      res.once('finish', () => req.destroy());
+      return json(res, 413, { error: 'Too big.' });
+    }
+    let parsed: ReturnType<typeof eventBatchSchema.safeParse>;
+    try {
+      parsed = eventBatchSchema.safeParse(JSON.parse(body));
+    } catch {
+      return json(res, 400, { error: 'That did not look right.' });
+    }
+    if (!parsed.success) return json(res, 400, { error: 'That did not look right.' });
+    const { visitorId, sessionId, events } = parsed.data;
+    const now = Date.now();
+    for (const { name, props, ago } of events) {
+      analytics.record({
+        visitorId,
+        sessionId,
+        name,
+        ...(props ? { props } : {}),
+        ...(ago ? { at: new Date(now - ago) } : {}),
+      });
+    }
+    json(res, 200, { ok: true });
+  };
+
   /** Is the request from the admin? The password comes as `Authorization: Bearer <URI-encoded password>`. */
   const isAdmin = (req: IncomingMessage): boolean => {
     const header = String(req.headers.authorization ?? '');
@@ -151,11 +201,18 @@ export function createHttpHandler({ staticDir, store, admin }: HttpOptions = {})
     if (req.method === 'GET' && route === '/stats') {
       return json(res, 200, {
         ...admin.stats(),
-        feedback: { open: store.open().length, total: store.total },
+        feedback: { open: (await store.open()).length, total: await store.total() },
       } satisfies AdminStats);
     }
+    if (req.method === 'GET' && route === '/analytics') {
+      if (!admin.report) return json(res, 503, { error: 'Analytics is not set up.' });
+      const asked = Number(new URL(req.url ?? '', 'http://localhost').searchParams.get('days'));
+      // A week, a month, a quarter or a year; anything else is a month.
+      const days = [7, 30, 90, 365].includes(asked) ? asked : 30;
+      return json(res, 200, await admin.report(days));
+    }
     if (req.method === 'GET' && route === '/feedback') {
-      return json(res, 200, { feedback: store.list() });
+      return json(res, 200, { feedback: await store.list() });
     }
     const id = /^\/feedback\/([\w-]{1,64})$/.exec(route)?.[1];
     if (id && req.method === 'POST') {
@@ -188,6 +245,7 @@ export function createHttpHandler({ staticDir, store, admin }: HttpOptions = {})
     if (req.method === 'POST' && route === '/api/feedback') {
       return handleFeedback(req, res);
     }
+    if (req.method === 'POST' && route === '/api/event') return handleEvent(req, res);
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'method not allowed');
     let pathname: string;
     try {

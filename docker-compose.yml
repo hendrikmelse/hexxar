@@ -1,0 +1,21 @@
+# A local Postgres for development: `docker compose up -d db`. It is on port 5433 (not Postgres's
+# usual 5432) so it can run next to the flashcards app's. Its address is DATABASE_URL in
+# .env.example. The tables are created by the server itself when it starts.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: hexxar
+      POSTGRES_PASSWORD: hexxar
+      POSTGRES_DB: hexxar
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hexxar']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:

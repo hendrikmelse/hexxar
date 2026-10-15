@@ -18,6 +18,8 @@ import {
   visibleMoves,
   visibleState,
   type AdminRoom,
+  type EventProps,
+  type ServerEventName,
   type Order,
   type Rng,
   type RoomMode,
@@ -27,6 +29,7 @@ import {
   type RoomView,
   type ServerMessage,
 } from '@hexxar/shared';
+import type { Analytics } from './analytics.js';
 import { Match } from './match.js';
 import type { Session } from './types.js';
 
@@ -93,7 +96,16 @@ export interface RoomOptions {
   readonly finishedLingerMs: number;
   /** Called once when the room has closed, so it can be forgotten. */
   readonly onClose: (room: Room) => void;
+  /** Where what happens in the room is reported. */
+  readonly analytics: Analytics;
 }
+
+/** How someone came to be in a room. */
+export type JoinVia = 'quickplay' | 'create' | 'code';
+/** Why a match began. */
+type StartReason = 'full' | 'timer' | 'vote' | 'host';
+/** How someone's part in a match ended, if they did not win it. */
+type OutHow = 'eliminated' | 'surrendered' | 'left' | 'afk';
 
 interface Member {
   readonly session: Session;
@@ -116,6 +128,34 @@ interface Member {
   chatSent: ChatChannel | null;
   lastChatAt: number;
   afkTimer: Timer | null;
+  /** When they came into the room (or back to it), for how long they waited. */
+  joinedAt: number;
+  /** How they went out of the running match, and when, and in what place. */
+  outHow: OutHow | null;
+  outAt: number | null;
+  outPlace: number | null;
+  /** Since when they have been watching the running match, if they are. */
+  watchSince: number | null;
+}
+
+function newMember(session: Session, spectator: boolean): Member {
+  return {
+    session,
+    playerId: null,
+    left: false,
+    reviewing: false,
+    watching: spectator,
+    spectator,
+    colorSlot: null,
+    chatSent: null,
+    lastChatAt: 0,
+    afkTimer: null,
+    joinedAt: Date.now(),
+    outHow: null,
+    outAt: null,
+    outPlace: null,
+    watchSince: null,
+  };
 }
 
 function shuffle<T>(items: readonly T[], rng: Rng): T[] {
@@ -158,6 +198,15 @@ export class Room {
   /** What was said in each chat. The lobby's is gone once the match starts; the spectators' ends with it. */
   private chatLogs: Record<ChatChannel, ChatMessage[]> = { lobby: [], spectators: [] };
   private chatSeq = 0;
+  /** Why the wait was cut to its last seconds ('full' or 'vote'), if it was. */
+  private lockReason: 'full' | 'vote' | null = null;
+  /** For analytics: when the room (or its lobby, after a rematch) opened, and how long it was short of players. */
+  private lobbyOpenedAt = Date.now();
+  private belowMinSince: number | null = null;
+  private belowMinMs = 0;
+  /** For analytics: when the running match's first tick is, and how its last player went out. */
+  private firstTickAt = 0;
+  private lastOutHow: OutHow | null = null;
 
   constructor(private readonly options: RoomOptions) {
     this.id = options.id;
@@ -169,7 +218,7 @@ export class Room {
 
   // -- Membership ----------------------------------------------------------
 
-  join(session: Session): string | null {
+  join(session: Session, via: JoinVia = 'code'): string | null {
     // A game that has begun takes people as spectators, public or private; a private room that is
     // full does too. (A public lobby that is full, or about to start, just turns people away.)
     if (
@@ -180,29 +229,21 @@ export class Room {
     }
     if (this.lockedIn) return 'that game is about to start';
     if (this.activeMembers().length >= this.capacity) return 'that game is full';
-    this.members.push({
-      session,
-      playerId: null,
-      left: false,
-      reviewing: false,
-      watching: false,
-      spectator: false,
-      colorSlot: null,
-      chatSent: null,
-      lastChatAt: 0,
-      afkTimer: null,
-    });
+    this.members.push(newMember(session, false));
     this.claimColor(this.members[this.members.length - 1]!);
     session.room = this;
+    this.trackMin();
+    this.track(session, 'lobby_join', { via, players: this.activeMembers().length });
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
     if (this.visibility === 'public' && this.activeMembers().length >= this.capacity) {
       if (this.options.fullWaitMs > 0) {
         // A short pause first, so everyone sees the full lobby before the match begins.
         this.lockedIn = true;
+        this.lockReason = 'full';
         this.armEarlyStart(this.options.fullWaitMs);
         this.broadcastRoom();
       } else {
-        this.begin();
+        this.begin('full');
       }
     } else {
       this.scheduleEarlyStart();
@@ -218,20 +259,11 @@ export class Room {
     if (this.members.filter((m) => m.spectator && !m.left).length >= MAX_SPECTATORS) {
       return 'that game has too many spectators';
     }
-    const member: Member = {
-      session,
-      playerId: null,
-      left: false,
-      reviewing: false,
-      watching: true,
-      spectator: true,
-      colorSlot: null,
-      chatSent: null,
-      lastChatAt: 0,
-      afkTimer: null,
-    };
+    const member = newMember(session, true);
     this.members.push(member);
     session.room = this;
+    this.track(session, 'spectator_join', { reason: this.state === 'lobby' ? 'full' : 'started' });
+    this.noteWatching(member);
     this.broadcastRoom();
     if (this.state === 'running') this.sendSnapshot(member);
     return null;
@@ -258,18 +290,26 @@ export class Room {
       member.watching = false;
       this.claimColor(member);
     }
+    this.trackMin();
     this.broadcastRoom();
     return null;
   }
 
   /** The player chose to leave. During a match that is a surrender. */
-  leave(session: Session): void {
+  leave(session: Session, how: 'left' | 'disconnected' = 'left'): void {
     const member = this.memberOf(session);
     if (!member || member.left) return;
     if (this.state === 'lobby') {
       this.members.splice(this.members.indexOf(member), 1);
       this.votes.delete(session.userId);
       this.detach(session);
+      this.trackMin();
+      this.track(session, 'lobby_leave', {
+        how,
+        role: member.spectator ? 'spectator' : 'player',
+        waitedMs: Date.now() - member.joinedAt,
+        players: this.activeMembers().length,
+      });
       // When the host goes, the next player takes over; with no one left to play, the room is
       // over, whoever is still watching. A host who is only watching keeps the room open.
       if (this.host === session) {
@@ -283,8 +323,8 @@ export class Room {
       this.broadcastRoom();
       return;
     }
-    if (this.state === 'running') this.surrenderMember(member);
-    this.markLeft(member);
+    if (this.state === 'running') this.surrenderMember(member, 'left');
+    this.markLeft(member, how);
     this.broadcastRoom();
     this.closeIfEmpty();
   }
@@ -294,12 +334,12 @@ export class Room {
     const member = this.memberOf(session);
     if (!member || member.left) return;
     // Nothing to keep for a spectator who is gone.
-    if (member.spectator || this.state === 'lobby') return this.leave(session);
+    if (member.spectator || this.state === 'lobby') return this.leave(session, 'disconnected');
     if (this.state === 'running' && member.afkTimer === null) {
       // Their queue keeps running; if they stay away this long, their army surrenders.
       member.afkTimer = setTimeout(() => {
         member.afkTimer = null;
-        this.surrenderMember(member);
+        this.surrenderMember(member, 'afk');
         this.broadcastRoom();
       }, this.options.afkMs);
     }
@@ -325,6 +365,7 @@ export class Room {
   returnToRoom(session: Session): string | null {
     const member = this.memberOf(session);
     if (!member || member.left || !member.reviewing) return 'there is no game to go back to';
+    this.endWatch(member, 'returned_to_room');
     // The next game is already on: carry on watching it.
     if (this.state === 'running') {
       member.spectator = true;
@@ -342,6 +383,7 @@ export class Room {
     }
     member.reviewing = false;
     member.playerId = null;
+    member.joinedAt = Date.now();
     if (!member.spectator) this.claimColor(member);
     // The host stays the host while they read the result: the role passes on only once they have
     // gone (back to the menu, or the tab closed).
@@ -362,10 +404,21 @@ export class Room {
     this.clearChat();
     this.match = null;
     this.nextTickAt = null;
+    for (const member of this.members) this.endWatch(member, 'room_reset');
+    this.lobbyOpenedAt = Date.now();
+    this.belowMinMs = 0;
+    this.belowMinSince = null;
+    this.lastOutHow = null;
     for (let i = this.members.length - 1; i >= 0; i--) {
       if (this.members[i]!.left) this.members.splice(i, 1);
     }
-    for (const member of this.members) member.playerId = null;
+    for (const member of this.members) {
+      member.playerId = null;
+      member.outHow = null;
+      member.outAt = null;
+      member.outPlace = null;
+    }
+    this.trackMin();
   }
 
   // -- Host controls -------------------------------------------------------
@@ -378,6 +431,7 @@ export class Room {
     if (typeof next === 'string') return next;
     this.settings = next;
     this.rebalance();
+    this.trackMin();
     this.broadcastRoom();
     return null;
   }
@@ -408,7 +462,7 @@ export class Room {
     if (session !== this.host) return 'only the host can start the game';
     if (this.state !== 'lobby') return 'the game has already started';
     if (this.activeMembers().length < this.minPlayers) return 'waiting for more players';
-    this.begin();
+    this.begin('host');
     return null;
   }
 
@@ -432,7 +486,7 @@ export class Room {
 
   surrender(session: Session): void {
     const member = this.memberOf(session);
-    if (member && !member.left) this.surrenderMember(member);
+    if (member && !member.left) this.surrenderMember(member, 'surrendered');
   }
 
   // -- Chat ----------------------------------------------------------------
@@ -471,6 +525,7 @@ export class Room {
       at: now,
     };
     this.publish(channel, message);
+    this.track(session, 'chat_message', { channel, length: text.length });
     return null;
   }
 
@@ -534,6 +589,81 @@ export class Room {
     }
   }
 
+  // -- Analytics -----------------------------------------------------------
+
+  /** Report something that happened to this person in this room (if we know who they are). */
+  private track(session: Session, name: ServerEventName, props: EventProps = {}): void {
+    if (!session.visitorId || !session.sessionId) return;
+    this.options.analytics.record({
+      visitorId: session.visitorId,
+      sessionId: session.sessionId,
+      name,
+      props: { roomId: this.id, visibility: this.visibility, mode: this.mode, ...props },
+    });
+  }
+
+  /** Keep count of how long the lobby has had too few players for its match to start. */
+  private trackMin(): void {
+    const short = this.state === 'lobby' && this.activeMembers().length < this.minPlayers;
+    const now = Date.now();
+    if (short && this.belowMinSince === null) this.belowMinSince = now;
+    else if (!short && this.belowMinSince !== null) {
+      this.belowMinMs += now - this.belowMinSince;
+      this.belowMinSince = null;
+    }
+  }
+
+  /** A player is out of the match: remember how, when and in what place. */
+  private markOut(playerId: string, how: OutHow, place: number): void {
+    const member = this.members.find((m) => m.playerId === playerId);
+    if (!member || member.outHow !== null) return;
+    member.outHow = how;
+    member.outAt = Date.now();
+    member.outPlace = place;
+    this.lastOutHow = how;
+  }
+
+  /** Start the clock on someone's time watching the running match, if they are watching it. */
+  private noteWatching(member: Member): void {
+    if (this.state === 'running' && member.watching && member.watchSince === null) {
+      member.watchSince = Date.now();
+    }
+  }
+
+  /** Report that someone's time watching a match is over (once). */
+  private endWatch(member: Member, how: string): void {
+    if (member.watchSince === null) return;
+    this.track(member.session, 'spectate_end', {
+      how,
+      role: member.spectator ? 'spectator' : 'out',
+      watchedMs: Date.now() - member.watchSince,
+      matchOver: this.state === 'finished',
+    });
+    member.watchSince = null;
+  }
+
+  /** One report for every player of the match that has just ended, on how it went for them. */
+  private trackMatchEnd(): void {
+    const match = this.match;
+    if (!match) return;
+    const players = match.state.players.length;
+    const now = Date.now();
+    for (const member of this.members) {
+      if (!member.playerId) continue;
+      const won = match.state.winner === member.playerId;
+      this.track(member.session, 'match_end', {
+        matchId: match.id,
+        players,
+        durationMs: Math.max(0, now - this.firstTickAt),
+        ticks: match.state.tick,
+        outcome: won ? 'won' : (member.outHow ?? 'lost'),
+        place: won ? 1 : (member.outPlace ?? players),
+        ...(member.outAt === null ? {} : { outAtMs: Math.max(0, member.outAt - this.firstTickAt) }),
+        endedBy: this.lastOutHow ?? 'eliminated',
+      });
+    }
+  }
+
   // -- Views ---------------------------------------------------------------
 
   view(session: Session): RoomView {
@@ -587,6 +717,11 @@ export class Room {
     if (this.state === 'finished') return 0;
     return this.members.filter((m) => !m.left && !m.spectator && m.session.connection !== null)
       .length;
+  }
+
+  /** Where the room is, for analytics. */
+  get roomState(): RoomState {
+    return this.state;
   }
 
   get mode(): RoomMode {
@@ -643,7 +778,8 @@ export class Room {
     session.connection?.send({ type: 'room', room: null });
   }
 
-  private markLeft(member: Member): void {
+  private markLeft(member: Member, how: 'left' | 'disconnected'): void {
+    this.endWatch(member, how);
     member.left = true;
     if (member.afkTimer) clearTimeout(member.afkTimer);
     member.afkTimer = null;
@@ -658,6 +794,7 @@ export class Room {
     if (this.closed) return;
     this.dispose();
     for (const member of this.members) {
+      this.endWatch(member, 'room_closed');
       if (!member.left) this.detach(member.session);
     }
     this.options.onClose(this);
@@ -681,6 +818,7 @@ export class Room {
     this.earlyStartAt = null;
     this.votes.clear();
     this.lockedIn = false;
+    this.lockReason = null;
   }
 
   /** Run the wait out in `waitMs`, after which the match starts. */
@@ -689,7 +827,7 @@ export class Room {
     this.earlyStartAt = Date.now() + waitMs;
     this.earlyStartTimer = setTimeout(() => {
       this.earlyStartTimer = null;
-      this.begin();
+      this.begin(this.lockedIn ? (this.lockReason ?? 'timer') : 'timer');
     }, waitMs);
   }
 
@@ -732,6 +870,11 @@ export class Room {
     if (!this.memberOf(session)) return 'you are not in this game';
     if (vote) this.votes.add(session.userId);
     else if (!this.lockedIn) this.votes.delete(session.userId);
+    this.track(session, 'vote_start', {
+      vote,
+      votes: this.votes.size,
+      needed: this.votesNeeded(),
+    });
     this.checkVotes();
     this.broadcastRoom();
     return null;
@@ -743,6 +886,7 @@ export class Room {
     const needed = this.votesNeeded();
     if (needed === 0 || this.votes.size < needed) return;
     this.lockedIn = true;
+    this.lockReason = 'vote';
     const remaining = this.earlyStartAt === null ? Infinity : this.earlyStartAt - Date.now();
     this.armEarlyStart(Math.min(remaining, this.options.voteStartMs));
   }
@@ -752,7 +896,7 @@ export class Room {
    * Board generation can fail (it is random, and its rules may change), which must never take the
    * server down: other seeds are tried, and if none works the room is closed with an apology.
    */
-  private begin(): void {
+  private begin(reason: StartReason): void {
     this.resetEarlyStart();
     const seed = Math.floor(Math.random() * 2 ** 32);
     // Who starts where is random, so nobody always gets the same side.
@@ -787,10 +931,32 @@ export class Room {
 
     this.match = new Match(this.id, board.state, board.config);
     this.state = 'running';
+    this.trackMin();
+    this.lastOutHow = null;
+    for (const member of this.members) {
+      member.outHow = null;
+      member.outAt = null;
+      member.outPlace = null;
+    }
     // What was said while gathering stays behind: the players must not read it again, and the
     // spectators start their own chat.
     this.clearChat();
     this.nextTickAt = Date.now() + this.options.prepMs;
+    this.firstTickAt = this.nextTickAt;
+    const spectators = this.members.filter((m) => !m.left && m.spectator).length;
+    for (const member of order) {
+      this.track(member.session, 'match_start', {
+        matchId: this.match.id,
+        players: order.length,
+        spectators,
+        mapSize: this.settings.mapSize,
+        startReason: reason,
+        lobbyMs: Date.now() - this.lobbyOpenedAt,
+        belowMinMs: this.belowMinMs,
+        waitedMs: Date.now() - member.joinedAt,
+      });
+    }
+    for (const member of this.members) this.noteWatching(member);
     this.broadcastRoom();
     this.broadcastSnapshots();
     this.scheduleTick();
@@ -899,6 +1065,7 @@ export class Room {
       const watching = member.spectator || state.eliminated.includes(id) || state.winner !== null;
       const firstWatch = watching && !member.watching;
       member.watching = watching;
+      this.noteWatching(member);
       member.session.connection?.send({
         type: 'tick',
         tick: state.tick,
@@ -916,7 +1083,10 @@ export class Room {
     }
 
     // The spectators' chat says who is out, and, if that ends the match, who won.
-    for (const id of state.eliminated.slice(outBefore)) this.announceOut(id, 'was eliminated');
+    for (const id of state.eliminated.slice(outBefore)) {
+      this.markOut(id, 'eliminated', state.players.length - outBefore);
+      this.announceOut(id, 'was eliminated');
+    }
     if (match.isOver) {
       this.announceWinner();
       this.finish();
@@ -927,10 +1097,14 @@ export class Room {
     }
   }
 
-  private surrenderMember(member: Member): void {
+  private surrenderMember(member: Member, how: 'surrendered' | 'left' | 'afk'): void {
     const match = this.match;
     if (this.state !== 'running' || !match || !member.playerId) return;
+    const alive = match.state.players.length - match.state.eliminated.length;
+    const wasOut = match.state.eliminated.includes(member.playerId);
     match.surrender(member.playerId);
+    if (!wasOut) this.markOut(member.playerId, how, alive);
+    this.noteWatching(member);
     this.broadcastSnapshots();
     this.announceOut(member.playerId, 'surrendered');
     if (match.isOver) {
@@ -947,6 +1121,7 @@ export class Room {
     this.tickTimer = null;
     this.nextTickAt = null;
     this.state = 'finished';
+    this.trackMatchEnd();
     if (this.visibility === 'private') {
       this.resultPlayers = this.view(this.host).players;
       for (const member of this.members) member.reviewing = !member.left;
@@ -974,6 +1149,7 @@ export class Room {
     // Out of the match, or it is over: then everyone's queue may be seen.
     member.watching =
       member.spectator || match.state.eliminated.includes(id) || match.state.winner !== null;
+    this.noteWatching(member);
     const state = visibleState(match.state, id, match.config);
     return {
       type: 'snapshot',

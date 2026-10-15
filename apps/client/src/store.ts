@@ -13,8 +13,6 @@ export interface AppState {
   path: string;
   /** The feedback and bug report page is open (over whatever else is on screen). */
   feedbackOpen: boolean;
-  /** Set when the server wants a (new) beta access code before letting us in. */
-  denied: 'code required' | 'wrong code' | null;
   userId: string | null;
   /** The name shown to other players. */
   name: string;
@@ -91,7 +89,6 @@ export function saveName(name: string): void {
 class Store {
   private state: AppState = {
     connected: false,
-    denied: null,
     userId: null,
     name: loadName(),
     room: null,

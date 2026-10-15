@@ -119,10 +119,11 @@ export function createDigest(options: DigestOptions) {
     const clock = localClock(now, options.timeZone);
     const late = clock.minutes - options.hour * 60;
     if (late < 0 || late >= CATCH_UP_MINUTES) return false;
-    if (options.store.lastDigest === clock.date || running) return false;
+    if (running) return false;
     running = true;
     try {
-      const open = options.store.open();
+      if ((await options.store.lastDigest()) === clock.date) return false;
+      const open = await options.store.open();
       if (open.length > 0) await options.mail(digestEmail(open, options.adminUrl));
       await options.store.setLastDigest(clock.date);
       return open.length > 0;

@@ -1,5 +1,6 @@
 import type { Feedback } from '@hexxar/shared';
-import { FeedbackStore } from './feedbackStore.js';
+import { openDb } from './db.js';
+import { PgFeedbackStore } from './feedbackStore.js';
 
 /**
  * Fills the feedback hub with made-up reports to click around in during development:
@@ -87,11 +88,16 @@ const SAMPLES: Sample[] = [
   },
 ];
 
-const store = new FeedbackStore(process.env.DATA_DIR ?? './data');
-if (store.total > 0 && !process.argv.includes('--force')) {
-  console.log(
-    `There are already ${store.total} reports; run with --force to add the samples anyway.`,
-  );
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is not set (see .env.example): there is nowhere to put the samples.');
+  process.exit(1);
+}
+const db = await openDb(process.env.DATABASE_URL);
+const store = new PgFeedbackStore(db);
+const existing = await store.total();
+if (existing > 0 && !process.argv.includes('--force')) {
+  console.log(`There are already ${existing} reports; run with --force to add the samples anyway.`);
+  await db.end();
   process.exit(0);
 }
 
@@ -103,4 +109,5 @@ for (const { ago, resolvedAfter, ...feedback } of [...SAMPLES].sort((a, b) => b.
     await store.setResolved(item.id, true, new Date(now - ago + resolvedAfter));
   }
 }
+await db.end();
 console.log(`Added ${SAMPLES.length} sample reports.`);

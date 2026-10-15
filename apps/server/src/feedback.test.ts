@@ -1,52 +1,62 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { createDigest, createMailer, digestEmail, localClock, RateLimiter } from './feedback.js';
-import { FeedbackStore } from './feedbackStore.js';
+import { MemoryFeedbackStore, PgFeedbackStore, type FeedbackStore } from './feedbackStore.js';
+import { openTestDb } from './test-db.js';
 
 const config = { apiKey: 're_test', to: 'me@example.com', from: 'Hexxar <feedback@example.com>' };
 
-let dir: string;
-beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'hexxar-feedback-'));
-});
-afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
-});
+const testDb = await openTestDb();
+afterAll(() => testDb?.drop());
 
-describe('feedback store', () => {
-  it('keeps what it is given across a restart, newest first', async () => {
-    const store = new FeedbackStore(dir);
+// The same behaviour is expected of the store kept in memory and the one in Postgres.
+const stores: [string, (() => FeedbackStore) | null][] = [
+  ['memory', () => new MemoryFeedbackStore()],
+  ['postgres', testDb ? () => new PgFeedbackStore(testDb.db) : null],
+];
+
+describe.each(stores)('feedback store (%s)', (_name, make) => {
+  const it_ = make ? it : it.skip;
+  const fresh = async (): Promise<FeedbackStore> => {
+    // Postgres tests share a schema, so empty it first.
+    await testDb?.db.query('TRUNCATE feedback, meta');
+    return make!();
+  };
+
+  it_('lists newest first and leaves out what was not given', async () => {
+    const store = await fresh();
     await store.add(
       { kind: 'bug', message: 'first', name: 'Ann' },
       new Date('2026-01-01T00:00:00Z'),
     );
     await store.add({ kind: 'feedback', message: 'second', email: 'a@b.co' });
-    const again = new FeedbackStore(dir);
-    expect(again.list().map((item) => item.message)).toEqual(['second', 'first']);
-    expect(again.list()[1]).toMatchObject({ kind: 'bug', name: 'Ann', resolvedAt: null });
-    expect(again.list()[0]).not.toHaveProperty('name');
+    const list = await store.list();
+    expect(list.map((item) => item.message)).toEqual(['second', 'first']);
+    expect(list[1]).toMatchObject({ kind: 'bug', name: 'Ann', resolvedAt: null });
+    expect(list[0]).not.toHaveProperty('name');
+    expect(list[0]).toMatchObject({ email: 'a@b.co' });
   });
 
-  it('marks items resolved and open again, and deletes them', async () => {
-    const store = new FeedbackStore(dir);
+  it_('marks items resolved and open again, and deletes them', async () => {
+    const store = await fresh();
     const a = await store.add({ kind: 'bug', message: 'one' });
     await store.add({ kind: 'bug', message: 'two' });
     expect(await store.setResolved(a.id, true)).toBe(true);
-    expect(store.open().map((item) => item.message)).toEqual(['two']);
+    expect((await store.open()).map((item) => item.message)).toEqual(['two']);
     await store.setResolved(a.id, false);
-    expect(store.open()).toHaveLength(2);
+    expect(await store.open()).toHaveLength(2);
     expect(await store.remove(a.id)).toBe(true);
     expect(await store.remove(a.id)).toBe(false);
     expect(await store.setResolved('nope', true)).toBe(false);
-    expect(new FeedbackStore(dir).total).toBe(1);
+    expect(await store.remove('nope')).toBe(false);
+    expect(await store.total()).toBe(1);
   });
 
-  it('refuses to start over a damaged file', async () => {
-    const { writeFile } = await import('node:fs/promises');
-    await writeFile(join(dir, 'feedback.json'), '{broken');
-    expect(() => new FeedbackStore(dir)).toThrow();
+  it_('remembers the day of the last email', async () => {
+    const store = await fresh();
+    expect(await store.lastDigest()).toBeNull();
+    await store.setLastDigest('2026-07-01');
+    await store.setLastDigest('2026-07-02');
+    expect(await store.lastDigest()).toBe('2026-07-02');
   });
 });
 
@@ -117,7 +127,7 @@ describe('daily email', () => {
   });
 
   const setup = async (open: number) => {
-    const store = new FeedbackStore(dir);
+    const store = new MemoryFeedbackStore();
     for (let i = 0; i < open; i++) await store.add({ kind: 'feedback', message: `message ${i}` });
     const mail = vi.fn(async () => undefined);
     const digest = createDigest({
@@ -144,7 +154,7 @@ describe('daily email', () => {
 
   it('sends nothing when everything is resolved, and does not catch up later in the day', async () => {
     const { store, mail, digest } = await setup(1);
-    await store.setResolved(store.open()[0]!.id, true);
+    await store.setResolved((await store.open())[0]!.id, true);
     expect(await digest.check(sevenAm)).toBe(false);
     await store.add({ kind: 'bug', message: 'arrived after seven' });
     expect(await digest.check(new Date('2026-07-01T05:30:00Z'))).toBe(false);
@@ -156,15 +166,16 @@ describe('daily email', () => {
     mail.mockRejectedValueOnce(new Error('down'));
     await expect(digest.check(sevenAm)).rejects.toThrow('down');
     expect(await digest.check(new Date('2026-07-01T05:01:00Z'))).toBe(true);
+    // A restart keeps the store (it is in the database), so the same one is used again.
     const restarted = createDigest({
-      store: new FeedbackStore(dir),
+      store,
       mail,
       hour: 7,
       timeZone: 'Europe/Amsterdam',
       adminUrl: 'x',
     });
     expect(await restarted.check(new Date('2026-07-01T05:02:00Z'))).toBe(false);
-    expect(store.lastDigest).toBe('2026-07-01');
+    expect(await store.lastDigest()).toBe('2026-07-01');
   });
 
   it('gives up on a missed email after the catch-up window', async () => {

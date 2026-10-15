@@ -4,19 +4,18 @@ import {
   parseMatchConfig,
   roomCapacity,
   type AdminStats,
+  type EventProps,
   type ClientMessage,
   type Order,
   type RoomMode,
   type RoomSettings,
   type RoomSettingsPatch,
 } from '@hexxar/shared';
+import { noAnalytics, type Analytics } from './analytics.js';
 import { Room, applySettingsPatch } from './room.js';
-import { sameSecret } from './secret.js';
 import type { Connection, ConnectionHandler, Session } from './types.js';
 
 export interface LobbyOptions {
-  /** Beta access code. When set, nobody gets in without it; when empty, the server is open. */
-  betaCode?: string;
   /** Time between a match being created and its first tick, for planning the opening. */
   prepMs: number;
   /** How long a public battle royale waits for more players, once it has enough, before starting anyway. */
@@ -33,10 +32,9 @@ export interface LobbyOptions {
   afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
   finishedLingerMs: number;
+  /** Where what happens is reported. Without it, nothing is. */
+  analytics?: Analytics;
 }
-
-/** Wrong access codes a single connection may try before it is dropped. */
-const MAX_CODE_ATTEMPTS = 5;
 
 /** Characters for room codes, leaving out the ones that are easy to confuse. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -47,12 +45,14 @@ const CODE_LENGTH = 5;
  * private game, joining by code. Once someone is in a room, the room takes over.
  */
 export class Lobby {
+  private readonly analytics: Analytics;
   private readonly sessions = new Map<string, Session>();
   private readonly rooms = new Map<string, Room>();
   private readonly codes = new Map<string, Room>();
   private statsTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly options: LobbyOptions) {
+    this.analytics = options.analytics ?? noAnalytics;
     if (options.statsMs > 0) {
       this.statsTimer = setInterval(() => this.broadcastStats(), options.statsMs);
     }
@@ -60,7 +60,6 @@ export class Lobby {
 
   connect(connection: Connection): ConnectionHandler {
     let session: Session | null = null;
-    let wrongCodes = 0;
     return {
       onMessage: (raw) => {
         const parsed = clientMessageSchema.safeParse(raw);
@@ -71,16 +70,7 @@ export class Lobby {
         const message = parsed.data;
         if (message.type === 'hello') {
           if (session) return;
-          const { betaCode } = this.options;
-          if (betaCode && !sameSecret(message.code ?? '', betaCode)) {
-            connection.send({
-              type: 'denied',
-              reason: message.code ? 'wrong code' : 'code required',
-            });
-            if (message.code && ++wrongCodes >= MAX_CODE_ATTEMPTS) connection.close();
-            return;
-          }
-          session = this.hello(connection, message.name, message.token);
+          session = this.hello(connection, message);
           return;
         }
         if (!session) {
@@ -96,6 +86,17 @@ export class Lobby {
     };
   }
 
+  /** Report something that happened to a guest (if we know who they are). */
+  private track(session: Session, name: 'reconnect' | 'disconnect', props: EventProps): void {
+    if (!session.visitorId || !session.sessionId) return;
+    this.analytics.record({
+      visitorId: session.visitorId,
+      sessionId: session.sessionId,
+      name,
+      props,
+    });
+  }
+
   /** Stop all timers (for shutdown and tests). */
   stop(): void {
     if (this.statsTimer) clearInterval(this.statsTimer);
@@ -103,8 +104,12 @@ export class Lobby {
     for (const room of this.rooms.values()) room.dispose();
   }
 
-  private hello(connection: Connection, name: string, token: string | undefined): Session {
+  private hello(
+    connection: Connection,
+    { name, token, visitorId, sessionId }: Extract<ClientMessage, { type: 'hello' }>,
+  ): Session {
     let session = token ? this.sessions.get(token) : undefined;
+    const returning = session !== undefined;
     if (session) {
       // A newer connection replaces an older one for the same guest.
       if (session.connection && session.connection !== connection) session.connection.close();
@@ -118,6 +123,15 @@ export class Lobby {
         room: null,
       };
       this.sessions.set(session.token, session);
+    }
+    // A reload keeps the guest but is a new page load.
+    if (visitorId) session.visitorId = visitorId;
+    if (sessionId) session.sessionId = sessionId;
+    if (returning) {
+      this.track(session, 'reconnect', {
+        inRoom: session.room !== null,
+        ...(session.room ? { roomState: session.room.roomState } : {}),
+      });
     }
     connection.send({ type: 'welcome', token: session.token, userId: session.userId });
     if (session.room) session.room.reconnect(session);
@@ -176,6 +190,10 @@ export class Lobby {
 
   private disconnected(session: Session): void {
     session.connection = null;
+    this.track(session, 'disconnect', {
+      inRoom: session.room !== null,
+      ...(session.room ? { roomState: session.room.roomState } : {}),
+    });
     if (session.room) session.room.disconnect(session);
     // Guests with nothing to come back to are forgotten.
     if (!session.room) this.sessions.delete(session.token);
@@ -239,16 +257,16 @@ export class Lobby {
     const open = [...this.rooms.values()].find(
       (room) => room.visibility === 'public' && room.mode === mode && room.isOpen,
     );
-    if (open) return open.join(session);
+    if (open) return open.join(session, 'quickplay');
     const room = this.openRoom(session, 'public', this.defaultSettings(mode));
-    return room.join(session);
+    return room.join(session, 'quickplay');
   }
 
   private createRoom(session: Session, patch: RoomSettingsPatch): string | null {
     if (session.room) return 'you are already in a game';
     const settings = applySettingsPatch(this.defaultSettings('duel'), patch);
     if (typeof settings === 'string') return settings;
-    return this.openRoom(session, 'private', settings).join(session);
+    return this.openRoom(session, 'private', settings).join(session, 'create');
   }
 
   private joinByCode(session: Session, code: string): string | null {
@@ -283,6 +301,7 @@ export class Lobby {
       afkMs: this.options.afkMs,
       finishedLingerMs: this.options.finishedLingerMs,
       onClose: (closed) => this.forget(closed),
+      analytics: this.analytics,
     });
     this.rooms.set(room.id, room);
     this.codes.set(room.code, room);

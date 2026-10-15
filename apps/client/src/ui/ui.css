@@ -1540,17 +1540,6 @@
   text-align: center;
 }
 
-/* The beta access screen */
-
-#ui .gate .error.center {
-  text-align: center;
-}
-
-#ui .gate input {
-  text-align: center;
-  letter-spacing: 0.12em;
-}
-
 /* ---- The tutorial -------------------------------------------------------------------------- */
 
 #ui .tutorial {
@@ -3010,6 +2999,116 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #6f7890;
+}
+
+/* The admin panel's analytics tab */
+#ui .an-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+
+#ui .an-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#ui .an-section .admin-sub {
+  margin-top: 14px;
+}
+
+#ui .an-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+#ui .an-line {
+  margin: 0;
+  font-size: 13px;
+  color: #b9c0d0;
+}
+
+#ui .an-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#ui .an-bar {
+  display: grid;
+  grid-template-columns: 150px 1fr 90px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+#ui .an-bar-label {
+  color: #b9c0d0;
+}
+
+#ui .an-bar-track {
+  height: 10px;
+  border-radius: 5px;
+  background: #1c2130;
+  overflow: hidden;
+}
+
+#ui .an-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: #5aa5ff;
+}
+
+#ui .an-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#ui .an-dailies {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+#ui .an-daily h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8a93a8;
+}
+
+#ui .an-daily-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 80px;
+  border-bottom: 1px solid #2a3040;
+}
+
+#ui .an-daily-bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 3px 3px 0 0;
+  background: #5aa5ff;
+}
+
+#ui .an-daily-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6f7890;
+}
+
+@media (max-width: 560px) {
+  #ui .an-bar {
+    grid-template-columns: 1fr 70px;
+  }
+
+  #ui .an-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 #ui .admin-feedback {

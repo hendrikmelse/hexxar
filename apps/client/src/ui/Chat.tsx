@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '@hexxar/shared';
 import { playSound } from '../audio/audio.js';
+import { track } from '../analytics.js';
 import { paletteColor } from '../board.js';
 import { setChatOpen, useApp } from '../store.js';
 import type { Actions } from './App.js';
@@ -182,6 +183,7 @@ export function Chat({
     [],
   );
   const toggle = (): void => {
+    track('chat_toggle', { open: !open });
     setChatOpen(!open);
     // Opening it is for writing something. The field only becomes visible a moment after the
     // window starts to open (see ui.css), and a browser will not focus what is hidden: so wait.

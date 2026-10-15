@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { analyticsIdSchema } from './analytics.js';
 import { matchConfigSchema } from './config.js';
 import { MAP_SIZES } from './params.js';
 import { orderSchema } from './orders.js';
@@ -165,14 +166,15 @@ export type RoomView = z.infer<typeof roomViewSchema>;
 /** Messages sent from client to server. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
   /**
-   * First message on every connection. `token` identifies a returning guest. `code` is the
-   * beta access code, when the server asks for one. Can be sent again after a `denied`.
+   * First message on every connection. `token` identifies a returning guest.
    */
   z.object({
     type: z.literal('hello'),
     name: z.string().trim().min(1).max(24),
     token: z.string().max(100).optional(),
-    code: z.string().max(200).optional(),
+    /** Which browser and which page load this is, for analytics. A malformed id is ignored, never an error. */
+    visitorId: analyticsIdSchema.optional().catch(undefined),
+    sessionId: analyticsIdSchema.optional().catch(undefined),
   }),
   /** Change the name shown to other players. Not possible once in a room. */
   z.object({ type: z.literal('setName'), name: z.string().trim().min(1).max(24) }),
@@ -207,8 +209,6 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export const serverMessageSchema = z.discriminatedUnion('type', [
   /** Reply to `hello`. Keep the token to reconnect as the same guest. */
   z.object({ type: z.literal('welcome'), token: z.string(), userId: z.string() }),
-  /** Reply to a `hello` without the right beta access code. Nothing else works until it is sent. */
-  z.object({ type: z.literal('denied'), reason: z.enum(['code required', 'wrong code']) }),
   /** Where you are: a room, or `null` for the main menu. Sent whenever it changes. */
   z.object({ type: z.literal('room'), room: roomViewSchema.nullable() }),
   /** Full view of the match: sent when it starts and when a player (re)joins it. */

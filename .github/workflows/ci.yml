@@ -22,6 +22,21 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # The tests that need a database run against this one (each in its own throwaway schema).
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: hexxar
+          POSTGRES_PASSWORD: hexxar
+          POSTGRES_DB: hexxar
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U hexxar" --health-interval 5s --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://hexxar:hexxar@localhost:5433/hexxar
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

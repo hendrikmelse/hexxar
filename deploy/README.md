@@ -30,9 +30,9 @@ internet ─▶ Caddy (80/443, automatic HTTPS) ─▶ hexxar (Node, port 8080)
 - Games live in the server's memory. **A deploy ends every running match** (players land
   back in the menu), so prefer deploying when nobody is playing.
 
-- Feedback is kept in a Docker volume (`hexxar_data`, mounted at `/data`), so it survives
-  deploys. Back it up with
-  `docker run --rm -v hexxar_data:/data -v $PWD:/out alpine cp /data/feedback.json /out/`.
+- Feedback and analytics events are kept in the shared Postgres (database `hexxar`, reached
+  over the internal `db` network), so they survive deploys, and `/srv/postgres/backup.sh`
+  backs them up with everything else. The container itself writes nothing to disk.
 
 Files in `deploy/server/` mirror what lives on the server and are copied there by hand;
 CI does not touch them.
@@ -40,24 +40,9 @@ CI does not touch them.
 ## Admin panel and the daily feedback email
 
 `/?admin` on the site opens the admin panel once `ADMIN_PASSWORD` (in `/srv/hexxar/.env`) is
-entered. The same `.env` holds `RESEND_API_KEY` and `FEEDBACK_TO` for the 7am email (Los Angeles
+entered. Its Analytics tab reads the `events` table (see "Analytics" in the main README). The same `.env` holds `RESEND_API_KEY` and `FEEDBACK_TO` for the 7am email (Los Angeles
 time unless `DIGEST_TIMEZONE` says otherwise), which only goes out when something is unresolved.
-The first time, copy the new `compose.yaml` (it adds the data volume) and the new variables, then
-recreate the container as above. Put a long password in: it is the only thing protecting the panel.
-
-## Beta access code
-
-Visitors have to enter a code before they can play. It is `BETA_CODE` in
-`/srv/hexxar/.env` (see `deploy/server/hexxar/.env.example`). To change it:
-
-```bash
-ssh deploy@<ip>
-nano /srv/hexxar/.env
-cd /srv/hexxar && IMAGE=$(cat current-image) docker compose up -d --force-recreate
-```
-
-Everyone who is connected keeps playing until their next reconnect; then the new code is
-needed. Leave `BETA_CODE` empty to open the game to everybody.
+Put a long password in: it is the only thing protecting the panel.
 
 ## One-time setup (already done, for reference)
 
@@ -86,6 +71,26 @@ needed. Leave `BETA_CODE` empty to open the game to everybody.
 5. **GitHub**: an environment named `production` with the secrets `DEPLOY_HOST`,
    `DEPLOY_USER`, `DEPLOY_SSH_KEY` (the private key) and `DEPLOY_KNOWN_HOSTS` (output of
    `ssh-keyscan -t ed25519 <host>`), and the repository variable `DEPLOY_ENABLED=true`.
+
+6. **Database**: the game keeps analytics events (and, once moved, feedback) in the shared
+   Postgres (`/srv/postgres`), in its own database and login role like every other app. As
+   the deploy user, with the password generated on the server so it is never typed or shown:
+
+   ```bash
+   cd /srv/hexxar
+   PW=$(openssl rand -hex 24)
+   docker exec postgres psql -U postgres -v ON_ERROR_STOP=1 \
+     -c "CREATE ROLE hexxar LOGIN PASSWORD '$PW'" \
+     -c "CREATE DATABASE hexxar OWNER hexxar" \
+     -c "REVOKE CONNECT ON DATABASE hexxar FROM PUBLIC"
+   echo "DATABASE_URL=postgres://hexxar:$PW@postgres:5432/hexxar" >> .env
+   chmod 600 .env
+   ```
+
+   The container must also join the `db` network (see `deploy/server/hexxar/compose.yaml`).
+   `/srv/postgres/backup.sh` dumps every database, so `hexxar` is backed up and copied
+   offsite with the others, with no extra work. The tables are created by the server itself on
+   start-up (migrations), so there is nothing else to run.
 
 Pushes to `main` then test, build, push the image and deploy it. Pull requests only run
 the checks and build the image.

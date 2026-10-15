@@ -83,7 +83,7 @@ export interface Lesson {
 }
 
 /** The same length as a real match's default tick. */
-export const TUTORIAL_TICK_MS = 800;
+export const TUTORIAL_TICK_MS = 1000;
 
 export const tutorialConfig = (lesson: Lesson): MatchConfig =>
   parseMatchConfig({ tickMs: TUTORIAL_TICK_MS, fog: 'off', ...lesson.config });

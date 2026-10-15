@@ -8,11 +8,12 @@ import {
   type RoomSettingsPatch,
   type RoomView,
 } from '@hexxar/shared';
+import { track, trackVisit } from './analytics.js';
 import { playSound, preloadSounds } from './audio/audio.js';
 import { Board, playerColor } from './board.js';
 import { applyMessage, emptyGame, isWatching } from './game.js';
 import { Hud } from './hud.js';
-import { connect, loadToken, saveCode, saveToken } from './net.js';
+import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
 import { isPreview, PREVIEW_PANEL_WIDTH, setPreviewSink } from './preview.js';
 import { appStore, saveName } from './store.js';
@@ -407,27 +408,28 @@ mountUi(document.getElementById('ui')!, {
     appStore.set({ name });
     saveName(name);
   },
-  quickPlay: startQuickPlay,
+  quickPlay(mode) {
+    track('menu_action', { action: 'quickplay', mode });
+    startQuickPlay(mode);
+  },
   playAgain(mode) {
     playAgainMode = mode;
     connection.send({ type: 'leaveRoom' });
   },
   createRoom() {
+    track('menu_action', { action: 'create' });
     appStore.set({ error: null });
     sendName();
     connection.send({ type: 'createRoom' });
   },
   joinRoom(code) {
+    track('menu_action', { action: 'join_code' });
     appStore.set({ error: null });
     sendName();
     connection.send({ type: 'joinRoom', code });
   },
   updateRoom(settings: RoomSettingsPatch) {
     connection.send({ type: 'updateRoom', settings });
-  },
-  submitCode(code) {
-    saveCode(code);
-    connection.send({ type: 'hello', name: playerName(), token: loadToken(), code });
   },
   startGame: () => connection.send({ type: 'startGame' }),
   voteStart: (vote) => connection.send({ type: 'voteStart', vote }),
@@ -441,7 +443,11 @@ mountUi(document.getElementById('ui')!, {
     playSound('match.begin');
     appStore.set({ launching: false });
   },
-  startTutorial: () => tutorial.start(0),
+  startTutorial: () => {
+    track('menu_action', { action: 'tutorial' });
+    track('tutorial_start');
+    tutorial.start(0);
+  },
   tutorialNext: () => tutorial.next(),
   tutorialBack: () => tutorial.back(),
   tutorialStartClock: () => tutorial.startClock(),
@@ -466,8 +472,14 @@ function joinFromUrl(): void {
   const code = params.get('join');
   if (!code) return;
   history.replaceState(null, '', location.pathname);
+  track('invite_link_open');
   sendName();
   connection.send({ type: 'joinRoom', code });
+}
+
+// The pages that are not the game (the admin panel, the sound and map previews) are not visits.
+if (!['admin', 'sounds', 'maps'].some((page) => new URLSearchParams(location.search).has(page))) {
+  trackVisit(new URLSearchParams(location.search).has('join'));
 }
 
 // In development the server runs on its own port; in production it serves this page too.
@@ -479,17 +491,12 @@ const url =
 const connection = connect(url, playerName, {
   onOpen: () => appStore.set({ connected: true }),
   // The numbers are only known while connected: show "..." rather than stale ones.
-  onClose: () => appStore.set({ connected: false, denied: null, activity: null }),
+  onClose: () => appStore.set({ connected: false, activity: null }),
   onMessage: (message) => {
     switch (message.type) {
       case 'welcome':
         saveToken(message.token);
-        appStore.set({ userId: message.userId, denied: null });
-        return;
-      case 'denied':
-        // A saved code that no longer works is forgotten, so it is not tried again.
-        if (message.reason === 'wrong code') saveCode(null);
-        appStore.set({ denied: message.reason });
+        appStore.set({ userId: message.userId });
         return;
       case 'room': {
         const previous = appStore.get().room;

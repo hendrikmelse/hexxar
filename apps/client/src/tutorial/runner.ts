@@ -5,6 +5,7 @@ import {
   type Hex,
   type ServerMessage,
 } from '@hexxar/shared';
+import { track } from '../analytics.js';
 import type { GameView } from '../game.js';
 import { LESSONS, tutorialConfig, type Ctx, type HudTarget, type Lesson } from './lessons.js';
 import { LocalMatch } from './localMatch.js';
@@ -128,11 +129,16 @@ export class TutorialRunner {
     this.env.highlight([]);
     this.env.pointer([]);
     this.finished = true;
+    track('tutorial_complete');
     this.publish();
   }
 
   /** Leave the tutorial. */
   exit(): void {
+    // Leaving after the congratulations is the end of a tutorial that was finished, not a quit.
+    if (this.lesson && !this.finished) {
+      track('tutorial_exit', { lesson: this.lessonIndex, step: this.stepIndex });
+    }
     if (this.recheck) clearTimeout(this.recheck);
     this.recheck = null;
     this.match?.dispose();
@@ -189,6 +195,7 @@ export class TutorialRunner {
   /** Put the player back at the start of the current step. */
   retry(): void {
     const step = this.lesson?.steps[this.stepIndex];
+    if (this.lesson) track('tutorial_retry', { lesson: this.lessonIndex, step: this.stepIndex });
     this.enter(step?.retryAt ?? this.stepIndex);
   }
 
@@ -282,6 +289,7 @@ export class TutorialRunner {
     match.setRunning(step.clock === 'running');
     this.started = false;
     this.entering = false;
+    track('tutorial_step', { lesson: this.lessonIndex, step: index });
     this.publish();
     // A task that is already done when the step begins needs no waiting.
     this.evaluate();

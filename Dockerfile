@@ -31,10 +31,8 @@ COPY packages/shared/src packages/shared/src
 COPY apps/server/src apps/server/src
 COPY --from=build /app/apps/client/dist apps/client/dist
 
-# /data holds what must outlive the container (feedback); compose mounts a volume on it, which
-# starts out owned by node because the folder is.
-RUN mkdir /data && chown node:node /data
-ENV PORT=8080 STATIC_DIR=/app/apps/client/dist DATA_DIR=/data
+# Nothing is written to disk: feedback and analytics live in Postgres (DATABASE_URL, set by compose).
+ENV PORT=8080 STATIC_DIR=/app/apps/client/dist
 USER node
 EXPOSE 8080
 WORKDIR /app/apps/server

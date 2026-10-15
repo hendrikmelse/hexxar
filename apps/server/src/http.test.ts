@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { FeedbackStore } from './feedbackStore.js';
+import { MemoryFeedbackStore } from './feedbackStore.js';
 import { createHttpHandler } from './http.js';
 
 const listen = async (server: Server): Promise<string> => {
@@ -77,16 +77,8 @@ describe('feedback route', () => {
       body: typeof body === 'string' ? body : JSON.stringify(body),
     });
 
-  let dir: string;
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'hexxar-store-'));
-  });
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
-  });
-
   const serve = async (withStore = true) => {
-    const store = new FeedbackStore(dir);
+    const store = new MemoryFeedbackStore();
     const server = createServer(createHttpHandler(withStore ? { store } : {}));
     return { server, store, base: await listen(server) };
   };
@@ -95,7 +87,7 @@ describe('feedback route', () => {
     const { server, store, base } = await serve();
     const response = await post(base, { kind: 'bug', message: 'It broke', email: 'a@b.co' });
     expect(response.status).toBe(200);
-    expect(store.list()).toEqual([
+    expect(await store.list()).toEqual([
       expect.objectContaining({ kind: 'bug', message: 'It broke', email: 'a@b.co' }),
     ]);
     server.close();
@@ -110,7 +102,7 @@ describe('feedback route', () => {
     ).toBe(400);
     expect((await post(base, '{not json')).status).toBe(400);
     expect((await post(base, { kind: 'bug', message: 'x'.repeat(20_000) })).status).toBe(413);
-    expect(store.total).toBe(0);
+    expect(await store.total()).toBe(0);
     server.close();
   });
 
@@ -122,7 +114,7 @@ describe('feedback route', () => {
       website: 'spam.example',
     });
     expect(response.status).toBe(200);
-    expect(store.total).toBe(0);
+    expect(await store.total()).toBe(0);
     server.close();
   });
 
@@ -143,8 +135,7 @@ describe('feedback route', () => {
 });
 
 describe('admin routes', () => {
-  let dir: string;
-  let store: FeedbackStore;
+  let store: MemoryFeedbackStore;
   let server: Server;
   let base: string;
   const stats = {
@@ -157,16 +148,14 @@ describe('admin routes', () => {
   };
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'hexxar-admin-'));
-    store = new FeedbackStore(dir);
+    store = new MemoryFeedbackStore();
     server = createServer(
       createHttpHandler({ store, admin: { password: 'pässword', stats: () => stats } }),
     );
     base = await listen(server);
   });
-  afterEach(async () => {
+  afterEach(() => {
     server.close();
-    await rm(dir, { recursive: true, force: true });
   });
 
   const call = (path: string, init: RequestInit = {}, password = 'pässword') =>
@@ -204,12 +193,12 @@ describe('admin routes', () => {
       call(`/feedback/${item.id}`, { method: 'POST', body: JSON.stringify({ resolved }) });
     expect((await resolve('yes')).status).toBe(400);
     expect((await resolve(true)).status).toBe(200);
-    expect(store.open()).toHaveLength(0);
+    expect(await store.open()).toHaveLength(0);
     expect(
       (await call('/feedback/nope', { method: 'POST', body: '{"resolved":true}' })).status,
     ).toBe(404);
     expect((await call(`/feedback/${item.id}`, { method: 'DELETE' })).status).toBe(200);
-    expect(store.total).toBe(0);
+    expect(await store.total()).toBe(0);
   });
 
   it('is off without a password', async () => {

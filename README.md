@@ -1,8 +1,8 @@
 # Hexxar
 
-Online multiplayer conquest game on a shared hex map, played in the browser at **hexxar.io** (currently a closed beta: visitors need an access code).
+Online multiplayer conquest game on a shared hex map, played in the browser at **hexxar.io**.
 
-Players command armies by placing orders into a **queue**. Orders don't execute immediately: every tick (0.8 seconds by default) the server pops one order from each player's queue and resolves them all simultaneously. Planning ahead, queue management, and reading your opponents' moves are the core of the game.
+Players command armies by placing orders into a **queue**. Orders don't execute immediately: every tick (1 second by default) the server pops one order from each player's queue and resolves them all simultaneously. Planning ahead, queue management, and reading your opponents' moves are the core of the game.
 
 ## Design pillars
 
@@ -69,32 +69,35 @@ Open `http://localhost:5173` in two browser tabs (each tab is its own guest) and
 
 Environment variables, or a `.env` file in the repository root (see `.env.example`):
 
-| Variable             | Default                          | Meaning                                                                             |
-| -------------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
-| `BETA_CODE`          | (empty)                          | Access code visitors must enter before they can play. Empty means open to everyone. |
-| `PORT`               | 8080                             | Port for the page, health check and WebSocket                                       |
-| `STATIC_DIR`         | (unset)                          | Folder with the built client to serve (the Docker image sets it)                    |
-| `PREP_MS`            | 6500                             | From a match being created to its first tick: 1.5s loading screen + 5s of planning  |
-| `EARLY_START_MS`     | 60000                            | How long a public Battle Royale waits for more players once it has 3                |
-| `JOIN_WAIT_MS`       | 10000                            | A join tops that wait up to at least this                                           |
-| `FULL_WAIT_MS`       | 5000                             | How long a public room waits after filling up, before the match starts              |
-| `VOTE_START_MS`      | 5000                             | The wait after a successful vote to start early                                     |
-| `AFK_MS`             | 120000                           | How long a disconnected player has before surrendering                              |
-| `FINISHED_LINGER_MS` | 600000                           | How long a finished game's room stays open                                          |
-| `STATS_MS`           | 2000                             | How often the menu's online counts are refreshed                                    |
-| `DATA_DIR`           | `./data`                         | Where feedback is kept (`feedback.json`); the Docker image uses `/data`, a volume   |
-| `ADMIN_PASSWORD`     | (unset)                          | Password for the admin panel at `/?admin`. Without it the panel is off              |
-| `RESEND_API_KEY`     | (unset)                          | Resend API key for the daily feedback email. Without it (or `FEEDBACK_TO`) none     |
-| `FEEDBACK_TO`        | (unset)                          | The email address the daily email goes to                                           |
-| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on it: an address on a domain verified in Resend                   |
-| `DIGEST_HOUR`        | 7                                | The hour of the day the email goes out                                              |
-| `DIGEST_TIMEZONE`    | `America/Los_Angeles`            | The time zone `DIGEST_HOUR` is read in                                              |
-| `PUBLIC_URL`         | `https://hexxar.io`              | The site's address, for the link to the admin panel in the email                    |
-| `RESEND_API_URL`     | (Resend's)                       | Where to send the email: only for trying it out against a stand-in                  |
+| Variable             | Default                          | Meaning                                                                                          |
+| -------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `PORT`               | 8080                             | Port for the page, health check and WebSocket                                                    |
+| `STATIC_DIR`         | (unset)                          | Folder with the built client to serve (the Docker image sets it)                                 |
+| `PREP_MS`            | 6500                             | From a match being created to its first tick: 1.5s loading screen + 5s of planning               |
+| `EARLY_START_MS`     | 60000                            | How long a public Battle Royale waits for more players once it has 3                             |
+| `JOIN_WAIT_MS`       | 10000                            | A join tops that wait up to at least this                                                        |
+| `FULL_WAIT_MS`       | 5000                             | How long a public room waits after filling up, before the match starts                           |
+| `VOTE_START_MS`      | 5000                             | The wait after a successful vote to start early                                                  |
+| `AFK_MS`             | 120000                           | How long a disconnected player has before surrendering                                           |
+| `FINISHED_LINGER_MS` | 600000                           | How long a finished game's room stays open                                                       |
+| `STATS_MS`           | 2000                             | How often the menu's online counts are refreshed                                                 |
+| `DATABASE_URL`       | (unset)                          | Postgres, for feedback and analytics. Without it feedback is kept in memory and analytics is off |
+| `ADMIN_PASSWORD`     | (unset)                          | Password for the admin panel at `/?admin`. Without it the panel is off                           |
+| `RESEND_API_KEY`     | (unset)                          | Resend API key for the daily feedback email. Without it (or `FEEDBACK_TO`) none                  |
+| `FEEDBACK_TO`        | (unset)                          | The email address the daily email goes to                                                        |
+| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on it: an address on a domain verified in Resend                                |
+| `DIGEST_HOUR`        | 7                                | The hour of the day the email goes out                                                           |
+| `DIGEST_TIMEZONE`    | `America/Los_Angeles`            | The time zone `DIGEST_HOUR` is read in                                                           |
+| `PUBLIC_URL`         | `https://hexxar.io`              | The site's address, for the link to the admin panel in the email                                 |
+| `RESEND_API_URL`     | (Resend's)                       | Where to send the email: only for trying it out against a stand-in                               |
 
-**Feedback and bug reports:** the speech-bubble button in the top right opens a page that posts to `POST /api/feedback`. Each message is kept in `DATA_DIR/feedback.json` (each address can send 5 an hour), and no email is sent for it. Instead, at `DIGEST_HOUR` every day the server emails one list of everything still unresolved through [Resend](https://resend.com), and sends nothing when there is nothing open. A missed email (the server was restarting) is still sent up to 3 hours late.
+**Feedback and bug reports:** the speech-bubble button in the top right opens a page that posts to `POST /api/feedback`. Each message is kept in the `feedback` table (each address can send 5 an hour), and no email is sent for it. Instead, at `DIGEST_HOUR` every day the server emails one list of everything still unresolved through [Resend](https://resend.com), and sends nothing when there is nothing open. A missed email (the server was restarting) is still sent up to 3 hours late.
 
 **Admin panel:** open `/?admin` and enter `ADMIN_PASSWORD`. The Overview tab shows who is online, the public game counts and every open game (refreshed every 3 seconds); the Feedback tab lists the messages with their technical details, and lets you mark them resolved (or open again) and delete them. The API behind it is `GET /api/admin/stats`, `GET /api/admin/feedback`, `POST /api/admin/feedback/:id` (`{"resolved": true}`) and `DELETE /api/admin/feedback/:id`, all with `Authorization: Bearer <URI-encoded password>`; an address that sends 10 wrong passwords in 15 minutes is locked out for the rest of that time. In development, `pnpm seed` fills the hub with sample reports to try it out (it does nothing if there is feedback already; `--force` adds them anyway).
+
+**Analytics:** the game records what people do (see `packages/shared/src/analytics.ts` for every event) in the `events` table, and the admin panel's Analytics tab reports on it. A visitor is a browser: an id the page makes up and keeps in `localStorage`; a page load is a session. The server records what it sees itself (joining and leaving lobbies, how matches start and end, spectating, chat length) and the page reports what only it sees (the tutorial, the menu, the cards after a match) to `POST /api/event`. Nothing identifies a person: no IP address is stored (it is looked at only to rate-limit that endpoint) and no chat text is kept. A browser that sends Do Not Track is not recorded at all. Events are written in batches and dropped, not retried, if the database is down, so analytics can never slow a game or take it down. Events whose visitor is marked `internal` (the site owner's) are left out of every report. To see where visitors come from, share links tagged like `https://hexxar.io/?ref=cool-games-list`: the tag is recorded with the visit and the Analytics tab breaks visitors down by it (other sites that linked here show up by hostname).
+
+Tables are created by the server when it starts (numbered migrations in `apps/server/src/db.ts`; add a step, never edit one). For development, `docker compose up -d db` starts a Postgres on port 5433, and `DATABASE_URL` in `.env.example` points at it. The tests that need a database use their own throwaway schema in it, and are skipped when there is none (set `TEST_DATABASE_URL` to make that an error, as CI does).
 
 `VITE_SERVER_URL` points the client at a different WebSocket server (used by tests and screenshots).
 

@@ -1,4 +1,5 @@
 import type { RoomView } from '@hexxar/shared';
+import { trackChoice } from '../analytics.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
 import { Chat } from './Chat.js';
@@ -13,6 +14,10 @@ export function Results({ actions }: { actions: Actions }) {
 
   // A win says so; anyone else is told the game is over (being knocked out mid-match is "Defeat").
   const banner = won ? 'Victory!' : 'GAME OVER';
+  const pick = (choice: Parameters<typeof trackChoice>[0], then: () => void) => () => {
+    trackChoice(choice, 'result', room);
+    then();
+  };
 
   return (
     <>
@@ -26,7 +31,7 @@ export function Results({ actions }: { actions: Actions }) {
             data-sound="ui.back"
             aria-label="Close"
             title="Close"
-            onClick={actions.spectate}
+            onClick={pick('spectate', actions.spectate)}
           >
             ×
           </button>
@@ -48,15 +53,22 @@ export function Results({ actions }: { actions: Actions }) {
             </div>
           )}
           <div className="end-buttons">
-            <button data-sound="ui.back" onClick={actions.leaveRoom}>
+            <button data-sound="ui.back" onClick={pick('menu', actions.leaveRoom)}>
               Main menu
             </button>
             {room.visibility === 'private' ? (
-              <button className="primary" data-sound="ui.back" onClick={actions.returnToRoom}>
+              <button
+                className="primary"
+                data-sound="ui.back"
+                onClick={pick('back_to_room', actions.returnToRoom)}
+              >
                 Back to room
               </button>
             ) : (
-              <button className="primary" onClick={() => actions.playAgain(room.settings.mode)}>
+              <button
+                className="primary"
+                onClick={pick('play_again', () => actions.playAgain(room.settings.mode))}
+              >
                 Play again
               </button>
             )}

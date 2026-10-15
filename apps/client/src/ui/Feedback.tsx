@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FEEDBACK_MAX_LENGTH, type FeedbackKind } from '@hexxar/shared';
+import { track } from '../analytics.js';
 import { serverHttpUrl } from '../serverUrl.js';
 import { appStore, navigate, useApp, type AppState } from '../store.js';
 import { PRIVACY_PATH } from './Footer.js';
@@ -66,6 +67,7 @@ export function Feedback() {
         }),
       });
       if (response.ok) {
+        track('feedback_submit', { kind, hasEmail: email.trim() !== '' });
         setMessage('');
         setStatus({ kind: 'sent' });
         return;

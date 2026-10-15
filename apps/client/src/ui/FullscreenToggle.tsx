@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { track } from '../analytics.js';
 
 /**
  * The fullscreen button, just left of the sound button in the top right of every screen. Left out
@@ -16,6 +17,7 @@ export function FullscreenToggle() {
   const label = full ? 'Leave fullscreen' : 'Fullscreen';
   const toggle = (): void => {
     // The browser may refuse (it only allows this from a click); there is nothing to tell the player.
+    track('fullscreen_toggle', { on: !full });
     const request = full ? document.exitFullscreen() : document.documentElement.requestFullscreen();
     request.catch(() => undefined);
   };

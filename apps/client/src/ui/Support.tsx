@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import qrcode from 'qrcode-generator';
+import { track } from '../analytics.js';
 import { SUPPORT_LINKS } from '../support.js';
 import { ProviderLogo } from './logos.js';
 
@@ -107,7 +108,10 @@ function SupportCard({ onClose }: { onClose: () => void }) {
                   className="support-pay"
                   aria-label={`Give with ${name}`}
                   disabled={!link}
-                  onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}
+                  onClick={() => {
+                    track('support_click', { what: 'pay', provider: id });
+                    window.open(link, '_blank', 'noopener,noreferrer');
+                  }}
                 >
                   <span className="logo-chip">
                     <ProviderLogo id={id} height={logoHeight} />
@@ -121,7 +125,10 @@ function SupportCard({ onClose }: { onClose: () => void }) {
                   data-tip={open ? undefined : 'Show QR code'}
                   data-tip-pos="below-center"
                   disabled={!link}
-                  onClick={() => setShown(id)}
+                  onClick={() => {
+                    track('support_click', { what: 'qr', provider: id });
+                    setShown(id);
+                  }}
                 >
                   <QrIcon />
                 </button>
@@ -160,7 +167,13 @@ export function SupportLink() {
     <>
       <p className="support-line">
         Enjoying Hexxar?{' '}
-        <button className="support-link" onClick={() => setOpen(true)}>
+        <button
+          className="support-link"
+          onClick={() => {
+            track('support_click', { what: 'open' });
+            setOpen(true);
+          }}
+        >
           Support it.
         </button>
       </p>

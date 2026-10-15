@@ -71,11 +71,7 @@ There is one chat per room, and who may read and write in it depends on where th
 ## Protocol
 
 - Client: `hello`, `setName`, `quickPlay` (with a mode), `voteStart`, `createRoom`, `joinRoom`, `updateRoom`, `startGame`, `leaveRoom`, `chat`, plus the in-match `order` and `surrender`.
-- Server: `welcome`, `denied` (see below), `room` (your room, or `null` for the menu; sent on every change), `stats` (online counts for the menu), `snapshot`, `tick`, `queued`, `chat` (see above), `rejected`.
-
-## Beta access code
-
-When the server has a `BETA_CODE`, `hello` must carry it (`code`). Without the right one the server answers `denied` (`code required` or `wrong code`) and nothing else works on that connection; a connection that guesses wrong five times is dropped. The client shows an access screen, remembers the code in the browser, and forgets it if the server later refuses it. The comparison is constant-time. With no `BETA_CODE` the server is open.
+- Server: `welcome`, `room` (your room, or `null` for the menu; sent on every change), `stats` (online counts for the menu), `snapshot`, `tick`, `queued`, `chat` (see above), `rejected`.
 
 ## Not built yet
 

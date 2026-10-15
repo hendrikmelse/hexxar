@@ -4,7 +4,6 @@ import type { RoomMode, RoomSettingsPatch } from '@hexxar/shared';
 import { useApp } from '../store.js';
 import { Admin } from './Admin.js';
 import { Connecting } from './Connecting.js';
-import { Gate } from './Gate.js';
 import { MapsPage } from './MapsPage.js';
 import { Loading } from './Loading.js';
 import { Lobby } from './Lobby.js';
@@ -29,7 +28,6 @@ export interface Actions {
   createRoom(): void;
   joinRoom(code: string): void;
   updateRoom(patch: RoomSettingsPatch): void;
-  submitCode(code: string): void;
   startGame(): void;
   voteStart(vote: boolean): void;
   leaveRoom(): void;
@@ -185,8 +183,7 @@ function Screen({ actions }: { actions: Actions }) {
     // Once we have been connected, a dropped connection is a reconnect.
     return withFooter(<Connecting reconnecting={app.userId !== null} />);
   }
-  if (app.denied) return withFooter(<Gate actions={actions} />);
-  // Wait for the server's welcome (or its refusal) before showing the menu.
+  // Wait for the server's welcome before showing the menu.
   if (app.userId === null) return withFooter(<Connecting reconnecting={false} />);
   const room = app.room;
   if (!room) return withFooter(<Menu actions={actions} />);

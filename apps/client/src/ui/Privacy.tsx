@@ -18,8 +18,9 @@ export function Privacy() {
         <div className="privacy-body">
           <div className="privacy-scroll">
             <p className="privacy-summary">
-              The short version: Hexxar has no accounts, no ads, no analytics and no tracking. It
-              keeps only what it needs to run a game, plus whatever you choose to send me.
+              The short version: Hexxar has no accounts, no ads and no tracking across other sites.
+              It keeps what it needs to run a game, some anonymous usage statistics to help me
+              improve it, and whatever you choose to send me.
             </p>
 
             <h2>Who runs Hexxar</h2>
@@ -39,10 +40,13 @@ export function Privacy() {
             </p>
             <ul>
               <li>the name you play under, and whether you have turned sound off;</li>
-              <li>the beta access code, if the game asks for one and you enter it;</li>
               <li>
                 a random guest token, so you can rejoin your game if your connection drops. It is
-                forgotten when you close the tab.
+                forgotten when you close the tab;
+              </li>
+              <li>
+                a random anonymous ID, so my usage statistics (see below) can tell one browser from
+                another. It is not linked to your name or anything about who you are.
               </li>
             </ul>
             <p>
@@ -56,12 +60,29 @@ export function Privacy() {
               you play under (a random one such as &ldquo;Lucky Wombat&rdquo; unless you change it),
               and your moves. Your name is shown to the other players in your game. Games are held
               in the server&rsquo;s memory and are discarded when the game ends and its room closes.
-              Nothing about a game is saved to a database.
+              The games themselves are not saved; see the next section for the statistics I keep
+              about how the game is used.
             </p>
             <p>
               Like any website, the server that delivers Hexxar can see your IP address when you
               connect, and it may keep short-lived standard logs (such as the time, the page asked
               for, and the address) for security and to fix problems.
+            </p>
+
+            <h2>Anonymous usage statistics</h2>
+            <p>
+              To learn how Hexxar is used and where it can be better, I keep anonymous statistics
+              about what happens in the game and the pages around it: for example how people find
+              their way through the menus and the tutorial, how long games and waits last, and how
+              games end. I do not keep your IP address with them, and I do not keep the text of
+              anything you type in the game, such as chat messages. They are tied to the random ID
+              above, not to who you are. They are stored in a database on my own server, are never
+              sold or shared, and are not sent to any analytics or advertising company.
+            </p>
+            <p>
+              If your browser sends a &ldquo;Do Not Track&rdquo; signal, Hexxar respects it and the
+              page does not report anything. The statistics are about how the game is used overall,
+              not about individual players.
             </p>
 
             <h2>Feedback and bug reports</h2>
@@ -77,15 +98,15 @@ export function Privacy() {
               </li>
             </ul>
             <p>
-              The message is sent to me by email through{' '}
+              The message is saved in my database and sent to me by email through{' '}
               <a href="https://resend.com" target="_blank" rel="noopener noreferrer">
                 Resend
               </a>
               , an email delivery service. I use it only to read your message, reply if you asked me
-              to, and improve Hexxar. It stays in my email inbox until I no longer need it or you
-              ask me to delete it. I do not share it. To keep the form from being flooded, the
-              server briefly remembers your IP address (in memory, for up to an hour) to count how
-              many messages it has sent; it is not saved.
+              to, and improve Hexxar. It stays there and in my email inbox until I no longer need it
+              or you ask me to delete it. I do not share it. To keep the form from being flooded,
+              the server briefly remembers your IP address (in memory, for up to an hour) to count
+              how many messages it has sent; it is not saved.
             </p>
 
             <h2>Giving</h2>
@@ -106,9 +127,9 @@ export function Privacy() {
             <h2>What I do not do</h2>
             <ul>
               <li>No ads, and no ad networks.</li>
-              <li>No analytics, tracking pixels or third-party cookies.</li>
+              <li>No third-party analytics, tracking pixels or third-party cookies.</li>
               <li>I do not sell your information or share it for marketing.</li>
-              <li>I do not build profiles of players.</li>
+              <li>I do not build profiles of individual players.</li>
             </ul>
 
             <h2>Children</h2>

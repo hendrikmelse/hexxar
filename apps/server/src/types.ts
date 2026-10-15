@@ -23,6 +23,9 @@ export interface Session {
   /** `null` while the guest's connection is down. */
   connection: Connection | null;
   room: Room | null;
+  /** Which browser and which page load this guest is, for analytics (unknown for an old page). */
+  visitorId?: string;
+  sessionId?: string;
   /** The numbers last sent to this guest's menu, so they are sent again once they differ. */
   statsSent?: string;
 }

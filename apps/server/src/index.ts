@@ -1,14 +1,25 @@
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
+import { EventRecorder, noAnalytics } from './analytics.js';
+import { buildReport } from './analyticsReport.js';
 import { createDigest, createMailer } from './feedback.js';
-import { FeedbackStore } from './feedbackStore.js';
+import { openDb } from './db.js';
+import { MemoryFeedbackStore, PgFeedbackStore } from './feedbackStore.js';
 import { createHttpHandler } from './http.js';
 import { Lobby } from './lobby.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
+// Feedback and analytics live in Postgres (DATABASE_URL), and a daily email lists what feedback is
+// still open (through Resend). Without a database, feedback is kept in memory and analytics is off.
+const db = process.env.DATABASE_URL ? await openDb(process.env.DATABASE_URL) : null;
+if (!db) console.warn('DATABASE_URL is not set: feedback is kept in memory and analytics is off');
+const recorder = db ? new EventRecorder(db) : null;
+recorder?.start();
+const analytics = recorder ?? noAnalytics;
+
 const lobby = new Lobby({
-  betaCode: process.env.BETA_CODE,
+  analytics,
   // 5 seconds to plan once the board is up, plus the client's 1.5 second loading screen before it.
   prepMs: Number(process.env.PREP_MS ?? 6500),
   earlyStartMs: Number(process.env.EARLY_START_MS ?? 60_000),
@@ -22,8 +33,7 @@ const lobby = new Lobby({
 
 // One port serves the built client (when STATIC_DIR is set), a health check, the feedback form,
 // the admin panel's API and the game's WebSocket at /ws.
-// Feedback is kept in DATA_DIR, and a daily email lists what is still open (through Resend).
-const store = new FeedbackStore(process.env.DATA_DIR ?? './data');
+const store = db ? new PgFeedbackStore(db) : new MemoryFeedbackStore();
 const startedAt = Date.now();
 
 const adminPassword = process.env.ADMIN_PASSWORD;
@@ -50,11 +60,13 @@ if (resendKey && feedbackTo) {
 const handleHttp = createHttpHandler({
   ...(process.env.STATIC_DIR ? { staticDir: process.env.STATIC_DIR } : {}),
   store,
+  analytics,
   ...(adminPassword
     ? {
         admin: {
           password: adminPassword,
           stats: () => ({ serverTime: Date.now(), startedAt, ...lobby.adminStats() }),
+          ...(db ? { report: (days: number) => buildReport(db, days) } : {}),
         },
       }
     : {}),
@@ -80,4 +92,10 @@ wss.on('connection', (ws) => {
 });
 
 http.listen(PORT, () => console.log(`hexxar server listening on port ${PORT}`));
-if (!process.env.BETA_CODE) console.log('BETA_CODE is not set: anyone can connect');
+
+// A deploy stops the container with SIGTERM: write out the events still waiting first.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    void (recorder?.stop() ?? Promise.resolve()).finally(() => process.exit(0));
+  });
+}

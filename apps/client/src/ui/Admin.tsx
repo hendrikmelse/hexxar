@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AdminStats, StoredFeedback } from '@hexxar/shared';
+import type { AdminStats, AnalyticsReport, StoredFeedback } from '@hexxar/shared';
 import { serverHttpUrl } from '../serverUrl.js';
+import { Analytics } from './AdminAnalytics.js';
 import { Segmented } from './Lobby.js';
 
 /** The admin panel, at `/?admin`. The password is kept for the tab only. */
@@ -110,7 +111,7 @@ function Login({
   );
 }
 
-type Tab = 'overview' | 'feedback';
+type Tab = 'overview' | 'analytics' | 'feedback';
 
 function Dashboard({ password, onSignOut }: { password: string; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -133,6 +134,11 @@ function Dashboard({ password, onSignOut }: { password: string; onSignOut: () =>
     return () => clearInterval(id);
   }, [refresh]);
 
+  const loadReport = useCallback(
+    (days: number) => api<AnalyticsReport>(password, `/analytics?days=${days}`),
+    [password],
+  );
+
   const open = stats?.feedback.open ?? 0;
   return (
     <div className="card admin">
@@ -149,6 +155,7 @@ function Dashboard({ password, onSignOut }: { password: string; onSignOut: () =>
         value={tab}
         options={[
           { value: 'overview', label: 'Overview' },
+          { value: 'analytics', label: 'Analytics' },
           { value: 'feedback', label: open > 0 ? `Feedback (${open})` : 'Feedback' },
         ]}
         onChange={setTab}
@@ -159,11 +166,9 @@ function Dashboard({ password, onSignOut }: { password: string; onSignOut: () =>
           {error}
         </p>
       )}
-      {tab === 'overview' ? (
-        <Overview stats={stats} />
-      ) : (
-        <FeedbackHub password={password} onChanged={() => void refresh()} />
-      )}
+      {tab === 'overview' && <Overview stats={stats} />}
+      {tab === 'analytics' && <Analytics load={loadReport} />}
+      {tab === 'feedback' && <FeedbackHub password={password} onChanged={() => void refresh()} />}
     </div>
   );
 }
