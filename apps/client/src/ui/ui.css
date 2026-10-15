@@ -3561,3 +3561,20 @@
 #ui a.admin-spectate:hover {
   filter: brightness(1.08);
 }
+
+/* The notice phones are shown instead of the game */
+
+#ui .phone-notice {
+  text-align: center;
+}
+
+#ui .phone-notice p {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: #b9c0d0;
+}
+
+#ui .phone-notice strong {
+  color: #e8eaf0;
+}

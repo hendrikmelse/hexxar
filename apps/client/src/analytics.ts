@@ -132,10 +132,17 @@ export function trackChoice(
 /** Report that the page was opened: whether this browser has been here, how it got here, and what kind of screen it is. */
 export function trackVisit(invited: boolean, extra: EventProps = {}): void {
   // A link can say where it was shared (hexxar.io/?ref=cool-games-list): kept as plain lowercase words.
-  const ref = (new URLSearchParams(location.search).get('ref') ?? '')
+  const params = new URLSearchParams(location.search);
+  const ref = (params.get('ref') ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9_.-]/g, '')
     .slice(0, 40);
+  if (params.has('ref')) {
+    // Once read, the tag is not needed: the address bar shows a clean link (anything else in it stays).
+    params.delete('ref');
+    const rest = params.toString();
+    history.replaceState(null, '', `${location.pathname}${rest ? `?${rest}` : ''}${location.hash}`);
+  }
   let referrer = 'none';
   try {
     if (document.referrer) {
