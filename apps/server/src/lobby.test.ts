@@ -659,6 +659,45 @@ describe('Lobby battle royale', () => {
       expect(late.room?.id).not.toBe(clients[0]!.room?.id);
     });
 
+    it('takes anyone who joins by code after the match has begun as a spectator', () => {
+      const clients = joinPublic(12);
+      const code = clients[0]!.room!.code;
+      const late = new FakeClient(lobby).hello('Late');
+      late.say({ type: 'joinRoom', code });
+      expect(late.room).toMatchObject({ id: clients[0]!.room?.id, spectating: true });
+      expect(late.last('snapshot').you).toBeNull();
+      expect(clients[0]!.room?.spectators).toEqual(['Late']);
+      expect(clients[0]!.room?.players).toHaveLength(12);
+      // They cannot play, or change anything.
+      late.say({ type: 'startGame' });
+      expect(late.last('rejected').reason).toMatch(/host/);
+      late.say({ type: 'becomePlayer' });
+      expect(late.last('rejected').reason).toMatch(/no spectators|started/);
+      // Leaving costs the players nothing.
+      late.say({ type: 'leaveRoom' });
+      expect(late.room).toBeNull();
+      expect(clients[0]!.room?.spectators).toEqual([]);
+      expect(clients[0]!.room?.state).toBe('running');
+    });
+
+    it('still takes someone who joins an open public lobby by code as a player', () => {
+      const clients = joinPublic(12);
+      expect(clients[0]!.room?.state).toBe('running');
+      const [first] = joinPublic(1);
+      const joiner = new FakeClient(lobby).hello('Jo');
+      joiner.say({ type: 'joinRoom', code: first!.room!.code });
+      expect(joiner.room).toMatchObject({ spectating: false, state: 'lobby' });
+    });
+
+    it('does not count spectators among the players in the menu', () => {
+      const clients = joinPublic(12);
+      const watcher = new FakeClient(lobby).hello('Wes');
+      watcher.say({ type: 'joinRoom', code: clients[0]!.room!.code });
+      expect(watcher.room?.spectating).toBe(true);
+      const menu = new FakeClient(lobby).hello('Menu');
+      expect(menu.last('stats')).toMatchObject({ ffa: 12 });
+    });
+
     it('plays on when someone leaves a match that started with a full room', () => {
       const clients = joinPublic(12);
       clients[11]!.say({ type: 'leaveRoom' });

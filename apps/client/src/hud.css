@@ -431,6 +431,9 @@
   position: absolute;
   top: 0;
   left: calc(100% + 12px);
+  /* Sitting past its container's edge leaves no room to grow into, so without this it shrinks to its
+     narrowest and breaks "Room code" onto two lines. */
+  width: max-content;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -483,6 +486,11 @@
   line-height: 1.1;
   letter-spacing: 0.14em;
   color: #eef5ff;
+  /* The HUD lets clicks through to the board; the code takes them so it can be selected and copied,
+     like any text: drag over it. */
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 
 #hud .spectator-tally {
