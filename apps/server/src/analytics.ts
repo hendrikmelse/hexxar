@@ -22,7 +22,7 @@ export const noAnalytics: Analytics = { record: () => undefined };
 interface Pending {
   readonly at: Date;
   readonly event: AnalyticsEvent;
-  readonly internal: boolean;
+  internal: boolean;
 }
 
 export interface RecorderOptions {
@@ -72,9 +72,47 @@ export class EventRecorder implements Analytics {
     await this.flush();
   }
 
+  /** Events from this visitor, from now on and those still waiting to be written, are (or are not) internal. */
   markInternal(visitorId: string, internal: boolean): void {
     if (internal) this.internal.add(visitorId);
     else this.internal.delete(visitorId);
+    for (const waiting of this.pending) {
+      if (waiting.event.visitorId === visitorId) waiting.internal = internal;
+    }
+  }
+
+  isInternal(visitorId: string): boolean {
+    return this.internal.has(visitorId);
+  }
+
+  /** Remember the browsers marked as the owner's in earlier runs. */
+  async loadInternal(): Promise<void> {
+    const { rows } = await this.db.query<{ visitor_id: string }>(
+      'SELECT visitor_id FROM internal_visitors',
+    );
+    for (const row of rows) this.internal.add(row.visitor_id);
+  }
+
+  /**
+   * Mark a browser as the owner's (or not), for good: what it did before is changed too, so the
+   * reports leave it out (or put it back) however far back they look.
+   */
+  async setInternal(visitorId: string, internal: boolean): Promise<void> {
+    this.markInternal(visitorId, internal);
+    // What is waiting is written first, so the update below reaches it too.
+    await this.flush();
+    if (internal) {
+      await this.db.query(
+        'INSERT INTO internal_visitors (visitor_id) VALUES ($1) ON CONFLICT DO NOTHING',
+        [visitorId],
+      );
+    } else {
+      await this.db.query('DELETE FROM internal_visitors WHERE visitor_id = $1', [visitorId]);
+    }
+    await this.db.query(
+      'UPDATE events SET internal = $2 WHERE visitor_id = $1 AND internal <> $2',
+      [visitorId, internal],
+    );
   }
 
   record(event: AnalyticsEvent): void {

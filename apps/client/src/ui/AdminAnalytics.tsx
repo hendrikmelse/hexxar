@@ -106,7 +106,14 @@ function Daily({
 }
 
 /** The analytics tab: what the numbers say about how people use the game. */
-export function Analytics({ load }: { load: (days: number) => Promise<AnalyticsReport> }) {
+export function Analytics({
+  load,
+  ownBrowser,
+}: {
+  load: (days: number) => Promise<AnalyticsReport>;
+  /** Whether this browser is left out of the numbers, and the way to change that. */
+  ownBrowser: { available: boolean; on: boolean | null; set: (on: boolean) => void };
+}) {
   const [days, setDays] = useState<Range>(30);
   const [report, setReport] = useState<AnalyticsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +139,7 @@ export function Analytics({ load }: { load: (days: number) => Promise<AnalyticsR
       current = false;
       clearInterval(id);
     };
-  }, [load, days]);
+  }, [load, days, ownBrowser.on]);
 
   return (
     <>
@@ -149,6 +156,21 @@ export function Analytics({ load }: { load: (days: number) => Promise<AnalyticsR
       )}
       {!report && !error && <p className="muted center">Loading...</p>}
       {report && <Report report={report} />}
+      {ownBrowser.available && ownBrowser.on !== null && (
+        <label className="an-own">
+          <input
+            type="checkbox"
+            checked={ownBrowser.on}
+            onChange={(event) => ownBrowser.set(event.target.checked)}
+          />
+          Leave this browser out of these numbers (it is mine)
+        </label>
+      )}
+      {!ownBrowser.available && (
+        <p className="muted center">
+          This browser sends Do Not Track, so it is never recorded and needs no exclusion.
+        </p>
+      )}
     </>
   );
 }

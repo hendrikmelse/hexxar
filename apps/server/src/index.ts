@@ -16,6 +16,7 @@ const db = process.env.DATABASE_URL ? await openDb(process.env.DATABASE_URL) : n
 if (!db) console.warn('DATABASE_URL is not set: feedback is kept in memory and analytics is off');
 const recorder = db ? new EventRecorder(db) : null;
 recorder?.start();
+await recorder?.loadInternal();
 const analytics = recorder ?? noAnalytics;
 
 const lobby = new Lobby({
@@ -67,6 +68,15 @@ const handleHttp = createHttpHandler({
           password: adminPassword,
           stats: () => ({ serverTime: Date.now(), startedAt, ...lobby.adminStats() }),
           ...(db ? { report: (days: number) => buildReport(db, days) } : {}),
+          ...(recorder
+            ? {
+                internal: {
+                  has: (visitorId: string) => recorder.isInternal(visitorId),
+                  set: (visitorId: string, internal: boolean) =>
+                    recorder.setInternal(visitorId, internal),
+                },
+              }
+            : {}),
         },
       }
     : {}),

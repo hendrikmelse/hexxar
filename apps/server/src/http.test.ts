@@ -201,6 +201,42 @@ describe('admin routes', () => {
     expect(await store.total()).toBe(0);
   });
 
+  it('marks a browser as belonging to the owner, and says whether it does', async () => {
+    const marked = new Set<string>();
+    const own = createServer(
+      createHttpHandler({
+        store,
+        admin: {
+          password: 'pässword',
+          stats: () => stats,
+          internal: {
+            has: (id) => marked.has(id),
+            set: async (id, on) => void (on ? marked.add(id) : marked.delete(id)),
+          },
+        },
+      }),
+    );
+    const url = await listen(own);
+    const call2 = (path: string, init: RequestInit = {}, password = 'pässword') =>
+      fetch(`${url}/api/admin${path}`, {
+        ...init,
+        headers: { Authorization: `Bearer ${encodeURIComponent(password)}` },
+      });
+    const id = 'browser-12345678';
+    expect(await (await call2(`/internal?visitorId=${id}`)).json()).toEqual({ internal: false });
+    const mark = (body: unknown, password?: string) =>
+      call2('/internal', { method: 'POST', body: JSON.stringify(body) }, password);
+    expect((await mark({ visitorId: id, internal: true }, 'wrong')).status).toBe(401);
+    expect(marked.size).toBe(0);
+    expect((await mark({ visitorId: 'x', internal: true })).status).toBe(400);
+    expect((await mark({ visitorId: id, internal: 'yes' })).status).toBe(400);
+    expect((await mark({ visitorId: id, internal: true })).status).toBe(200);
+    expect(await (await call2(`/internal?visitorId=${id}`)).json()).toEqual({ internal: true });
+    expect((await mark({ visitorId: id, internal: false })).status).toBe(200);
+    expect(marked.size).toBe(0);
+    own.close();
+  });
+
   it('is off without a password', async () => {
     const off = createServer(createHttpHandler({ store }));
     const url = await listen(off);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminStats, AnalyticsReport, StoredFeedback } from '@hexxar/shared';
+import { visitorId } from '../analytics.js';
 import { serverHttpUrl } from '../serverUrl.js';
 import { Analytics } from './AdminAnalytics.js';
 import { Segmented } from './Lobby.js';
@@ -111,6 +112,74 @@ function Login({
   );
 }
 
+/** Set once this browser has been left out of the analytics automatically, so turning it off sticks. */
+const OWNER_KEY = 'hexxar.owner';
+
+/**
+ * Whether this browser is left out of the analytics (it is the owner's). Signing in to the panel
+ * from a browser for the first time marks it, since whoever signs in is the owner; after that it is
+ * a choice, made with the checkbox on the Analytics tab.
+ */
+function useOwnBrowser(password: string): {
+  available: boolean;
+  on: boolean | null;
+  set: (on: boolean) => void;
+} {
+  const [on, setOn] = useState<boolean | null>(null);
+  const available = visitorId !== undefined;
+
+  const set = useCallback(
+    (value: boolean): void => {
+      if (!visitorId) return;
+      // The box only changes once the server has, so the numbers are reloaded after it has.
+      api<{ internal: boolean }>(password, '/internal', {
+        method: 'POST',
+        body: JSON.stringify({ visitorId, internal: value }),
+      }).then(
+        () => setOn(value),
+        () => undefined,
+      );
+    },
+    [password],
+  );
+
+  useEffect(() => {
+    if (!visitorId) return;
+    let current = true;
+    void (async () => {
+      try {
+        const known = await api<{ internal: boolean }>(
+          password,
+          `/internal?visitorId=${encodeURIComponent(visitorId)}`,
+        );
+        if (!current) return;
+        setOn(known.internal);
+        let asked = false;
+        try {
+          asked = localStorage.getItem(OWNER_KEY) !== null;
+          localStorage.setItem(OWNER_KEY, '1');
+        } catch {
+          // Without storage the browser is simply marked each time it signs in.
+        }
+        if (!known.internal && !asked) {
+          await api(password, '/internal', {
+            method: 'POST',
+            body: JSON.stringify({ visitorId, internal: true }),
+          });
+          if (current) setOn(true);
+        }
+      } catch {
+        // The analytics tab says the setting is unavailable.
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [password]);
+
+  return { available, on, set };
+}
+
 type Tab = 'overview' | 'analytics' | 'feedback';
 
 function Dashboard({ password, onSignOut }: { password: string; onSignOut: () => void }) {
@@ -133,6 +202,8 @@ function Dashboard({ password, onSignOut }: { password: string; onSignOut: () =>
     const id = setInterval(() => void refresh(), 3000);
     return () => clearInterval(id);
   }, [refresh]);
+
+  const internal = useOwnBrowser(password);
 
   const loadReport = useCallback(
     (days: number) => api<AnalyticsReport>(password, `/analytics?days=${days}`),
@@ -167,7 +238,7 @@ function Dashboard({ password, onSignOut }: { password: string; onSignOut: () =>
         </p>
       )}
       {tab === 'overview' && <Overview stats={stats} />}
-      {tab === 'analytics' && <Analytics load={loadReport} />}
+      {tab === 'analytics' && <Analytics load={loadReport} ownBrowser={internal} />}
       {tab === 'feedback' && <FeedbackHub password={password} onChanged={() => void refresh()} />}
     </div>
   );

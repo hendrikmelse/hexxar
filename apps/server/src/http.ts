@@ -5,6 +5,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import {
   eventBatchSchema,
   feedbackSchema,
+  internalVisitorSchema,
   type AdminStats,
   type AnalyticsReport,
 } from '@hexxar/shared';
@@ -25,6 +26,15 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.woff2': 'font/woff2',
 };
 
+/** The JSON in a request body, or undefined if there is none or it is not JSON. */
+function safeJson(body: string | null): unknown {
+  try {
+    return JSON.parse(body ?? '');
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The server's plain HTTP side: a health check, and (when `staticDir` is given) the built
  * client, so one process and one port serve both the page and the game's WebSocket. Paths that
@@ -43,6 +53,11 @@ export interface HttpOptions {
     stats: () => Omit<AdminStats, 'feedback'>;
     /** The analytics report for the last so many days; without it the analytics tab says it is not set up. */
     report?: (days: number) => Promise<AnalyticsReport>;
+    /** Which browsers are the owner's, whose activity the analytics leaves out; without it, the panel cannot say. */
+    internal?: {
+      has: (visitorId: string) => boolean;
+      set: (visitorId: string, internal: boolean) => Promise<void>;
+    };
   };
 }
 
@@ -210,6 +225,21 @@ export function createHttpHandler({
       // A week, a month, a quarter or a year; anything else is a month.
       const days = [7, 30, 90, 365].includes(asked) ? asked : 30;
       return json(res, 200, await admin.report(days));
+    }
+    if (route === '/internal') {
+      if (!admin.internal) return json(res, 503, { error: 'Analytics is not set up.' });
+      if (req.method === 'GET') {
+        const asked = new URL(req.url ?? '', 'http://localhost').searchParams.get('visitorId');
+        const parsed = internalVisitorSchema.shape.visitorId.safeParse(asked);
+        if (!parsed.success) return json(res, 400, { error: 'Say which browser.' });
+        return json(res, 200, { internal: admin.internal.has(parsed.data) });
+      }
+      if (req.method === 'POST') {
+        const parsed = internalVisitorSchema.safeParse(safeJson(await readBody(req, 1024)));
+        if (!parsed.success) return json(res, 400, { error: 'Say which browser, and whether.' });
+        await admin.internal.set(parsed.data.visitorId, parsed.data.internal);
+        return json(res, 200, { internal: parsed.data.internal });
+      }
     }
     if (req.method === 'GET' && route === '/feedback') {
       return json(res, 200, { feedback: await store.list() });

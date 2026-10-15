@@ -10,6 +10,12 @@ import { z } from 'zod';
 /** What the page makes up for itself: letters, digits, dashes and underscores. */
 export const analyticsIdSchema = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/);
 
+/** The admin marking a browser as the owner's (left out of the numbers) or not. */
+export const internalVisitorSchema = z.object({
+  visitorId: analyticsIdSchema,
+  internal: z.boolean(),
+});
+
 /**
  * Events the browser reports (POST /api/event), because the server never sees them: the tutorial
  * runs in the page, and so does everything in the menus and on the result cards.

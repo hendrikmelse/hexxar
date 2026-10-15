@@ -42,6 +42,13 @@ const MIGRATIONS: readonly string[] = [
   CREATE INDEX events_visitor_at ON events (visitor_id, at);
   CREATE INDEX events_session ON events (session_id, at);
   `,
+  `
+  -- Browsers whose activity is the owner's: their events are kept, but marked internal and left out of reports.
+  CREATE TABLE internal_visitors (
+    visitor_id text PRIMARY KEY,
+    added_at   timestamptz NOT NULL DEFAULT now()
+  );
+  `,
 ];
 
 /** A key for the lock that keeps two servers starting at once from running the same step twice. */

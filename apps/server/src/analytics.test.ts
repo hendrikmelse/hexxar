@@ -347,6 +347,36 @@ describe.skipIf(!testDb)('the event recorder', () => {
     expect(rows).toEqual([{ internal: true }]);
   });
 
+  it('marks what a visitor did before as internal too, and can take it back', async () => {
+    const recorder = new EventRecorder(testDb!.db);
+    recorder.record(event('visit'));
+    await recorder.flush();
+    // Still waiting when the visitor is marked: it must not slip through.
+    recorder.record(event('tutorial_start'));
+    recorder.record({ ...event('visit'), visitorId: 'someone-else' });
+    await recorder.setInternal('visitor-abc', true);
+    const internal = async () =>
+      (await testDb!.db.query('SELECT visitor_id, internal FROM events ORDER BY name, visitor_id'))
+        .rows;
+    expect(await internal()).toEqual([
+      { visitor_id: 'visitor-abc', internal: true },
+      { visitor_id: 'someone-else', internal: false },
+      { visitor_id: 'visitor-abc', internal: true },
+    ]);
+
+    // It is remembered across restarts, and what comes later is marked as it arrives.
+    const restarted = new EventRecorder(testDb!.db);
+    await restarted.loadInternal();
+    expect(restarted.isInternal('visitor-abc')).toBe(true);
+    expect(restarted.isInternal('someone-else')).toBe(false);
+
+    await recorder.setInternal('visitor-abc', false);
+    expect((await internal()).map((row) => row.internal)).toEqual([false, false, false]);
+    const again = new EventRecorder(testDb!.db);
+    await again.loadInternal();
+    expect(again.isInternal('visitor-abc')).toBe(false);
+  });
+
   it('writes by itself once enough are waiting, and when it is stopped', async () => {
     const recorder = new EventRecorder(testDb!.db, { batchSize: 3 });
     for (let i = 0; i < 3; i++) recorder.record(event('visit'));
