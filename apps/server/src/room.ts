@@ -444,15 +444,6 @@ export class Room {
     if (typeof next === 'string') return next;
     const levelChanged = next.botLevel !== this.settings.botLevel;
     this.settings = next;
-    // Asking for bots in every place, with nobody else here, is asking to watch them play.
-    if (
-      patch.bots !== undefined &&
-      next.bots >= this.capacity &&
-      this.humans().length === 1 &&
-      this.memberOf(session)?.spectator === false
-    ) {
-      this.setSpectating(session, true);
-    }
     this.rebalance();
     if (levelChanged)
       for (const member of this.members) if (member.bot) member.bot = this.botOfLevel();

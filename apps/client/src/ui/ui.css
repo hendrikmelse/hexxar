@@ -3499,10 +3499,32 @@
   min-width: 0;
 }
 
-#ui .settings-row button.segment {
-  padding-left: 4px;
-  padding-right: 4px;
-  font-size: 13px;
+/* Three short options on one line */
+#ui .settings-row.three {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* A button that shows one option and goes on to the next when clicked. Every label sits in the
+   same cell, with only the current one showing, so the button keeps the size of the longest. */
+#ui button.cycle {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  height: 40px;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+#ui button.cycle > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+#ui button.cycle > span.on {
+  visibility: visible;
 }
 
 #ui .stepper {
@@ -3510,6 +3532,8 @@
   align-items: center;
   gap: 3px;
   min-width: 0;
+  height: 40px;
+  box-sizing: border-box;
   padding: 3px;
   background: #0f1117;
   border: 1px solid #343a4b;
@@ -3519,13 +3543,54 @@
     0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* The plus and minus are drawn, not typed, so they sit exactly in the middle and look the same
+   everywhere. */
 #ui .stepper button {
+  position: relative;
   flex: none;
-  width: 36px;
+  width: 40px;
+  height: 100%;
   padding: 0;
-  height: 30px;
-  font-size: 20px;
-  line-height: 1;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #4a5269 0%, #343a4f 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 2px 0 #151922;
+}
+
+#ui .stepper button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5a6482 0%, #3f4764 100%);
+}
+
+#ui .stepper button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
+}
+
+#ui .stepper button::before,
+#ui .stepper button::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 2px;
+  background: #e6efff;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+}
+
+#ui .stepper button::before {
+  width: 14px;
+  height: 3px;
+}
+
+#ui .stepper button.stepper-less::after {
+  display: none;
+}
+
+#ui .stepper button.stepper-more::after {
+  width: 3px;
+  height: 14px;
 }
 
 #ui .stepper .stepper-value {
@@ -3546,7 +3611,6 @@
   align-items: stretch;
 }
 
-#ui button.level-button {
+#ui .bots-row button.cycle {
   min-width: 92px;
-  padding: 0 14px;
 }

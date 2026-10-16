@@ -602,55 +602,64 @@ function Settings({
     );
   }
 
-  const nextLevel = BOT_LEVELS[(BOT_LEVELS.indexOf(botLevel) + 1) % BOT_LEVELS.length]!;
+  const levels = BOT_LEVELS.map((value) => ({ value, label: BOT_LEVEL_LABELS[value] }));
+  // Bots only ever take places nobody is playing in: the host's own place is theirs until they step out to watch.
+  const people = room.players.filter((p) => !p.bot).length;
   return (
     <div className="settings">
-      <div className="settings-row">
-        <Segmented
-          label="Game mode"
-          value={mode}
-          options={[
-            { value: 'duel', label: 'Duel' },
-            { value: 'ffa', label: 'Battle Royale' },
-          ]}
-          onChange={(value) => onChange({ mode: value })}
-        />
-        <Segmented
-          label="Fog of war"
-          value={config.fog}
-          options={[
-            { value: 'on', label: 'On' },
-            { value: 'off', label: 'Off' },
-          ]}
-          onChange={(fog) => onChange({ config: { fog } })}
-        />
+      <div className="settings-row three">
+        <div className="field stack">
+          <span>Game mode</span>
+          <Cycle
+            label="Game mode"
+            value={mode}
+            options={[
+              { value: 'duel', label: 'Duel' },
+              { value: 'ffa', label: 'Battle Royale' },
+            ]}
+            onChange={(value) => onChange({ mode: value })}
+          />
+        </div>
+        <div className="field stack">
+          <span>Fog of war</span>
+          <Cycle
+            label="Fog of war"
+            value={config.fog}
+            options={[
+              { value: 'on', label: 'On' },
+              { value: 'off', label: 'Off' },
+            ]}
+            onChange={(fog) => onChange({ config: { fog } })}
+          />
+        </div>
+        <div className="field stack">
+          <span>Map size</span>
+          <Cycle
+            label="Map size"
+            value={mapSize}
+            options={(Object.keys(MAP_SIZE_LABELS) as MapSize[]).map((value) => ({
+              value,
+              label: MAP_SIZE_LABELS[value],
+            }))}
+            onChange={(value) => onChange({ mapSize: value })}
+          />
+        </div>
       </div>
-      <Segmented
-        label="Map size"
-        value={mapSize}
-        options={(Object.keys(MAP_SIZE_LABELS) as MapSize[]).map((value) => ({
-          value,
-          label: MAP_SIZE_LABELS[value],
-        }))}
-        onChange={(value) => onChange({ mapSize: value })}
-      />
       <div className="field stack">
         <span>Bots</span>
         <div className="bots-row">
-          {/* One button that goes round the levels. */}
-          <button
-            type="button"
+          <Cycle
+            label="Bot difficulty"
             className="level-button"
-            aria-label={`Bot difficulty: ${BOT_LEVEL_LABELS[botLevel]}. Click for ${BOT_LEVEL_LABELS[nextLevel]}.`}
-            onClick={() => onChange({ botLevel: nextLevel })}
-          >
-            {BOT_LEVEL_LABELS[botLevel]}
-          </button>
+            value={botLevel}
+            options={levels}
+            onChange={(value) => onChange({ botLevel: value })}
+          />
           <Stepper
             label="Number of bots"
             value={bots}
             min={0}
-            max={size}
+            max={Math.max(bots, size - people)}
             step={1}
             decimals={0}
             onChange={(count) => onChange({ bots: count })}
@@ -676,15 +685,54 @@ function Settings({
           <Stepper
             label="Starting troops"
             value={config.startingTroops}
-            min={1}
+            min={5}
             max={100}
-            step={1}
+            step={5}
             decimals={0}
             onChange={(startingTroops) => onChange({ config: { startingTroops } })}
           />
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * One button that shows the current option and goes on to the next each time it is clicked. Every
+ * option's label sits in the button (only the current one shows), so it is always as wide as the
+ * longest and never changes size.
+ */
+function Cycle<T extends string>({
+  label,
+  value,
+  options,
+  className,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  className?: string;
+  onChange: (value: T) => void;
+}) {
+  const index = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
+  const next = options[(index + 1) % options.length]!;
+  return (
+    <button
+      type="button"
+      className={`cycle ${className ?? ''}`}
+      aria-label={`${label}: ${options[index]!.label}. Click for ${next.label}.`}
+      onClick={() => onChange(next.value)}
+    >
+      {options.map((option) => (
+        <span key={option.value} className={option.value === value ? 'on' : ''}>
+          {option.label}
+        </span>
+      ))}
+    </button>
   );
 }
 
@@ -740,7 +788,8 @@ export function Segmented<T extends string | number>({
 
 /**
  * A number with a "-" button on one side and a "+" on the other. Clicks show at once, and each
- * one goes to the server as the new value (the server's answer settles it).
+ * one goes to the server as the new value (the server's answer settles it). A button is off at
+ * the end of its range.
  */
 function Stepper({
   label,
@@ -776,24 +825,22 @@ function Stepper({
     <div className="stepper" role="group" aria-label={label}>
       <button
         type="button"
+        className="stepper-less"
         aria-label={`Less ${label}`}
-        disabled={shown <= min}
+        disabled={shown - step < min}
         onClick={() => go(-1)}
-      >
-        −
-      </button>
+      />
       <output className="stepper-value" aria-live="polite">
         {shown.toFixed(decimals)}
         {unit}
       </output>
       <button
         type="button"
+        className="stepper-more"
         aria-label={`More ${label}`}
-        disabled={shown >= max}
+        disabled={shown + step > max}
         onClick={() => go(1)}
-      >
-        +
-      </button>
+      />
     </div>
   );
 }

@@ -66,8 +66,9 @@ describe('Bots', () => {
     expect(host.room!.settings.bots).toBe(1);
   });
 
-  it('lets the host fill every place with bots and just watch', () => {
+  it('lets a host who steps out to watch fill every place with bots', () => {
     const host = hostWithBots({ mode: 'ffa' });
+    host.say({ type: 'becomeSpectator' });
     host.say({ type: 'updateRoom', settings: { bots: 12 } });
     expect(host.room!.players).toHaveLength(12);
     expect(host.room!.players.every((p) => p.bot)).toBe(true);
@@ -80,8 +81,18 @@ describe('Bots', () => {
     expect(host.last('tick').tick).toBeGreaterThanOrEqual(4);
   });
 
+  it('never moves a player to make room for bots', () => {
+    const host = hostWithBots({ mode: 'ffa' });
+    host.say({ type: 'updateRoom', settings: { bots: 12 } });
+    // The host keeps their own place: there is room for eleven.
+    expect(host.room!.spectating).toBe(false);
+    expect(host.room!.players.filter((p) => !p.bot)).toHaveLength(1);
+    expect(host.room!.settings.bots).toBe(11);
+  });
+
   it('gives a place back to a host who stops watching', () => {
     const host = hostWithBots({ mode: 'ffa' });
+    host.say({ type: 'becomeSpectator' });
     host.say({ type: 'updateRoom', settings: { bots: 12 } });
     host.say({ type: 'becomePlayer' });
     expect(host.room!.spectating).toBe(false);
