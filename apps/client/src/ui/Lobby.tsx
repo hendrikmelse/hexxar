@@ -636,13 +636,6 @@ function Settings({
           onChange={(value) => onChange({ mode: value })}
         />
       </SettingLine>
-      <SettingLine label="Fog of war">
-        <Switch
-          label="Fog of war"
-          checked={config.fog === 'on'}
-          onChange={(on) => onChange({ config: { fog: on ? 'on' : 'off' } })}
-        />
-      </SettingLine>
       <SettingLine label="Map size">
         <Cycle
           label="Map size"
@@ -652,6 +645,13 @@ function Settings({
             label: MAP_SIZE_LABELS[value],
           }))}
           onChange={(value) => onChange({ mapSize: value })}
+        />
+      </SettingLine>
+      <SettingLine label="Fog of war">
+        <Switch
+          label="Fog of war"
+          checked={config.fog === 'on'}
+          onChange={(on) => onChange({ config: { fog: on ? 'on' : 'off' } })}
         />
       </SettingLine>
       <SettingLine label="Bots">
@@ -714,9 +714,8 @@ function SettingLine({ label, children }: { label: string; children: ReactNode }
 }
 
 /**
- * An on/off switch: a long track with a knob that slides from one end to the other. The whole
- * track is the button, so clicking anywhere on it flips it. The knob says where it is; the other
- * end of the track says what the other position would be.
+ * An on/off switch: a short track with a knob that slides from one end to the other. The whole
+ * track is the button, so clicking anywhere on it flips it. The knob says where it is.
  */
 function Switch({
   label,
@@ -736,9 +735,6 @@ function Switch({
       className={`switch ${checked ? 'on' : ''}`}
       onClick={() => onChange(!checked)}
     >
-      <span className="switch-hint" aria-hidden="true">
-        {checked ? 'Off' : 'On'}
-      </span>
       <span className="switch-knob">{checked ? 'On' : 'Off'}</span>
     </button>
   );
