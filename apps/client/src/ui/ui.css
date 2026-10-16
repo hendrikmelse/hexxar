@@ -2343,14 +2343,21 @@
   overflow-x: auto;
 }
 
-/* Your own box in the lobby, lit like your row in the player list during a match */
+/* Your own box in the lobby: raised like everyone's, tinted and lit in your color */
 #ui .versus .slot.me:not(.open),
 #ui .roster-slot.me {
-  background: linear-gradient(180deg, #1a2234 0%, #131a2a 100%);
+  background:
+    linear-gradient(
+      180deg,
+      rgb(var(--me, 106 174 255) / 0.24) 0%,
+      rgb(var(--me, 106 174 255) / 0.1) 100%
+    ),
+    linear-gradient(180deg, #313950 0%, #272d40 100%);
   box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 2px 0 #141821,
     0 0 0 1px rgb(var(--me, 106 174 255) / 0.7),
-    0 0 6px rgb(var(--me, 106 174 255) / 0.25);
+    0 0 8px rgb(var(--me, 106 174 255) / 0.3);
 }
 
 /* The private game's lobby, with its settings, a little tighter from top to bottom */
