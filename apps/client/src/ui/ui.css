@@ -2357,6 +2357,8 @@
     0 1px 0 rgba(255, 255, 255, 0.14) inset,
     0 2px 0 #141821,
     0 0 0 1px rgb(var(--me, 106 174 255) / 0.7),
+    /* The raised edge covers the ring along the bottom, so the ring is carried on below it */ 0 3px
+      0 0 rgb(var(--me, 106 174 255) / 0.7),
     0 0 8px rgb(var(--me, 106 174 255) / 0.3);
 }
 
@@ -3511,7 +3513,9 @@
 
 #ui .setting-control {
   flex: none;
-  width: 196px;
+  display: flex;
+  justify-content: flex-end;
+  width: 220px;
   min-width: 0;
 }
 
@@ -3544,7 +3548,7 @@
 /* Bots: the difficulty, then how many */
 #ui .bots-row {
   display: grid;
-  grid-template-columns: 76px 1fr;
+  grid-template-columns: 76px 136px;
   gap: 8px;
   align-items: center;
 }
@@ -3554,6 +3558,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Every number is this wide, against the right edge, so all the plus and minus buttons line up */
+  width: 136px;
+  flex: none;
   min-width: 0;
   height: 32px;
 }
@@ -3664,4 +3671,94 @@
 #ui .roster-cell > .roster-slot,
 #ui .slot-cell > .slot {
   flex: 1;
+}
+
+/* A switch: a long track, and a knob that slides along it. The whole track can be clicked. */
+#ui button.cycle,
+#ui button.switch {
+  flex: 1;
+}
+
+#ui button.switch {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #343a4b;
+  border-radius: 16px;
+  background: #0f1117;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+  text-shadow: none;
+  transition: background 0.2s ease-out;
+}
+
+#ui button.switch:active:not(:disabled) {
+  transform: none;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui button.switch.on {
+  background: linear-gradient(180deg, #2f7be6 0%, #1f5fc0 100%);
+}
+
+/* The other position's name, at the far end of the track */
+#ui button.switch .switch-hint {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% - 78px);
+  color: #6f7890;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#ui button.switch.on .switch-hint {
+  right: auto;
+  left: 0;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+#ui button.switch .switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 26px;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #5b647d 0%, #414860 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 2px 0 #151922,
+    0 3px 6px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  transition:
+    left 0.2s cubic-bezier(0.3, 1, 0.5, 1),
+    background 0.2s ease-out;
+}
+
+#ui button.switch.on .switch-knob {
+  left: calc(100% - 76px);
+  background: linear-gradient(180deg, #ffffff 0%, #d6e4fb 100%);
+  color: #1a3f78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui button.switch,
+  #ui button.switch .switch-knob {
+    transition: none;
+  }
 }

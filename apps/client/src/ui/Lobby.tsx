@@ -637,14 +637,10 @@ function Settings({
         />
       </SettingLine>
       <SettingLine label="Fog of war">
-        <Cycle
+        <Switch
           label="Fog of war"
-          value={config.fog}
-          options={[
-            { value: 'on', label: 'On' },
-            { value: 'off', label: 'Off' },
-          ]}
-          onChange={(fog) => onChange({ config: { fog } })}
+          checked={config.fog === 'on'}
+          onChange={(on) => onChange({ config: { fog: on ? 'on' : 'off' } })}
         />
       </SettingLine>
       <SettingLine label="Map size">
@@ -714,6 +710,37 @@ function SettingLine({ label, children }: { label: string; children: ReactNode }
       <span className="setting-name">{label}</span>
       <div className="setting-control">{children}</div>
     </div>
+  );
+}
+
+/**
+ * An on/off switch: a long track with a knob that slides from one end to the other. The whole
+ * track is the button, so clicking anywhere on it flips it. The knob says where it is; the other
+ * end of the track says what the other position would be.
+ */
+function Switch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`switch ${checked ? 'on' : ''}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch-hint" aria-hidden="true">
+        {checked ? 'Off' : 'On'}
+      </span>
+      <span className="switch-knob">{checked ? 'On' : 'Off'}</span>
+    </button>
   );
 }
 
