@@ -77,7 +77,10 @@ function drawQueues(): void {
   );
 }
 
-function render(change: ReturnType<typeof applyMessage>): void {
+function render(
+  change: ReturnType<typeof applyMessage>,
+  before: readonly string[] | null = null,
+): void {
   if (!change) return;
   if (change.kind === 'all') {
     board.setAll(game);
@@ -88,7 +91,11 @@ function render(change: ReturnType<typeof applyMessage>): void {
   } else if (change.kind === 'tiles') {
     // Armies set off first, so the tiles they walk onto are held back until they arrive.
     board.playMoves(change.moves, game);
-    board.updateTiles(change.tiles, game);
+    // What a capture does to the board (the land of a player it puts out turning neutral, the fog
+    // lifting because the match is over or you are out) waits for the army that made it.
+    const out = before ? game.eliminated.filter((id) => !before.includes(id)) : [];
+    const lifts = isWatching(game) && !wasWatching;
+    board.updateTiles(board.holdForEnd(change.tiles, out, lifts, game), game);
     board.refreshVision(game);
     // The "you are here" effect is for the planning period only.
     if (game.tick > 0 || game.status !== 'playing') board.stopIntro();
@@ -144,12 +151,12 @@ function introduceStart(): void {
 }
 
 /** Tell a player still in the game that others have just surrendered or been beaten. */
-function announceOut(before: readonly string[]): void {
+function announceOut(ids: readonly string[]): void {
   const { tutorial, room, infoSeq } = appStore.get();
   const me = game.playerId;
   if (tutorial || me === null || game.eliminated.includes(me)) return;
   const players = game.eliminated
-    .filter((id) => !before.includes(id) && id !== me)
+    .filter((id) => ids.includes(id) && id !== me)
     .map((id) => ({
       name: room?.players.find((p) => p.playerId === id)?.name ?? game.names[id] ?? id,
       color: playerColor(game, id),
@@ -560,8 +567,12 @@ const connection = connect(url, playerName, {
           message.type === 'tick' || (message.type === 'snapshot' && game.players.length > 0)
             ? [...game.eliminated]
             : null;
-        render(applyMessage(game, message));
-        if (before) announceOut(before);
+        render(applyMessage(game, message), before);
+        if (before) {
+          // Who is out is settled now; the news comes when the capture that did it has landed.
+          const ids = game.eliminated.filter((id) => !before.includes(id));
+          board.whenLanded(() => announceOut(ids));
+        }
       }
     }
   },

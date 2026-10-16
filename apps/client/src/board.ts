@@ -190,6 +190,23 @@ interface Flight {
   landed: boolean;
 }
 
+/**
+ * Things that happen at the end of a tick because of a capture (a player is out and their land turns
+ * neutral, the fog lifts), kept back until the armies of that tick have landed: the capture should
+ * be seen before what it caused.
+ */
+interface Release {
+  /** The armies still to land. */
+  readonly waiting: Set<Flight>;
+  /** Tiles kept as they are drawn until then. */
+  readonly keys: readonly string[];
+  /** The fog stays as it is until then (the match is over, or the player is out of it). */
+  readonly lockVision: boolean;
+  readonly game: GameView;
+  /** What to do once it has all shown: a notice, a sound. */
+  readonly then: (() => void)[];
+}
+
 interface TileView {
   readonly shape: Graphics;
   /** The generation ring, apart from the tile so it can animate by itself. */
@@ -277,6 +294,10 @@ export class Board {
   private readonly flights = new Set<Flight>();
   /** Tiles whose redraw waits for an army to arrive. */
   private readonly held = new Set<string>();
+  /** The armies the last tick sent out. */
+  private lastFlights: Flight[] = [];
+  /** Changes waiting for armies to land (see `holdForEnd`). */
+  private readonly releases: Release[] = [];
   private stopIntroFrame: (() => void) | null = null;
   private readonly views = new Map<string, TileView>();
   /** Pixel density the troop labels are currently rendered at. */
@@ -334,7 +355,8 @@ export class Board {
    */
   /** Are clouds still fading away (as the fog lifts when a player is out, or the match is over)? */
   get cloudsFading(): boolean {
-    return this.clouds.fadingOut;
+    // The fog has not started lifting while it waits for the last capture to land.
+    return this.clouds.fadingOut || this.releases.length > 0;
   }
 
   /** How many armies are still on their way to a tile that will change when they get there. */
@@ -503,6 +525,8 @@ export class Board {
    * so the fog does not lift before the army arrives.
    */
   refreshVision(game: GameView): void {
+    // The fog stays as it is while the capture that ends the match (or your part in it) is on its way.
+    if (this.releases.some((release) => release.lockVision)) return;
     // Who owns what is known the moment the tick arrives, so the fog reacts at once, without
     // waiting for an army to finish walking onto its tile.
     const next = visionFor(game);
@@ -641,6 +665,7 @@ export class Board {
    */
   playMoves(moves: readonly ExecutedMove[], game: GameView): void {
     if (!game.config) return;
+    this.lastFlights = [];
     // Nothing is walking: what tiles are drawn with is all there is to go on.
     if (this.flights.size === 0) this.ownerAfterMoves.clear();
     const sounds = this.planSounds(moves, game);
@@ -711,7 +736,7 @@ export class Board {
         this.floatLoss(battle.lost, color, stop, delay);
         this.floatLoss(battle.defenderLost, defenderColor, to, delay);
       }
-      this.flights.add({
+      const flight: Flight = {
         token,
         label,
         from: hexToPixel(move.from),
@@ -730,9 +755,64 @@ export class Board {
         drawsBurst:
           battle !== undefined || (move.clash !== undefined && hexKey(move.from) < target),
         landed: false,
-      });
+      };
+      this.flights.add(flight);
+      this.lastFlights.push(flight);
     }
     this.animateFlights();
+  }
+
+  /**
+   * A tick that puts a player out turns all their land neutral, and one that ends the match (or
+   * puts you out) lifts the fog. Both are caused by a capture whose army is still walking, so they
+   * wait for it. Pass the tiles the tick changed; the ones that are not held back come out, to be
+   * drawn now. (With nothing walking, nothing waits.)
+   */
+  holdForEnd(
+    tiles: readonly Tile[],
+    out: readonly string[],
+    lockVision: boolean,
+    game: GameView,
+  ): Tile[] {
+    const waiting = new Set(this.lastFlights.filter((flight) => !flight.landed));
+    if (waiting.size === 0 || (out.length === 0 && !lockVision)) return [...tiles];
+    const keys: string[] = [];
+    const now: Tile[] = [];
+    for (const tile of tiles) {
+      const key = hexKey(tile);
+      const drawnAs = this.views.get(key)?.owner ?? null;
+      if (tile.owner === null && drawnAs !== null && out.includes(drawnAs) && !this.held.has(key)) {
+        keys.push(key);
+        this.held.add(key);
+      } else {
+        now.push(tile);
+      }
+    }
+    if (keys.length > 0 || lockVision) {
+      this.releases.push({ waiting, keys, lockVision, game, then: [] });
+    }
+    return now;
+  }
+
+  /** Run this once whatever is being held back for the armies has shown (at once, if nothing is). */
+  whenLanded(then: () => void): void {
+    const last = this.releases[this.releases.length - 1];
+    if (last) last.then.push(then);
+    else then();
+  }
+
+  /** An army has landed: show whatever was waiting only for it and the others of its tick. */
+  private settleReleases(flight: Flight): void {
+    for (const release of [...this.releases]) {
+      release.waiting.delete(flight);
+      if (release.waiting.size > 0) continue;
+      this.releases.splice(this.releases.indexOf(release), 1);
+      for (const key of release.keys) this.held.delete(key);
+      const tiles = release.keys.flatMap((key) => release.game.tiles[key] ?? []);
+      this.updateTiles(tiles, release.game);
+      this.refreshVision(release.game);
+      for (const then of release.then) then();
+    }
   }
 
   /** A number that rises slowly from a spot on the board and fades: troops lost in a battle. */
@@ -862,6 +942,7 @@ export class Board {
         this.landingSound(flight);
         // Arriving can open up new ground to see.
         this.refreshVision(flight.game);
+        this.settleReleases(flight);
       }
       const { clash } = flight;
       const beaten = clash !== undefined && clash.survivors === 0;
@@ -960,6 +1041,8 @@ export class Board {
     for (const floater of this.floaters) floater.text.destroy();
     this.floaters.clear();
     this.held.clear();
+    this.releases.length = 0;
+    this.lastFlights = [];
     this.trails.clear();
     this.bursts.clear();
   }
