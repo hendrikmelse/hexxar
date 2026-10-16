@@ -66,14 +66,13 @@ export function applySettingsPatch(
   const size = roomCapacity(mode);
   const mapSize = patch.mapSize ?? current.mapSize;
   const bots = Math.min(patch.bots ?? current.bots, size);
-  const botLevel = patch.botLevel ?? current.botLevel;
   let config;
   try {
     config = parseMatchConfig({ ...current.config, ...patch.config });
   } catch {
     return 'invalid game settings';
   }
-  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, bots, botLevel, config });
+  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, bots, config });
   return parsed.success ? parsed.data : 'invalid game settings';
 }
 
@@ -543,7 +542,7 @@ export class Room {
         outAt: later(saved.outAt),
         outPlace: saved.outPlace,
         watchSince: later(saved.watchSince),
-        bot: saved.bot ? this.botOfLevel() : null,
+        bot: saved.bot ? this.makeBot() : null,
       });
     }
     this.host = sessions.get(data.hostUserId) ?? this.members[0]!.session;
@@ -571,11 +570,8 @@ export class Room {
     if (this.state !== 'lobby') return 'the game has already started';
     const next = applySettingsPatch(this.settings, patch);
     if (typeof next === 'string') return next;
-    const levelChanged = next.botLevel !== this.settings.botLevel;
     this.settings = next;
     this.rebalance();
-    if (levelChanged)
-      for (const member of this.members) if (member.bot) member.bot = this.botOfLevel();
     this.syncBots();
     this.trackMin();
     this.broadcastRoom();
@@ -663,7 +659,7 @@ export class Room {
     const taken = new Set(this.members.filter((m) => m.bot).map((m) => m.session.name));
     const name = BOT_NAMES.find((n) => !taken.has(n)) ?? String(this.members.length);
     const member = newMember(this.botSession(`bot-${name.toLowerCase()}`, name), false);
-    member.bot = this.botOfLevel();
+    member.bot = this.makeBot();
     return member;
   }
 
@@ -679,10 +675,10 @@ export class Room {
   }
 
   /**
-   * A bot as good as the room's setting says. Every level is the improved bot until the levels are
-   * told apart (the original easy bot is still `createEasyBot`, the one new bots are measured against).
+   * What decides a bot's orders: the improved bot. (The original `createEasyBot` is still there,
+   * as the one new bots are measured against.)
    */
-  private botOfLevel(): Bot {
+  private makeBot(): Bot {
     return createSmartBot(SMART_BEST);
   }
 

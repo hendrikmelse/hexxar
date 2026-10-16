@@ -163,7 +163,7 @@ export class Lobby {
         // Those who left are only kept for the result, they have no game to come back to.
         for (const m of data.members) {
           const session = sessions.get(m.userId)!;
-          if (m.left) continue;
+          if (m.left || m.bot) continue;
           session.room = room;
           this.sessions.set(session.token, session);
         }
@@ -362,7 +362,6 @@ export class Lobby {
       size: roomCapacity(mode),
       mapSize: 'normal',
       bots: 0,
-      botLevel: 'easy',
       config: parseMatchConfig(),
     };
   }

@@ -3591,14 +3591,6 @@
   visibility: visible;
 }
 
-/* Bots: the difficulty, then how many */
-#ui .bots-row {
-  display: grid;
-  grid-template-columns: 76px 136px;
-  gap: 8px;
-  align-items: center;
-}
-
 /* A number with a button on each side. The number stands on its own; the buttons are raised. */
 #ui .stepper {
   display: flex;

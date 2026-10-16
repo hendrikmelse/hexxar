@@ -6,14 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import {
-  BOT_LEVELS,
-  type BotLevel,
-  type MapSize,
-  type RoomMode,
-  type RoomPlayer,
-  type RoomView,
-} from '@hexxar/shared';
+import type { MapSize, RoomMode, RoomPlayer, RoomView } from '@hexxar/shared';
 import { playSound } from '../audio/audio.js';
 import { paletteColor } from '../board.js';
 import { useApp } from '../store.js';
@@ -597,12 +590,6 @@ function InviteCode({ code }: { code: string }) {
 /** The numbers the starting troops buttons go through: 1, then every fifth number. A typed number can be anything. */
 const TROOP_STOPS: readonly number[] = [1, ...Array.from({ length: 20 }, (_, i) => (i + 1) * 5)];
 
-const BOT_LEVEL_LABELS: Record<BotLevel, string> = {
-  easy: 'Easy',
-  medium: 'Medium',
-  hard: 'Hard',
-};
-
 /** The host gets controls; everyone else just reads what the game will be. */
 function Settings({
   room,
@@ -613,7 +600,7 @@ function Settings({
   editable: boolean;
   onChange: Actions['updateRoom'];
 }) {
-  const { mode, mapSize, bots, botLevel, size, config } = room.settings;
+  const { mode, mapSize, bots, size, config } = room.settings;
 
   if (!editable) {
     return (
@@ -625,9 +612,7 @@ function Settings({
         {bots > 0 && (
           <>
             <dt>Bots</dt>
-            <dd>
-              {bots} ({BOT_LEVEL_LABELS[botLevel]})
-            </dd>
+            <dd>{bots}</dd>
           </>
         )}
         <dt>Fog of war</dt>
@@ -640,7 +625,6 @@ function Settings({
     );
   }
 
-  const levels = BOT_LEVELS.map((value) => ({ value, label: BOT_LEVEL_LABELS[value] }));
   // Bots only ever take places nobody is playing in: the host's own place is theirs until they step out to watch.
   const people = room.players.filter((p) => !p.bot).length;
   return (
@@ -675,23 +659,15 @@ function Settings({
         />
       </SettingLine>
       <SettingLine label="Bots">
-        <div className="bots-row">
-          <Cycle
-            label="Bot difficulty"
-            value={botLevel}
-            options={levels}
-            onChange={(value) => onChange({ botLevel: value })}
-          />
-          <Stepper
-            label="Number of bots"
-            value={bots}
-            min={0}
-            max={Math.max(bots, size - people)}
-            step={1}
-            decimals={0}
-            onChange={(count) => onChange({ bots: count })}
-          />
-        </div>
+        <Stepper
+          label="Number of bots"
+          value={bots}
+          min={0}
+          max={Math.max(bots, size - people)}
+          step={1}
+          decimals={0}
+          onChange={(count) => onChange({ bots: count })}
+        />
       </SettingLine>
       <SettingLine label="Tick length">
         <Stepper

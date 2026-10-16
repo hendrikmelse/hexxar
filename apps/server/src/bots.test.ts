@@ -111,16 +111,6 @@ describe('Bots', () => {
     expect(host.room!.players).toHaveLength(12);
   });
 
-  it('remembers the difficulty the host picks', () => {
-    const host = hostWithBots({ mode: 'duel', bots: 1 });
-    expect(host.room!.settings.botLevel).toBe('easy');
-    host.say({ type: 'updateRoom', settings: { botLevel: 'hard' } });
-    expect(host.room!.settings.botLevel).toBe('hard');
-    host.say({ type: 'updateRoom', settings: { botLevel: 'expert' } });
-    expect(host.last('rejected').reason).toMatch(/invalid/);
-    expect(host.room!.settings.botLevel).toBe('hard');
-  });
-
   it('has no bots in public games, and no way to add them', () => {
     const ann = new FakeClient(lobby).hello('Ann');
     ann.say({ type: 'quickPlay', mode: 'ffa' });

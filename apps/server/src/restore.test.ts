@@ -138,6 +138,27 @@ describe('resuming matches after a restart', () => {
     expect(a2.last('snapshot').state.winner).toBe(a.last('snapshot').you);
   });
 
+  it('brings back the bots in a match with the person playing against them', () => {
+    const host = new FakeClient(old).hello('Hanna');
+    host.say({ type: 'createRoom', settings: { mode: 'ffa', bots: 3 } });
+    host.say({ type: 'startGame' });
+    vi.advanceTimersByTime(options.prepMs + 5 * TICK_MS);
+    const before = host.room!.players;
+    expect(before.filter((p) => p.bot)).toHaveLength(3);
+
+    expect(restart(2000)).toBe(1);
+    const host2 = reconnect(host, 'Hanna');
+    expect(host2.room?.state).toBe('running');
+    expect(host2.room!.players.map((p) => [p.name, p.bot, p.playerId])).toEqual(
+      before.map((p) => [p.name, p.bot, p.playerId]),
+    );
+    // The bots carry on playing once the countdown is over.
+    const ticks = host2.all('tick').length;
+    vi.advanceTimersByTime(RESUME_MS + 10 * TICK_MS);
+    expect(host2.all('tick').length).toBeGreaterThan(ticks);
+    expect(host2.room?.state).toBe('running');
+  });
+
   it('does not bring back lobbies, and sends their players to the menu', () => {
     const a = new FakeClient(old).hello('Ann');
     a.say({ type: 'quickPlay', mode: 'duel' });
