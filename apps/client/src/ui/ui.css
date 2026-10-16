@@ -3744,3 +3744,9 @@
   width: auto;
   padding: 0 14px;
 }
+
+/* Someone leaving stays in their old place while they pop away, above whoever has moved up into it */
+#ui .roster-slot.leaving,
+#ui .versus .slot.leaving {
+  z-index: 3;
+}

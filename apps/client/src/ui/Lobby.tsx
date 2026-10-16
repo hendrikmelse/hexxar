@@ -275,6 +275,8 @@ interface ShownPlayer {
   leaving: boolean;
   /** Joined while the lobby was open (so their box pops in). */
   arrived: boolean;
+  /** For someone leaving: the place (counting from 0) they were in, which they keep while they pop away. */
+  at?: number;
 }
 
 /**
@@ -295,11 +297,15 @@ function useExitingList(players: RoomPlayer[]): ShownPlayer[] {
         const old = before.get(player.userId);
         return old ? { ...old, player, leaving: false } : { player, leaving: false, arrived: true };
       });
-      // Someone who has just left keeps their place until their exit animation has played.
-      previous.forEach((entry, index) => {
-        if (current.has(entry.player.userId)) return;
-        next.splice(Math.min(index, next.length), 0, { ...entry, leaving: true });
-      });
+      // Someone who has just left is drawn where they were for as long as their exit animation
+      // lasts, but takes no place in the order: everyone else moves up at once.
+      const stillHere = previous.filter((entry) => !entry.leaving);
+      for (const entry of previous) {
+        if (current.has(entry.player.userId)) continue;
+        next.push(
+          entry.leaving ? entry : { ...entry, leaving: true, at: stillHere.indexOf(entry) },
+        );
+      }
       return next;
     });
   }, [players]);
@@ -425,7 +431,7 @@ function PlayerBox({
   return (
     <div
       ref={box}
-      data-flip={player.userId}
+      data-flip={entry.leaving ? undefined : player.userId}
       style={{ ...meStyle(room, player), ...place }}
       className={`${base} name-tip ${boxClass(entry, player.connected)} ${player.userId === room.you ? 'me' : ''}`}
       onMouseEnter={showTip}
@@ -496,7 +502,7 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
           {box}
         </div>
       ))}
-      {shown.map((entry, index) => (
+      {placed(shown).map(({ entry, index }) => (
         <PlayerBox
           key={entry.player.userId}
           room={room}
@@ -512,15 +518,27 @@ function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
 }
 
 /**
+ * Where each box goes. Everyone who is here takes the next place in order, so when someone leaves
+ * the others move up at once; the person leaving stays in the place they had while they pop away.
+ */
+function placed(shown: ShownPlayer[]): { entry: ShownPlayer; index: number }[] {
+  let next = 0;
+  return shown.map((entry) => ({ entry, index: entry.leaving ? (entry.at ?? 0) : next++ }));
+}
+
+/**
  * The two sides of a duel, in the order the players joined (the same for everyone, so each box
  * is always the same person), with your own highlighted. A missing opponent shows dots, under
  * the box of whoever is there.
  */
 function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const sides = [1, 3] as const;
+  const area = useRef<HTMLDivElement>(null);
+  // A name that has to move (the other player left, or a person took the place of a bot) slides.
+  useFlip(area);
   return (
     // In a private game the panels match the roster's height, so switching mode moves nothing.
-    <div className={`versus ${room.visibility === 'private' ? 'roster-height' : ''}`}>
+    <div ref={area} className={`versus ${room.visibility === 'private' ? 'roster-height' : ''}`}>
       {sides.map((column) => (
         <div
           key={`open-${column}`}
@@ -535,17 +553,19 @@ function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
       <div className="vs" style={{ gridColumn: 2, gridRow: 1 }}>
         VS
       </div>
-      {shown.slice(0, 2).map((entry, index) => (
-        <PlayerBox
-          key={entry.player.userId}
-          room={room}
-          entry={entry}
-          base="slot"
-          max={15}
-          min={11}
-          place={{ gridColumn: sides[index], gridRow: 1 }}
-        />
-      ))}
+      {placed(shown)
+        .filter(({ index }) => index < sides.length)
+        .map(({ entry, index }) => (
+          <PlayerBox
+            key={entry.player.userId}
+            room={room}
+            entry={entry}
+            base="slot"
+            max={15}
+            min={11}
+            place={{ gridColumn: sides[index], gridRow: 1 }}
+          />
+        ))}
     </div>
   );
 }
