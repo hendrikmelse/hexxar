@@ -104,6 +104,10 @@ Tables are created by the server when it starts (numbered migrations in `apps/se
 
 `VITE_SERVER_URL` points the client at a different WebSocket server (used by tests and screenshots).
 
+## License
+
+Copyright © 2026 Hendrik Melse. All rights reserved. The source is public to read, but it is not open source: no license is granted to copy, run, modify or redistribute it, or to build anything from it. See [`LICENSE`](LICENSE).
+
 ## Deployment
 
 Pushes to `main` run the checks, build a Docker image, push it to GitHub Container Registry and deploy it to the VPS over SSH. The runbook, including DNS, the server layout and rolling back, is in [`deploy/README.md`](deploy/README.md).
