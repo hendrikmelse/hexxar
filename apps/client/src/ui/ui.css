@@ -1042,7 +1042,7 @@
 
 #ui .roster-slot.leaving,
 #ui .versus .slot.leaving {
-  animation: pop-out 0.4s ease-in forwards;
+  animation: pop-out 0.25s ease-in forwards;
   pointer-events: none;
 }
 
@@ -3745,8 +3745,14 @@
   padding: 0 14px;
 }
 
-/* Someone leaving stays in their old place while they pop away, above whoever has moved up into it */
+/* Someone leaving stays in their old place while they pop away. Players' boxes sit above it, so
+   whoever slides up into that place passes over it; it is only above the empty place beneath. */
+#ui .versus .slot:not(.open) {
+  position: relative;
+  z-index: 1;
+}
+
 #ui .roster-slot.leaving,
 #ui .versus .slot.leaving {
-  z-index: 3;
+  z-index: 0;
 }

@@ -267,7 +267,7 @@ function Tip({ text, children }: { text: string | undefined; children: ReactNode
 }
 
 /** How long a player's box takes to pop out of existence after they leave. */
-const EXIT_MS = 400;
+const EXIT_MS = 250;
 
 interface ShownPlayer {
   player: RoomPlayer;
