@@ -508,10 +508,10 @@ describe('Lobby', () => {
       expect(a.room?.state).toBe('running');
     });
 
-    it('replaces an older connection when the same guest connects again', () => {
+    it('keeps both when the same guest connects again: they are tabs of one guest', () => {
       const first = new FakeClient(lobby).hello('Ann');
       const second = new FakeClient(lobby).hello('Ann', first.token);
-      expect(first.closed).toBe(true);
+      expect(first.closed).toBe(false);
       expect(second.last('welcome').userId).toBe(first.last('welcome').userId);
     });
 

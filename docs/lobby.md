@@ -42,7 +42,7 @@ A private room's host can change the game mode (duel or battle royale), the **ma
 - **Leaving a lobby** just removes you. **Leaving a running match** is a surrender.
 - **Disconnecting** during a match keeps your slot and your queue running. If you are still gone after two minutes (`AFK_MS`), your army surrenders. Reconnecting in time puts you back in the match. A disconnect in a lobby removes you straight away.
 - Other players see who is disconnected in the room's player list (`connected` on each player).
-- Your guest token (kept per browser tab for now) is what ties a new connection to your old slot.
+- Your guest token (kept in the browser, shared by all its tabs) is what ties a new connection to your old slot. **Tabs of one browser are one guest**: each has its own connection, everything the server sends goes to all of them, and an order from any of them goes into the same queue (every tab is sent the `queued` confirmation, so each shows the same queue; a refusal goes only to the tab that asked). The guest counts as disconnected only when the last tab has closed. At most six tabs at once. The server pings every connection every 20 seconds (`HEARTBEAT_MS`) and drops one that does not answer, so a dead tab does not keep the guest looking connected. To try two players out on one computer, open the second tab with `?tab` in the address: it keeps a guest of its own. A private window or another browser is another guest.
 
 ## Identity and ids
 

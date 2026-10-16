@@ -36,7 +36,7 @@ import {
 } from '@hexxar/shared';
 import type { Analytics } from './analytics.js';
 import { Match } from './match.js';
-import type { Session } from './types.js';
+import { isConnected, sendTo, type Session } from './types.js';
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -504,7 +504,7 @@ export class Room {
       // Anyone watching sees every player's orders as they are given.
       for (const other of this.members) {
         if (other.watching && !other.left && !other.reviewing && !other.bot) {
-          other.session.connection?.send({ type: 'queued', order, player: playerId });
+          sendTo(other.session, { type: 'queued', order, player: playerId });
         }
       }
     }
@@ -542,7 +542,7 @@ export class Room {
       token: '',
       name,
       // Nobody is listening: bots are told nothing.
-      connection: { send: () => undefined, close: () => undefined },
+      connections: new Set([{ send: () => undefined, close: () => undefined }]),
       room: this,
     };
     const member = newMember(session, false);
@@ -629,7 +629,7 @@ export class Room {
       if (this.chatChannelOf(other) !== channel) continue;
       // Someone who has not been sent this chat yet gets all of it, this message included.
       if (other.chatSent !== channel) this.syncChat(other);
-      else other.session.connection?.send({ type: 'chat', messages: [message], replace: false });
+      else sendTo(other.session, { type: 'chat', messages: [message], replace: false });
     }
   }
 
@@ -664,7 +664,7 @@ export class Room {
     const channel = this.chatChannelOf(member);
     if (channel === member.chatSent) return;
     member.chatSent = channel;
-    member.session.connection?.send({
+    sendTo(member.session, {
       type: 'chat',
       messages: channel ? [...this.chatLogs[channel]] : [],
       replace: true,
@@ -676,8 +676,7 @@ export class Room {
     this.chatLogs = { lobby: [], spectators: [] };
     for (const member of this.members) {
       member.chatSent = this.chatChannelOf(member);
-      if (!member.left)
-        member.session.connection?.send({ type: 'chat', messages: [], replace: true });
+      if (!member.left) sendTo(member.session, { type: 'chat', messages: [], replace: true });
     }
   }
 
@@ -773,7 +772,7 @@ export class Room {
         : this.listedPlayers().map((m) => ({
             userId: m.session.userId,
             name: m.session.name,
-            connected: !m.left && m.session.connection !== null,
+            connected: !m.left && isConnected(m.session),
             playerId: m.playerId,
             color: m.colorSlot,
             bot: m.bot !== null,
@@ -813,9 +812,8 @@ export class Room {
    */
   get activePlayers(): number {
     if (this.state === 'finished') return 0;
-    return this.members.filter(
-      (m) => !m.left && !m.spectator && !m.bot && m.session.connection !== null,
-    ).length;
+    return this.members.filter((m) => !m.left && !m.spectator && !m.bot && isConnected(m.session))
+      .length;
   }
 
   /** Where the room is, for analytics. */
@@ -829,7 +827,7 @@ export class Room {
 
   /** What the admin panel shows about this room. */
   summary(): AdminRoom {
-    const here = this.members.filter((m) => !m.left && !m.bot && m.session.connection !== null);
+    const here = this.members.filter((m) => !m.left && !m.bot && isConnected(m.session));
     return {
       code: this.code,
       visibility: this.visibility,
@@ -879,7 +877,7 @@ export class Room {
   /** Take the session out of this room and send it back to the menu. */
   private detach(session: Session): void {
     if (session.room === this) session.room = null;
-    session.connection?.send({ type: 'room', room: null });
+    sendTo(session, { type: 'room', room: null });
   }
 
   private markLeft(member: Member, how: 'left' | 'disconnected'): void {
@@ -909,7 +907,7 @@ export class Room {
     if (member.bot || member.left) return false;
     // Once the match is over there is only the result to look at.
     if (this.state === 'finished' || member.spectator || this.isOut(member)) {
-      return member.session.connection !== null;
+      return isConnected(member.session);
     }
     return true;
   }
@@ -1054,7 +1052,7 @@ export class Room {
     if (!board) {
       console.error(`room ${this.id}: no board after ${attempts} attempts`, failure);
       for (const member of this.members) {
-        member.session.connection?.send({
+        sendTo(member.session, {
           type: 'rejected',
           reason: 'the game could not be set up, please try again',
         });
@@ -1204,7 +1202,7 @@ export class Room {
       const firstWatch = watching && !member.watching;
       member.watching = watching;
       this.noteWatching(member);
-      member.session.connection?.send({
+      sendTo(member.session, {
         type: 'tick',
         tick: state.tick,
         nextTickAt: this.nextTickAt,
@@ -1308,7 +1306,7 @@ export class Room {
   private sendSnapshot(member: Member): void {
     if (member.bot) return;
     const snapshot = this.snapshotFor(member);
-    if (snapshot) member.session.connection?.send(snapshot);
+    if (snapshot) sendTo(member.session, snapshot);
   }
 
   private broadcastSnapshots(): void {
@@ -1319,7 +1317,7 @@ export class Room {
   private broadcastRoom(): void {
     for (const member of this.members) {
       if (member.left || member.bot) continue;
-      member.session.connection?.send({ type: 'room', room: this.view(member.session) });
+      sendTo(member.session, { type: 'room', room: this.view(member.session) });
       this.syncChat(member);
     }
   }

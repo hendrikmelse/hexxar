@@ -6,6 +6,7 @@ import { createDigest, createMailer } from './feedback.js';
 import { openDb } from './db.js';
 import { MemoryFeedbackStore, PgFeedbackStore } from './feedbackStore.js';
 import { createHttpHandler } from './http.js';
+import { sweep, type Pingable } from './heartbeat.js';
 import { Lobby } from './lobby.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -84,12 +85,22 @@ const handleHttp = createHttpHandler({
 const http = createServer((req, res) => void handleHttp(req, res));
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 16 * 1024 });
 
+// Sockets that stop answering pings are dropped, so a tab that vanished does not keep its guest looking
+// connected (a guest can have several tabs open).
+const sockets = new Set<Pingable>();
+setInterval(() => sweep(sockets), Number(process.env.HEARTBEAT_MS ?? 20_000)).unref();
+
 wss.on('connection', (ws) => {
+  const socket: Pingable = { alive: true, ping: () => ws.ping(), terminate: () => ws.terminate() };
+  sockets.add(socket);
+  ws.on('pong', () => (socket.alive = true));
+  ws.on('close', () => sockets.delete(socket));
   const handler = lobby.connect({
     send: (message) => ws.send(JSON.stringify(message)),
     close: () => ws.close(),
   });
   ws.on('message', (data) => {
+    socket.alive = true;
     let parsed: unknown;
     try {
       parsed = JSON.parse(data.toString());

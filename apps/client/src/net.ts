@@ -4,12 +4,29 @@ import { analyticsIds } from './analytics.js';
 const TOKEN_KEY = 'hexxar.token';
 
 /**
- * Guest token, kept per tab (sessionStorage) so two tabs can play against each
- * other while testing. Real accounts replace this later.
+ * Whether this tab is a guest of its own. Opening the page with `?tab` in the address does that (and
+ * it lasts for the tab), for trying two players out on one computer.
  */
+const OWN_GUEST_KEY = 'hexxar.ownGuest';
+const ownGuest = ((): boolean => {
+  try {
+    if (new URLSearchParams(location.search).has('tab')) sessionStorage.setItem(OWN_GUEST_KEY, '1');
+    return sessionStorage.getItem(OWN_GUEST_KEY) !== null;
+  } catch {
+    return false;
+  }
+})();
+
+/**
+ * Guest token. All the tabs of a browser share it (`localStorage`), so they are one guest: each can
+ * give orders, and the others show the same game. (A tab opened with `?tab` keeps its own, in
+ * `sessionStorage`.) Real accounts replace this later.
+ */
+const tokenStore = (): Storage => (ownGuest ? sessionStorage : localStorage);
+
 export const loadToken = (): string | undefined => {
   try {
-    return sessionStorage.getItem(TOKEN_KEY) ?? undefined;
+    return tokenStore().getItem(TOKEN_KEY) ?? undefined;
   } catch {
     return undefined;
   }
@@ -17,7 +34,7 @@ export const loadToken = (): string | undefined => {
 
 export const saveToken = (token: string): void => {
   try {
-    sessionStorage.setItem(TOKEN_KEY, token);
+    tokenStore().setItem(TOKEN_KEY, token);
   } catch {
     // Storage can be unavailable (private windows); reconnecting just starts fresh.
   }
