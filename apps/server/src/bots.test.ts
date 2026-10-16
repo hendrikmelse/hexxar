@@ -212,6 +212,57 @@ describe('Bots', () => {
     expect(lobby.adminStats().rooms).toHaveLength(0);
   });
 
+  describe('a bot game nobody is watching', () => {
+    const rooms = () => lobby.adminStats().rooms.length;
+
+    it('is closed when the person playing is gone for good', () => {
+      const host = hostWithBots({ mode: 'duel', bots: 1 });
+      host.say({ type: 'startGame' });
+      vi.advanceTimersByTime(options.prepMs + 3 * TICK_MS);
+      host.disconnect();
+      // Their army plays on while they might come back...
+      expect(rooms()).toBe(1);
+      vi.advanceTimersByTime(options.afkMs - 1000);
+      expect(rooms()).toBe(1);
+      // ...and the game is over as soon as it surrenders, with nobody left to look at it.
+      vi.advanceTimersByTime(2000);
+      expect(rooms()).toBe(0);
+    });
+
+    it('goes on if the person comes back in time', () => {
+      const host = hostWithBots({ mode: 'ffa', bots: 3 });
+      host.say({ type: 'startGame' });
+      vi.advanceTimersByTime(options.prepMs + 3 * TICK_MS);
+      const token = host.token;
+      host.disconnect();
+      vi.advanceTimersByTime(options.afkMs - 5000);
+      const back = new FakeClient(lobby).hello('Hanna', token);
+      vi.advanceTimersByTime(30_000);
+      expect(rooms()).toBe(1);
+      expect(back.room).toMatchObject({ state: 'running' });
+    });
+
+    it('goes on while a person who is out is still looking, and ends when they leave', () => {
+      const host = hostWithBots({ mode: 'ffa', bots: 3 });
+      host.say({ type: 'startGame' });
+      vi.advanceTimersByTime(options.prepMs + 3 * TICK_MS);
+      host.say({ type: 'surrender' });
+      vi.advanceTimersByTime(60 * TICK_MS);
+      expect(rooms()).toBe(1);
+      host.say({ type: 'leaveRoom' });
+      expect(rooms()).toBe(0);
+    });
+
+    it('ends when the person who is out drops their connection', () => {
+      const host = hostWithBots({ mode: 'ffa', bots: 3 });
+      host.say({ type: 'startGame' });
+      vi.advanceTimersByTime(options.prepMs + 3 * TICK_MS);
+      host.say({ type: 'surrender' });
+      host.disconnect();
+      expect(rooms()).toBe(0);
+    });
+  });
+
   it('does not count the bots as players on the admin panel', () => {
     hostWithBots({ mode: 'ffa', bots: 4 });
     expect(lobby.adminStats().rooms[0]).toMatchObject({ players: 1, names: ['Hanna'] });

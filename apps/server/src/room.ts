@@ -353,9 +353,11 @@ export class Room {
         member.afkTimer = null;
         this.surrenderMember(member, 'afk');
         this.broadcastRoom();
+        this.endIfUnwatched();
       }, this.options.afkMs);
     }
     this.broadcastRoom();
+    this.endIfUnwatched();
   }
 
   /** The player is back on a new connection. */
@@ -883,7 +885,37 @@ export class Room {
   }
 
   private closeIfEmpty(): void {
+    // A match with bots in it goes on for as long as anybody is looking at it, spectators included.
+    if (this.state === 'running' && this.hasBots) return this.endIfUnwatched();
     if (this.members.every((m) => m.left || m.spectator || m.bot)) this.close();
+  }
+
+  private get hasBots(): boolean {
+    return this.members.some((m) => m.bot);
+  }
+
+  /**
+   * Is this person here for a match with bots in it? Someone watching is, if their connection is
+   * up. Someone still playing is too, even while their connection is down, until they have been
+   * away so long that their army surrenders (a page reload must not end the game).
+   */
+  private isPresent(member: Member): boolean {
+    if (member.bot || member.left) return false;
+    // Once the match is over there is only the result to look at.
+    if (this.state === 'finished' || member.spectator || this.isOut(member)) {
+      return member.session.connection !== null;
+    }
+    return true;
+  }
+
+  /**
+   * Bots will play on for ever, and nobody needs a game that nobody is watching: once no person is
+   * left to see or play a match that has bots in it (or to look at its result), the room is closed
+   * at once.
+   */
+  private endIfUnwatched(): void {
+    if ((this.state !== 'running' && this.state !== 'finished') || !this.hasBots) return;
+    if (!this.members.some((m) => this.isPresent(m))) this.close();
   }
 
   private close(): void {
