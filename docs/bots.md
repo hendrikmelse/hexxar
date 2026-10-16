@@ -134,7 +134,7 @@ In practice: it expands fast, takes nearby cities and villages, and finishes a p
 
 ## The improved bot
 
-`createSmartBot(options)` makes the same kind of decision as the original (one target, one step, every time it is asked; sections 1 to 5 above) and adds habits that a beginner picks up, each a switch in `SmartOptions`. With every switch off it makes **exactly** the original's decisions (a test plays whole games and compares every one), which is what makes the measurements below fair. `SMART_BEST` is the combination that won; the rooms use it.
+`createSmartBot(options)` makes the same kind of decision as the original (one target, one step, every time it is asked; sections 1 to 5 above) and adds habits that a beginner picks up, each a switch in `SmartOptions`. With every switch off it makes **exactly** the original's decisions (a test plays whole games and compares every one), which is what makes the measurements below fair. `SMART_V1` is the first round's winners (habits 1 to 3), and `SMART_BEST` adds habit 4 on top of it; the rooms use `SMART_BEST`.
 
 ### Habit 1: finish the ring around cities and villages (`ring`)
 
@@ -174,6 +174,15 @@ weight(tile) = (troops - 1 + carry(tile)) / (1 + distance to staging)
 
 The tile with the highest weight is the one that moves, and it moves onto the neighbor, one step closer, that has the highest `gain + carry`. A march therefore collects the small armies that are lying around its route, instead of leaving them behind. It is the same single step, asked again next tick, so it still reacts to changes. (An experiment that also let the army step sideways onto a stack, `detour`, made no difference and is off.)
 
+### Habit 4: defend what an enemy could take (`homeGuard`, `reinforce`, `defendUntil`)
+
+A city or village is **threatened** when a tile of another player next to it could send at least 70% of what the producer defends with (`threatRatio`; its troops times its defense bonus). Two habits use that:
+
+- `homeGuard`: a threatened producer does not send its troops anywhere. It is left out of every attack and every march, so it stays full.
+- `reinforce`: if an attack that can be made now would hit the tile that threatens a producer, it is made. Otherwise the army nearest to the most valuable threatened producer (counting what it picks up on the way, habit 3) takes a step toward it, ahead of anything else except that.
+
+**Only while two players are left (`defendUntil: 2`).** Defending all the time was a clear win in duels and a loss in battle royales. In a royale a city usually borders several players, so something is always threatened, and the bot spent its one order per tick reinforcing and keeping troops at home instead of expanding: it won 15 royales in 60 where the same bot without defence won 27, and it survived less often. With the limit it defends in every duel and in the endgame of a royale, and plays like `SMART_V1` before that (27 of 60 either way).
+
 ### Habits that did not help (`neutralFirst`, `ignoreEnemyFarms`)
 
 The idea was to put neutral villages and cities ahead of skirmishes with other players. Two ways of doing it were measured, and neither helped:
@@ -206,13 +215,54 @@ Tuning, against `pickup` + `uncap` (32 duels): adding `ring` won 26-5. Of its st
 
 The numbers are from fixed boards and a few dozen games, so a difference of a few games is noise; the large ones (a win rate of 90% against the original, and `ring` on top of the other two) are not.
 
+### Second round: defence, more habits, tuning, cost
+
+The same harness, this time against `SMART_V1` (and, for each step, against the best bot so far). Duels: 20 boards from both sides (40 games). Royales: the candidate against three of the opponent, 16 games to start with and 60 to 80 where the answer was close. The first row of each table is the bot against an identical copy, which shows how much luck there is: **20-20 every time, with differences of up to 5 games either way being noise**.
+
+**Defence and the other habits, each added to `SMART_V1`** (duels against `SMART_V1`; idle ticks are the share of decisions that gave no order):
+
+| Added                      | Duels    | Avg win    | Idle ticks |
+| -------------------------- | -------- | ---------- | ---------- |
+| nothing (identical copy)   | 20-20    | 1111 ticks | 18%        |
+| `homeGuard`                | 27-13    | 1058       | 18%        |
+| `reinforce`                | 29-11    | 785        | 14%        |
+| **both**                   | **32-8** | **793**    | 13%        |
+| `exact` (production timer) | 20-20    | 936        | 18%        |
+| `strike` (tiles just left) | 22-17    | 959        | 18%        |
+| `pool` (fill idle ticks)   | 17-22    | 957        | 16%        |
+| `sticky` (keep the target) | 17-22    | 1079       | 20%        |
+
+**More, on top of defence** (against the bot with defence; none of them clears the noise, so none was kept): `sim` (play the attack through the rules first) 20-20, exactly the same as without it, which means the heuristic is never wrong in a way the rules would catch; `exact` 22-17, `sim` + `exact` 22-17, `strike` 21-17, `weakest` (prefer weak players) 20-18, `edge` (discount producers at the board's edge) 19-21; `threatRatio` 0.5, 0.85 and 1.0: 16-23, 19-20 and 21-18.
+
+**Tuning the numbers** I had guessed, one at a time (duels against the same bot): cost per troop 0.025 and 0.1: 18-21, 17-22; gather factor 1.0, 0.6 and 0.4: 16-24, 23-16, 16-22; enemy bonus 0, 6 and 10: 13-26, 23-16, 21-19; city value 18 and 8: 21-19, 21-19; village value 10: 20-20; farm value 4 and 1: 19-21, 19-21; enemy bonus 6 with gather factor 0.6: 20-20. The two that looked better did not hold up when combined; the values are on a flat peak, and the one clear result is that taking nothing extra for another player's tile (enemy bonus 0) is worse. They were left alone.
+
+**Battle royales** (the candidate against three originals; chance is 25%):
+
+| Candidate                                           | Wins           |
+| --------------------------------------------------- | -------------- |
+| `SMART_V1`                                          | 27 / 60        |
+| + `homeGuard`                                       | 20 / 60        |
+| + `reinforce`                                       | 16 / 60        |
+| + both, always                                      | 15 / 60        |
+| + both, `threatRatio` 1.0 and 1.5                   | 20 and 22 / 60 |
+| **+ both, only with 2 players left (`SMART_BEST`)** | **27 / 60**    |
+| + both, with 3 players or fewer                     | 22 / 60        |
+
+`SMART_BEST` against three `SMART_V1` bots won 15 of 60 (an identical copy: 14 of 60), so in a royale it plays as well as `SMART_V1`; its gain is in duels (32-8 against `SMART_V1`, 32-0 against the original, taking about 740 ticks to win; two originals playing each other take about 1300). The habits that failed in duels were tried again in royales (80 games each, base 34 of 80): `strike` 33, `neutralFirst` 32, `pool` 29, `edge` 26, `sticky` 25, `exact` 24, `ignoreEnemyFarms` 24. None helped.
+
+**Cost.** A decision (`SMART_BEST`) takes **0.37 ms on average, and 99% take under 2.4 ms** (the worst, about 20 ms, are the engine warming up). A battle royale of twelve of them costs the server **1.5 ms per tick on average, 5.6 ms at the 99th percentile**, for all twelve bots together, out of the one second a tick lasts. Always-on defence cost about 60% more (0.61 ms per decision) and was worse in royales, which is another reason for `defendUntil`. `sim` costs another 0.2 ms per decision for nothing. Running `BOT_BENCH=1 BOT_EXPERIMENT=1` (see `botExperiment.test.ts`) measures this on any bot.
+
 ### What it still does not do
 
-It still never defends (no home guard, no reinforcing a threatened producer), still queues one order at a time and reacts to the board as it is, and still does not scout. Defending was not tried with this bot (keeping troops home on producers that an enemy next door could take, and reinforcing them); it is the obvious next thing to measure, against `SMART_BEST` now.
+- **No defence in a royale until two players are left.** The habit that works in duels hurts when there are several fronts. A defence that picks which threat to answer (the one that is real, not every neighbor) is the open problem.
+- **Idle ticks.** About 12% of its decisions in a duel and 24% in a royale give no order, and filling them (`pool`) did not help: most of them are waiting for production, with nothing worth doing.
+- **One order at a time, from the board as it is.** No memory of where enemies were last seen, no scouting beyond the next ring, no plan more than one step ahead.
+- **Ideas not tried:** gathering only when the troops that could arrive in time are enough (`mass`), valuing farms around a neutral producer before it is captured, looking ahead with rollouts (a few milliseconds per decision, which is the cost to weigh), personalities, and reading what the other players are doing in a royale.
 
 ## Testing
 
 - `packages/shared/src/bot.test.ts`: unit tests of single decisions (attack a tile it can beat, wait when everything is out of reach, march toward a fight it cannot win from one tile), and a headless harness that plays bots against each other under fog of war, checking that **every order a bot returns is legal** (`checkOrder`), that a battle royale between bots finishes, and that a bot beats an opponent who never plays.
+- `packages/shared/src/smartBotHabits.test.ts`: single boards for the second round's habits: a threatened city stays home (and only while two players are left), troops are sent to a producer in danger, the production timer decides whether an attack is enough, spare troops march when nothing can be attacked, and the target stays chosen.
 - `packages/shared/src/smartBot.test.ts`: the improved bot with every switch off agrees with the original on every decision of whole games; with the best switches on it only gives legal orders; and single boards for each habit (an army at its cap moves, the last farm of a city's ring beats a neutral village, an army takes the route with the troops on it).
 - `apps/server/src/botExperiment.test.ts`: the harness above. Skipped unless `BOT_EXPERIMENT` is set.
 - `apps/server/src/bots.test.ts`: bots in rooms. Labelling, names and colors, the limits on the count, bots yielding to people, no bots in public games, the bot playing a real match through the lobby, a person out of the game seeing its orders, rematches, closing the room, and the admin counts.

@@ -1,6 +1,7 @@
 import { tileRules, type MatchConfig } from './config.js';
 import { hexKey, hexNeighbors, type Hex } from './hex.js';
 import type { Order } from './orders.js';
+import type { PlayerScore } from './scores.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
@@ -14,6 +15,8 @@ export interface BotContext {
   readonly view: GameState;
   readonly me: PlayerId;
   readonly config: MatchConfig;
+  /** Everyone's strength, which is public (the scoreboard is not fogged). Bots that do not use it ignore it. */
+  readonly scores?: readonly PlayerScore[];
 }
 
 /** Called whenever the bot has nothing queued; returns the orders to append (possibly none). */

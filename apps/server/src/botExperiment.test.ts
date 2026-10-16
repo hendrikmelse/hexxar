@@ -36,6 +36,23 @@ const enabled = process.env.BOT_EXPERIMENT !== undefined;
 const makeBot = (spec: string): Bot =>
   spec === 'legacy' ? createEasyBot() : createSmartBot(JSON.parse(spec) as Partial<SmartOptions>);
 
+/** What the candidate's decisions cost, and how often it let a tick go by with nothing to do. */
+const stats = { decisions: 0, idle: 0, ms: 0, maxMs: 0 };
+
+/** The candidate, timed. (The opponent is not measured.) */
+function measured(bot: Bot): Bot {
+  return (context) => {
+    const started = performance.now();
+    const orders = bot(context);
+    const took = performance.now() - started;
+    stats.decisions++;
+    stats.ms += took;
+    stats.maxMs = Math.max(stats.maxMs, took);
+    if (orders.length === 0) stats.idle++;
+    return orders;
+  };
+}
+
 const config = parseMatchConfig({ fog: 'on' });
 
 interface Played {
@@ -50,12 +67,19 @@ function play(start: GameState, bots: Record<string, Bot>, ticks: number): Playe
   let state = start;
   while (state.tick < ticks && state.winner === null) {
     const orders: Record<string, Order | undefined> = {};
+    // The scoreboard is public, so every bot may be told it.
+    const scores = scoresOf(state, config);
     for (const player of state.players) {
       if (state.eliminated.includes(player)) continue;
       const queue = queues.get(player)!;
       if (queue.length === 0) {
         queue.push(
-          ...bots[player]!({ view: visibleState(state, player, config), me: player, config }),
+          ...bots[player]!({
+            view: visibleState(state, player, config),
+            me: player,
+            config,
+            scores,
+          }),
         );
       }
       orders[player] = queue.shift();
@@ -83,7 +107,7 @@ describe.skipIf(!enabled)('bot experiment', () => {
         const them = swap ? 'P1' : 'P2';
         const { state, capacity } = play(
           start,
-          { [us]: makeBot(candidate), [them]: makeBot(opponent) },
+          { [us]: measured(makeBot(candidate)), [them]: makeBot(opponent) },
           ticks,
         );
         if (state.winner === us) {
@@ -101,7 +125,8 @@ describe.skipIf(!enabled)('bot experiment', () => {
       const us = players[(seed - 1) % 4]!;
       const { state: start } = createFreeForAllMatch({ players, seed, config });
       const bots: Record<string, Bot> = {};
-      for (const p of players) bots[p] = makeBot(p === us ? candidate : opponent);
+      for (const p of players)
+        bots[p] = p === us ? measured(makeBot(candidate)) : makeBot(opponent);
       const { state } = play(start, bots, ticks + 1000);
       if (state.winner === us) {
         royale.won++;
@@ -111,7 +136,13 @@ describe.skipIf(!enabled)('bot experiment', () => {
       if (!state.eliminated.includes(us)) royale.surviving++;
     }
 
-    const result = { candidate, opponent, duelBoards, royales, ticks, duels, royale };
+    const cost = {
+      decisions: stats.decisions,
+      idleShare: Number((stats.idle / Math.max(1, stats.decisions)).toFixed(3)),
+      avgMs: Number((stats.ms / Math.max(1, stats.decisions)).toFixed(4)),
+      maxMs: Number(stats.maxMs.toFixed(2)),
+    };
+    const result = { candidate, opponent, duelBoards, royales, ticks, duels, royale, cost };
     const text = JSON.stringify(result);
     if (process.env.BOT_OUT) writeFileSync(process.env.BOT_OUT, text);
     else process.stdout.write(`${text}\n`);
@@ -119,4 +150,57 @@ describe.skipIf(!enabled)('bot experiment', () => {
       duelBoards * 2,
     );
   }, 3_600_000);
+});
+
+/**
+ * What twelve bots cost a server: a battle royale of twelve of the candidate, with the time of every
+ * decision measured. BOT_BENCH=1 BOT_EXPERIMENT=1 turns it on (BOT_TICKS ticks, 600 by default).
+ */
+describe.skipIf(!enabled || process.env.BOT_BENCH === undefined)('bot cost', () => {
+  it('twelve bots on one board', () => {
+    const candidate = process.env.BOT_VARIANT ?? '{}';
+    const ticks = Number(process.env.BOT_TICKS ?? 600);
+    const players = Array.from({ length: 12 }, (_, i) => `P${i + 1}`);
+    const { state: start } = createFreeForAllMatch({ players, seed: 4, config });
+    const bot = makeBot(candidate);
+    const samples: number[] = [];
+    const perTick: number[] = [];
+    const queues = new Map<string, Order[]>(players.map((p) => [p, []]));
+    let state = start;
+    while (state.tick < ticks && state.winner === null) {
+      const orders: Record<string, Order | undefined> = {};
+      const scores = scoresOf(state, config);
+      let tickMs = 0;
+      for (const player of state.players) {
+        if (state.eliminated.includes(player)) continue;
+        const queue = queues.get(player)!;
+        if (queue.length === 0) {
+          const view = visibleState(state, player, config);
+          const started = performance.now();
+          queue.push(...bot({ view, me: player, config, scores }));
+          const took = performance.now() - started;
+          samples.push(took);
+          tickMs += took;
+        }
+        orders[player] = queue.shift();
+      }
+      perTick.push(tickMs);
+      state = resolveTick(state, orders as OrdersByPlayer, config);
+    }
+    const at = (xs: number[], q: number) =>
+      [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) * q)] ?? 0;
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    // The first stretch is the engine warming up.
+    const warm = samples.slice(200);
+    const text = JSON.stringify({
+      candidate,
+      ticks: state.tick,
+      decisions: samples.length,
+      decisionMs: { avg: mean(warm), p99: at(warm, 0.99), max: Math.max(...warm) },
+      tickMs: { avg: mean(perTick), p99: at(perTick, 0.99), max: Math.max(...perTick) },
+    });
+    if (process.env.BOT_OUT) writeFileSync(process.env.BOT_OUT, text);
+    else process.stdout.write(`${text}\n`);
+    expect(samples.length).toBeGreaterThan(0);
+  }, 600_000);
 });
