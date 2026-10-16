@@ -548,7 +548,7 @@ function setPlayerName(label: HTMLElement, name: string, bot: boolean): void {
   }
   const tag = el('span', 'bot-tag');
   tag.textContent = '[BOT]';
-  label.replaceChildren(`${name} `, tag);
+  label.replaceChildren(tag, ` ${name}`);
 }
 
 function createRow(): Row {

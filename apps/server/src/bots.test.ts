@@ -66,6 +66,50 @@ describe('Bots', () => {
     expect(host.room!.settings.bots).toBe(1);
   });
 
+  it('lets the host fill every place with bots and just watch', () => {
+    const host = hostWithBots({ mode: 'ffa' });
+    host.say({ type: 'updateRoom', settings: { bots: 12 } });
+    expect(host.room!.players).toHaveLength(12);
+    expect(host.room!.players.every((p) => p.bot)).toBe(true);
+    expect(host.room!.spectating).toBe(true);
+    host.say({ type: 'startGame' });
+    expect(host.room).toMatchObject({ state: 'running' });
+    vi.advanceTimersByTime(options.prepMs + 5 * TICK_MS);
+    // A spectator sees the bots' orders as they are given.
+    expect(host.all('queued').filter((m) => m.player !== undefined).length).toBeGreaterThan(0);
+    expect(host.last('tick').tick).toBeGreaterThanOrEqual(4);
+  });
+
+  it('gives a place back to a host who stops watching', () => {
+    const host = hostWithBots({ mode: 'ffa' });
+    host.say({ type: 'updateRoom', settings: { bots: 12 } });
+    host.say({ type: 'becomePlayer' });
+    expect(host.room!.spectating).toBe(false);
+    expect(host.room!.players).toHaveLength(12);
+    expect(host.room!.players.filter((p) => p.bot)).toHaveLength(11);
+    expect(host.room!.settings.bots).toBe(11);
+  });
+
+  it('keeps a host who is not alone playing', () => {
+    const host = hostWithBots({ mode: 'ffa', bots: 2 });
+    const guest = new FakeClient(lobby).hello('Gus');
+    guest.say({ type: 'joinRoom', code: host.room!.code });
+    host.say({ type: 'updateRoom', settings: { bots: 12 } });
+    expect(host.room!.spectating).toBe(false);
+    expect(host.room!.players.filter((p) => !p.bot)).toHaveLength(2);
+    expect(host.room!.players).toHaveLength(12);
+  });
+
+  it('remembers the difficulty the host picks', () => {
+    const host = hostWithBots({ mode: 'duel', bots: 1 });
+    expect(host.room!.settings.botLevel).toBe('easy');
+    host.say({ type: 'updateRoom', settings: { botLevel: 'hard' } });
+    expect(host.room!.settings.botLevel).toBe('hard');
+    host.say({ type: 'updateRoom', settings: { botLevel: 'expert' } });
+    expect(host.last('rejected').reason).toMatch(/invalid/);
+    expect(host.room!.settings.botLevel).toBe('hard');
+  });
+
   it('has no bots in public games, and no way to add them', () => {
     const ann = new FakeClient(lobby).hello('Ann');
     ann.say({ type: 'quickPlay', mode: 'ffa' });

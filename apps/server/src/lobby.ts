@@ -282,6 +282,7 @@ export class Lobby {
       size: roomCapacity(mode),
       mapSize: 'normal',
       bots: 0,
+      botLevel: 'easy',
       config: parseMatchConfig(),
     };
   }

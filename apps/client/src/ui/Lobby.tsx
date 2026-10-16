@@ -8,6 +8,8 @@ import {
 } from 'react';
 import {
   BOT_GAME_BOTS,
+  BOT_LEVELS,
+  type BotLevel,
   type MapSize,
   type RoomMode,
   type RoomPlayer,
@@ -22,11 +24,6 @@ import { Chat } from './Chat.js';
 import { FitText } from './FitText.js';
 import { SupportLink } from './Support.js';
 import { useFlip } from './useFlip.js';
-
-const MIN_STARTING_TROOPS = 5;
-const MAX_STARTING_TROOPS = 30;
-const MIN_TICK_SECONDS = 0.2;
-const MAX_TICK_SECONDS = 2;
 
 const MAP_SIZE_LABELS: Record<MapSize, string> = {
   small: 'Small',
@@ -57,6 +54,8 @@ export function Lobby({ actions }: { actions: Actions }) {
   const editable = isHost && isPrivate && room.state === 'lobby';
   const { mode, size } = room.settings;
   const players = room.players.length;
+  // Bots give way to people, so only people fill the places up for someone who wants to join.
+  const people = room.players.filter((p) => !p.bot).length;
   const canStart = players >= room.minPlayers;
   const waitSeconds = useCountdown(room.earlyStartAt, app.clockOffset);
   const bump = useCountBump(players);
@@ -180,10 +179,10 @@ export function Lobby({ actions }: { actions: Actions }) {
               </button>
             )}
             {room.spectating && (
-              <Tip text={players < size ? undefined : 'The game is full'}>
+              <Tip text={people < size ? undefined : 'The game is full'}>
                 <button
                   className="primary"
-                  disabled={players >= size}
+                  disabled={people >= size}
                   onClick={actions.becomePlayer}
                 >
                   Join as player
@@ -454,13 +453,12 @@ function PlayerBox({
             } as CSSProperties
           }
         >
-          {player.name}
           {player.bot && (
             <>
-              {' '}
-              <BotTag />
+              <BotTag />{' '}
             </>
           )}
+          {player.name}
         </span>
       )}
     </div>
@@ -561,6 +559,12 @@ function InviteCode({ code }: { code: string }) {
   );
 }
 
+const BOT_LEVEL_LABELS: Record<BotLevel, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+};
+
 /** The host gets controls; everyone else just reads what the game will be. */
 function Settings({
   room,
@@ -571,7 +575,7 @@ function Settings({
   editable: boolean;
   onChange: Actions['updateRoom'];
 }) {
-  const { mode, mapSize, bots, size, config } = room.settings;
+  const { mode, mapSize, bots, botLevel, size, config } = room.settings;
 
   if (!editable) {
     return (
@@ -583,7 +587,9 @@ function Settings({
         {bots > 0 && (
           <>
             <dt>Bots</dt>
-            <dd>{bots}</dd>
+            <dd>
+              {bots} ({BOT_LEVEL_LABELS[botLevel]})
+            </dd>
           </>
         )}
         <dt>Fog of war</dt>
@@ -596,17 +602,29 @@ function Settings({
     );
   }
 
+  const nextLevel = BOT_LEVELS[(BOT_LEVELS.indexOf(botLevel) + 1) % BOT_LEVELS.length]!;
   return (
     <div className="settings">
-      <Segmented
-        label="Game mode"
-        value={mode}
-        options={[
-          { value: 'duel', label: 'Duel' },
-          { value: 'ffa', label: 'Battle Royale' },
-        ]}
-        onChange={(value) => onChange({ mode: value })}
-      />
+      <div className="settings-row">
+        <Segmented
+          label="Game mode"
+          value={mode}
+          options={[
+            { value: 'duel', label: 'Duel' },
+            { value: 'ffa', label: 'Battle Royale' },
+          ]}
+          onChange={(value) => onChange({ mode: value })}
+        />
+        <Segmented
+          label="Fog of war"
+          value={config.fog}
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+          onChange={(fog) => onChange({ config: { fog } })}
+        />
+      </div>
       <Segmented
         label="Map size"
         value={mapSize}
@@ -616,46 +634,56 @@ function Settings({
         }))}
         onChange={(value) => onChange({ mapSize: value })}
       />
-      <Slider
-        label="Bots"
-        value={bots}
-        min={0}
-        max={size - 1}
-        limits={{ min: 0, max: size - 1 }}
-        step={1}
-        decimals={0}
-        onCommit={(count) => onChange({ bots: count })}
-      />
-      <Segmented
-        label="Fog of war"
-        value={config.fog}
-        options={[
-          { value: 'on', label: 'On' },
-          { value: 'off', label: 'Off' },
-        ]}
-        onChange={(fog) => onChange({ config: { fog } })}
-      />
-      <Slider
-        label="Tick length"
-        value={config.tickMs / 1000}
-        min={MIN_TICK_SECONDS}
-        max={MAX_TICK_SECONDS}
-        limits={{ min: MIN_TICK_SECONDS, max: 5 }}
-        step={0.1}
-        decimals={1}
-        unit="s"
-        onCommit={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
-      />
-      <Slider
-        label="Starting troops"
-        value={config.startingTroops}
-        min={MIN_STARTING_TROOPS}
-        max={MAX_STARTING_TROOPS}
-        limits={{ min: 1, max: 100 }}
-        step={1}
-        decimals={0}
-        onCommit={(startingTroops) => onChange({ config: { startingTroops } })}
-      />
+      <div className="field stack">
+        <span>Bots</span>
+        <div className="bots-row">
+          {/* One button that goes round the levels. */}
+          <button
+            type="button"
+            className="level-button"
+            aria-label={`Bot difficulty: ${BOT_LEVEL_LABELS[botLevel]}. Click for ${BOT_LEVEL_LABELS[nextLevel]}.`}
+            onClick={() => onChange({ botLevel: nextLevel })}
+          >
+            {BOT_LEVEL_LABELS[botLevel]}
+          </button>
+          <Stepper
+            label="Number of bots"
+            value={bots}
+            min={0}
+            max={size}
+            step={1}
+            decimals={0}
+            onChange={(count) => onChange({ bots: count })}
+          />
+        </div>
+      </div>
+      <div className="settings-row">
+        <div className="field stack">
+          <span>Tick length</span>
+          <Stepper
+            label="Tick length"
+            value={config.tickMs / 1000}
+            min={0.2}
+            max={5}
+            step={0.1}
+            decimals={1}
+            unit="s"
+            onChange={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
+          />
+        </div>
+        <div className="field stack">
+          <span>Starting troops</span>
+          <Stepper
+            label="Starting troops"
+            value={config.startingTroops}
+            min={1}
+            max={100}
+            step={1}
+            decimals={0}
+            onChange={(startingTroops) => onChange({ config: { startingTroops } })}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -710,114 +738,62 @@ export function Segmented<T extends string | number>({
   );
 }
 
-/** How long to wait after the last slider movement before telling the server. */
-const SLIDER_SEND_DELAY_MS = 150;
-
 /**
- * A labeled slider with a box beside it showing the value, which can also be typed into. The
- * slider covers the usual range; the box accepts anything within `limits`. Changes show at once
- * and reach the server once they settle.
+ * A number with a "-" button on one side and a "+" on the other. Clicks show at once, and each
+ * one goes to the server as the new value (the server's answer settles it).
  */
-function Slider({
+function Stepper({
   label,
   value,
   min,
   max,
-  limits,
   step,
   decimals,
   unit,
-  onCommit,
+  onChange,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
-  /** The most the number box accepts (the slider only spans `min` to `max`). */
-  limits: { min: number; max: number };
   step: number;
   decimals: number;
   unit?: string;
-  onCommit: (value: number) => void;
+  onChange: (value: number) => void;
 }) {
   const [shown, setShown] = useState(value);
-  const [draft, setDraft] = useState(value.toFixed(decimals));
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-  // Follow the server's value, unless it is just the one we are in the middle of sending.
-  useEffect(() => {
-    if (shown !== value) {
-      setShown(value);
-      setDraft(value.toFixed(decimals));
-    }
-  }, [value]);
-
+  // Follow the server's value whenever it changes.
+  useEffect(() => setShown(value), [value]);
   /** Round to the step, so values like 0.30000000000000004 never go anywhere. */
   const clean = (n: number): number => Number((Math.round(n / step) * step).toFixed(6));
-
-  const change = (next: number) => {
+  const go = (direction: 1 | -1): void => {
+    const next = clean(Math.min(max, Math.max(min, shown + direction * step)));
+    if (next === shown) return;
     setShown(next);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => onCommit(next), SLIDER_SEND_DELAY_MS);
+    onChange(next);
   };
-
-  const position = Math.min(max, Math.max(min, shown));
-  const fill = ((position - min) / (max - min)) * 100;
   return (
-    <div className="field stack">
-      <span>{label}</span>
-      <div className="slider-row">
-        <input
-          type="range"
-          className="slider"
-          aria-label={label}
-          min={min}
-          max={max}
-          step={step}
-          value={position}
-          style={{ '--fill': `${fill}%` } as CSSProperties}
-          onChange={(e) => {
-            const next = clean(Number(e.target.value));
-            setDraft(next.toFixed(decimals));
-            change(next);
-          }}
-        />
-        <span className="value-box">
-          <input
-            type="text"
-            inputMode="decimal"
-            className="slider-value"
-            aria-label={`${label}, exact value`}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              const typed = Number(e.target.value);
-              if (e.target.value.trim() === '' || !Number.isFinite(typed)) return;
-              const next = clean(typed);
-              if (next >= limits.min && next <= limits.max) change(next);
-            }}
-            // Selecting everything on focus makes typing a new value a single step.
-            onFocus={(e) => e.currentTarget.select()}
-            // A number past the limits becomes the limit; anything that is not a number goes back to
-            // the value that counts.
-            onBlur={() => {
-              const typed = Number(draft);
-              if (draft.trim() === '' || !Number.isFinite(typed)) {
-                setDraft(shown.toFixed(decimals));
-                return;
-              }
-              const next = clean(Math.min(limits.max, Math.max(limits.min, typed)));
-              setDraft(next.toFixed(decimals));
-              if (next !== shown) change(next);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-          />
-          {/* Always there, even without a unit, so every box lines up with the others. */}
-          <span className="unit">{unit ?? ''}</span>
-        </span>
-      </div>
+    <div className="stepper" role="group" aria-label={label}>
+      <button
+        type="button"
+        aria-label={`Less ${label}`}
+        disabled={shown <= min}
+        onClick={() => go(-1)}
+      >
+        −
+      </button>
+      <output className="stepper-value" aria-live="polite">
+        {shown.toFixed(decimals)}
+        {unit}
+      </output>
+      <button
+        type="button"
+        aria-label={`More ${label}`}
+        disabled={shown >= max}
+        onClick={() => go(1)}
+      >
+        +
+      </button>
     </div>
   );
 }

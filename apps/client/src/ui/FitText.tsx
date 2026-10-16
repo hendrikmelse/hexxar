@@ -21,7 +21,7 @@ export function FitText({
   className?: string;
   /** Overrides the text color. */
   color?: string;
-  /** A bot's name: followed by a grey [BOT]. */
+  /** A bot's name: preceded by a grey [BOT]. */
   bot?: boolean;
   /** Told after every fit whether the text is cut off with "..." at its smallest size. */
   onClip?: (clipped: boolean) => void;
@@ -50,13 +50,12 @@ export function FitText({
 
   return (
     <span ref={ref} className={className} style={color ? { color } : undefined}>
-      {text}
       {bot && (
         <>
-          {' '}
-          <BotTag />
+          <BotTag />{' '}
         </>
       )}
+      {text}
     </span>
   );
 }

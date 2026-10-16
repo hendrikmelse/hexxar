@@ -5,7 +5,7 @@ Computer-controlled players, for practice and for games when nobody else is arou
 ## The rules of the product
 
 - **Bots are only available in private games.** Quick play never contains a bot. A public lobby that is short of players offers a **Play against bots** button instead (see [Getting into a bot game](#getting-into-a-bot-game)).
-- **Bots are always labelled.** A bot is named `Ada`, `Bram`, ... and wherever its name is shown (lobby, standings, the "is out" notice, the result card, the spectators' chat) a grey **[BOT]** follows it, in the name's own font but not its color (`RoomPlayer.bot` and `ChatMessage.bot` in the protocol). Nothing in the game ever presents a bot as a person.
+- **Bots are always labelled.** A bot is named `Ada`, `Bram`, ... and wherever its name is shown (lobby, standings, the "is out" notice, the result card, the spectators' chat) a grey **[BOT]** comes before it, in the name's own font but not its color (`RoomPlayer.bot` and `ChatMessage.bot` in the protocol). Nothing in the game ever presents a bot as a person.
 - **Bots play by the same rules as people.** They see only what their player may see (fog of war applies), they queue orders into the same append-only queue, and the tick resolves at most one order per player. They get no extra troops, vision, or speed.
 - **People come first.** Bots only fill places nobody else wants: a person who joins a full private room takes a bot's place.
 - **Bots are not people in the numbers.** They are left out of the online counts, the admin panel's player counts and the room's "empty" check. Analytics' `match_start` events carry a `bots` count.
@@ -31,7 +31,7 @@ type Bot = (context: { view: GameState; me: PlayerId; config: MatchConfig }) => 
 
 A bot is a `Member` of the room, like a person, with two differences: `member.bot` holds its decision function, and its `Session` is a stand-in (`userId` like `bot-ada`, no token, a connection that discards everything sent to it). Because it is a member, everything that already works for players works for it: it has a color, a match player id, a place in the player list and the scoreboard, and the chat announces when it is eliminated.
 
-- **`settings.bots`** is the number of bots the host wants (0 to 11; a duel holds at most 1). The room keeps the real number of bots equal to `min(settings.bots, capacity - people)` and writes the result back, in `syncBots()`. It runs whenever the room's makeup changes: someone joins, leaves, spectates, the host changes a setting, or the room goes back to its lobby after a match. So a person arriving in a full room pushes the last bot out, and the setting follows (the bot does not come back by itself when the person leaves).
+- **`settings.bots`** is the number of bots the host wants (0 to 12; a duel holds at most 2). **`settings.botLevel`** is how good they are (`easy`, `medium` or `hard`, the same for every bot in the room). The levels are only a setting so far: every level plays like the easy bot until the others are written. The room keeps the real number of bots equal to `min(settings.bots, capacity - people)` and writes the result back, in `syncBots()`. It runs whenever the room's makeup changes: someone joins, leaves, spectates, the host changes a setting, or the room goes back to its lobby after a match. So a person arriving in a full room pushes the last bot out, and the setting follows (the bot does not come back by itself when the person leaves). A host who is the only person in the room and asks for bots in **every** place becomes a spectator (`setSpectating`), so a 12-bot game can be watched; if they take a place again with **Join as player**, the last bot gives way.
 - **When bots think** (`thinkBots()`): once when the match is created, so they plan their opening during the planning period like everyone else, and after every tick. A bot is asked for orders only when its queue is **empty**, so it queues at most one tick ahead. Its orders go through `queueOrder()`, the same path as a person's orders, so `Match.enqueue` validates them and anyone watching sees them.
 - **Costs.** A bot decision is a pass over the tiles it can see, plus one breadth-first search over its own. Bots are skipped when messages are built and sent (ticks, snapshots, room views), since nobody is there to receive them.
 - **Leaving.** A room closes when the last person is gone, bots or no bots. Bots never disconnect, never go AFK, and are never the host. When a match ends, a bot has no result card to read, so it stays in the room and takes part in the next game the host starts.
@@ -45,13 +45,13 @@ There are no bot-specific messages.
 
 ### On the client
 
-- The lobby's host settings have a **Bots** slider (0 to the room size minus one). Everyone else sees the number in the read-only settings.
+- The host's settings list is two to a line where the options are short: game mode beside fog of war, and tick length beside starting troops. Numbers are a **−** button, the value and a **+** button (`Stepper` in `Lobby.tsx`). Bots has a **difficulty button** that goes round Easy, Medium and Hard on each click, beside a stepper for how many bots (0 to the room size). Everyone else sees the numbers in the read-only settings.
 - `BotTag` renders the grey [BOT] inside the element that holds the name, so it shrinks and is cut off together with it. The in-match standings (plain DOM) do the same in `hud.ts`.
 - `playWithBots(mode)` in `apps/client/src/main.ts` leaves the quick game, and once the server has let go (the room becomes `null`) it sends `createRoom` with the mode and `BOT_GAME_BOTS[mode]` bots. The host presses **Start game** as in any private game and can still change anything first.
 
 ## Getting into a bot game
 
-1. **Create game** from the menu, then use the Bots slider.
+1. **Create game** from the menu, then use the Bots stepper. At 12 (or 2 in a duel) the host becomes a spectator.
 2. **From a lobby that cannot start:** in a lobby with too few players to start (a duel with no opponent, a battle royale with fewer than three players), a card at the bottom of the screen says "Tired of waiting?" with a **Play against bots** button. It fades in after 3 seconds of waiting (any change in who is in the lobby starts the 3 seconds over) and fades out again at once when the match can start. In a public lobby the button takes the player to a new private game of the same mode with bots already added (`BOT_GAME_BOTS`: 1 for a duel, 5 for a battle royale). In a private lobby only the host sees it, and it adds those bots to the room they are in. Spectators never see it.
 
 ## The algorithm (the "easy" bot)
@@ -139,7 +139,7 @@ In practice: it expands fast, takes nearby cities and villages, and finishes a p
 A new difficulty is another `Bot` function. To make it available:
 
 1. Write it in `packages/shared/src/` (pure, `visibleState` in, orders out) and test it in the harness against the easy bot.
-2. Give a room a way to say which bot a place gets (a bot level next to `settings.bots`, in `RoomSettings` and the lobby UI), and replace `createEasyBot()` in `Room.newBot()` with a choice.
+2. Make `Room.botOfLevel()` return it for its level (it returns the easy bot for every level for now; the setting and the lobby's difficulty button already exist).
 3. Update this page.
 
 A bot that wants to plan further ahead than one step can return several orders; the room appends all of them, and asks again only when its queue has run dry.

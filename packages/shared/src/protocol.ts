@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { analyticsIdSchema } from './analytics.js';
+import { BOT_LEVELS } from './bot.js';
 import { matchConfigSchema } from './config.js';
 import { MAP_SIZES } from './params.js';
 import { orderSchema } from './orders.js';
@@ -63,11 +64,9 @@ export const roomSettingsSchema = z.object({
    * How many of the places are played by bots (private games only). Bots only ever take places
    * nobody else wants: a person joining a full room pushes a bot out.
    */
-  bots: z
-    .number()
-    .int()
-    .min(0)
-    .max(FFA_MAX_PLAYERS - 1),
+  bots: z.number().int().min(0).max(FFA_MAX_PLAYERS),
+  /** How good the bots are (the same for all of them). */
+  botLevel: z.enum(BOT_LEVELS),
   config: matchConfigSchema,
 });
 export type RoomSettings = z.infer<typeof roomSettingsSchema>;
@@ -79,12 +78,8 @@ export type RoomSettings = z.infer<typeof roomSettingsSchema>;
 export const roomSettingsPatchSchema = z.object({
   mode: z.enum(ROOM_MODES).optional(),
   mapSize: z.enum(MAP_SIZES).optional(),
-  bots: z
-    .number()
-    .int()
-    .min(0)
-    .max(FFA_MAX_PLAYERS - 1)
-    .optional(),
+  bots: z.number().int().min(0).max(FFA_MAX_PLAYERS).optional(),
+  botLevel: z.enum(BOT_LEVELS).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type RoomSettingsPatch = z.infer<typeof roomSettingsPatchSchema>;

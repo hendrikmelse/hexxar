@@ -85,13 +85,12 @@ function OutText({
                 : { color: `#${player.color.toString(16).padStart(6, '0')}` }
             }
           >
-            {player.name}
             {player.bot && (
               <>
-                {' '}
-                <BotTag />
+                <BotTag />{' '}
               </>
             )}
+            {player.name}
           </strong>
         </span>
       ))}

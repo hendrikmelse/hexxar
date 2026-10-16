@@ -1038,79 +1038,6 @@
   font-size: 14px;
 }
 
-/* Tick length slider: a sunken track filled with blue up to a raised round thumb */
-
-#ui input.slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 24px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  cursor: pointer;
-}
-
-#ui input.slider:focus {
-  outline: none;
-}
-
-#ui input.slider::-webkit-slider-runnable-track {
-  height: 8px;
-  border: 1px solid #343a4b;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #3f8cf0 var(--fill), #0f1117 var(--fill));
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#ui input.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  margin-top: -7px;
-  border: 1px solid #7db4ff;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #ffffff 0%, #c9dcff 100%);
-  box-shadow:
-    0 2px 0 #1a3f78,
-    0 4px 8px rgba(0, 0, 0, 0.5);
-}
-
-#ui input.slider:focus-visible::-webkit-slider-thumb {
-  box-shadow:
-    0 0 0 3px rgba(79, 157, 255, 0.45),
-    0 2px 0 #1a3f78;
-}
-
-#ui input.slider::-moz-range-track {
-  height: 8px;
-  border: 1px solid #343a4b;
-  border-radius: 6px;
-  background: #0f1117;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55) inset;
-}
-
-#ui input.slider::-moz-range-progress {
-  height: 8px;
-  border-radius: 6px;
-  background: #3f8cf0;
-}
-
-#ui input.slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #7db4ff;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #ffffff 0%, #c9dcff 100%);
-  box-shadow:
-    0 2px 0 #1a3f78,
-    0 4px 8px rgba(0, 0, 0, 0.5);
-}
-
 /* A player leaving: their box swells a little, then shrinks away to nothing */
 
 #ui .roster-slot.leaving,
@@ -1357,69 +1284,6 @@
   #ui .name-full.shown::before {
     transition: none;
   }
-}
-
-/* Slider rows: the slider, with its value large on the right instead of small above it */
-
-#ui .slider-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-#ui .slider-row input.slider {
-  flex: 1;
-  min-width: 0;
-}
-
-#ui .slider-row output {
-  flex: none;
-  min-width: 64px;
-  text-align: right;
-  font-size: 22px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: #eef5ff;
-}
-
-/* The value beside a slider, as a text box you can type into */
-
-#ui .slider-row .value-box {
-  display: flex;
-  flex: none;
-  align-items: baseline;
-  gap: 4px;
-  position: relative;
-  top: -3px;
-}
-
-#ui input.slider-value {
-  box-sizing: border-box;
-  width: 62px;
-  padding: 4px 8px;
-  border: 1px solid #343a4b;
-  border-radius: 8px;
-  background: #0f1117;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-  color: #eef5ff;
-  font-size: 20px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-#ui input.slider-value:focus {
-  outline: none;
-  border-color: #4f9dff;
-}
-
-#ui .slider-row .value-box .unit {
-  min-width: 12px;
-  color: #8a93a8;
-  font-size: 16px;
-  font-weight: 700;
 }
 
 /* The selected option's blue box is its own element, so it can slide from one option to the next */
@@ -2522,11 +2386,6 @@
   font-size: 14px;
 }
 
-#ui .lobby.compact input.slider-value {
-  padding: 1px 8px;
-  font-size: 18px;
-}
-
 /* How many are watching, above the lobby's buttons */
 #ui .muted.spectator-count {
   /* A little room above the buttons */
@@ -3626,4 +3485,68 @@
   #ui .bot-offer.visible {
     transition: none;
   }
+}
+
+/* The options list: two to a line where they are short, and "- n +" for numbers */
+
+#ui .settings-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+#ui .settings-row > .field {
+  min-width: 0;
+}
+
+#ui .settings-row button.segment {
+  padding-left: 4px;
+  padding-right: 4px;
+  font-size: 13px;
+}
+
+#ui .stepper {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px;
+  background: #0f1117;
+  border: 1px solid #343a4b;
+  border-radius: 10px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui .stepper button {
+  flex: none;
+  width: 36px;
+  padding: 0;
+  height: 30px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+#ui .stepper .stepper-value {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #eef5ff;
+}
+
+/* Bots: the difficulty button, then how many */
+#ui .bots-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+#ui button.level-button {
+  min-width: 92px;
+  padding: 0 14px;
 }

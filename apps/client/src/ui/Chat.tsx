@@ -233,13 +233,12 @@ export function Chat({
                 className={`${message.userId === you ? 'mine' : ''} ${message.system ? 'system' : ''}`}
               >
                 <strong style={nameStyle(colors.get(message.userId))}>
-                  {message.name}
                   {message.bot && (
                     <>
-                      {' '}
-                      <BotTag />
+                      <BotTag />{' '}
                     </>
                   )}
+                  {message.name}
                   {message.userId === you && ' (you)'}
                 </strong>{' '}
                 {message.text}

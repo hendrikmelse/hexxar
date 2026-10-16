@@ -51,13 +51,12 @@ export function Results({ actions }: { actions: Actions }) {
                   }
                 />
                 <strong className="winner-name">
-                  {winnerName ?? app.winner}
                   {winner?.bot && (
                     <>
-                      {' '}
-                      <BotTag />
+                      <BotTag />{' '}
                     </>
                   )}
+                  {winnerName ?? app.winner}
                 </strong>
               </div>
             </div>

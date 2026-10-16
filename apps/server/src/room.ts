@@ -62,15 +62,15 @@ export function applySettingsPatch(
   // The number of players is decided by the kind of game.
   const size = roomCapacity(mode);
   const mapSize = patch.mapSize ?? current.mapSize;
-  // Somebody has to be a person, so a room never has bots for every place.
-  const bots = Math.min(patch.bots ?? current.bots, size - 1);
+  const bots = Math.min(patch.bots ?? current.bots, size);
+  const botLevel = patch.botLevel ?? current.botLevel;
   let config;
   try {
     config = parseMatchConfig({ ...current.config, ...patch.config });
   } catch {
     return 'invalid game settings';
   }
-  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, bots, config });
+  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, bots, botLevel, config });
   return parsed.success ? parsed.data : 'invalid game settings';
 }
 
@@ -442,8 +442,20 @@ export class Room {
     if (this.state !== 'lobby') return 'the game has already started';
     const next = applySettingsPatch(this.settings, patch);
     if (typeof next === 'string') return next;
+    const levelChanged = next.botLevel !== this.settings.botLevel;
     this.settings = next;
+    // Asking for bots in every place, with nobody else here, is asking to watch them play.
+    if (
+      patch.bots !== undefined &&
+      next.bots >= this.capacity &&
+      this.humans().length === 1 &&
+      this.memberOf(session)?.spectator === false
+    ) {
+      this.setSpectating(session, true);
+    }
     this.rebalance();
+    if (levelChanged)
+      for (const member of this.members) if (member.bot) member.bot = this.botOfLevel();
     this.syncBots();
     this.trackMin();
     this.broadcastRoom();
@@ -509,7 +521,7 @@ export class Room {
   /**
    * Make the bots in a private room match the setting: as many as asked for, but only in places no
    * person wants, so a person arriving in a full room pushes the last bot out (and the setting
-   * follows, so it does not come back by itself).
+   * follows, so it does not come back by itself). With nobody playing, every place can be a bot's.
    */
   private syncBots(): void {
     if (this.visibility !== 'private' || this.state !== 'lobby') return;
@@ -539,8 +551,13 @@ export class Room {
       room: this,
     };
     const member = newMember(session, false);
-    member.bot = createEasyBot();
+    member.bot = this.botOfLevel();
     return member;
+  }
+
+  /** A bot as good as the room's setting says. Every level is the easy bot until the others are written. */
+  private botOfLevel(): Bot {
+    return createEasyBot();
   }
 
   /** Every bot with nothing queued works out what to do next, from what its player can see. */

@@ -19,6 +19,13 @@ export interface BotContext {
 /** Called whenever the bot has nothing queued; returns the orders to append (possibly none). */
 export type Bot = (context: BotContext) => Order[];
 
+/**
+ * How good the bots in a room are. Only the setting exists so far: every level plays like the easy
+ * bot until the others are written.
+ */
+export const BOT_LEVELS = ['easy', 'medium', 'hard'] as const;
+export type BotLevel = (typeof BOT_LEVELS)[number];
+
 /** Names for bots in a room (no two bots in a room share one). Clients add a [BOT] tag to them. */
 export const BOT_NAMES: readonly string[] = [
   'Ada',
@@ -32,6 +39,7 @@ export const BOT_NAMES: readonly string[] = [
   'Ivo',
   'Juno',
   'Kai',
+  'Lux',
 ];
 
 /** How many bots "Play against bots" adds: the one opponent of a duel, or a battle royale's worth. */
