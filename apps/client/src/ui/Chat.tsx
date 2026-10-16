@@ -5,6 +5,7 @@ import { track } from '../analytics.js';
 import { paletteColor } from '../board.js';
 import { setChatOpen, useApp } from '../store.js';
 import type { Actions } from './App.js';
+import { BotTag } from './BotTag.js';
 
 /** How close to the bottom the log has to be scrolled for new messages to keep it there. */
 const STICK_PX = 40;
@@ -233,6 +234,12 @@ export function Chat({
               >
                 <strong style={nameStyle(colors.get(message.userId))}>
                   {message.name}
+                  {message.bot && (
+                    <>
+                      {' '}
+                      <BotTag />
+                    </>
+                  )}
                   {message.userId === you && ' (you)'}
                 </strong>{' '}
                 {message.text}

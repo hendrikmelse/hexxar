@@ -3,6 +3,7 @@ import { playSound } from '../audio/audio.js';
 import type { RoomMode, RoomSettingsPatch } from '@hexxar/shared';
 import { useApp } from '../store.js';
 import { Admin } from './Admin.js';
+import { BotTag } from './BotTag.js';
 import { Connecting } from './Connecting.js';
 import { MapsPage } from './MapsPage.js';
 import { Loading } from './Loading.js';
@@ -66,7 +67,11 @@ function Toast() {
 }
 
 /** Who has just dropped out, each name in their color. */
-function OutText({ players }: { players: { name: string; color: number | null }[] }) {
+function OutText({
+  players,
+}: {
+  players: { name: string; color: number | null; bot?: boolean }[];
+}) {
   return (
     <>
       {players.map((player, index) => (
@@ -81,6 +86,12 @@ function OutText({ players }: { players: { name: string; color: number | null }[
             }
           >
             {player.name}
+            {player.bot && (
+              <>
+                {' '}
+                <BotTag />
+              </>
+            )}
           </strong>
         </span>
       ))}

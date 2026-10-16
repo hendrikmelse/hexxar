@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
+import { BotTag } from './BotTag.js';
 
 /**
  * One line of text that shrinks, from `max` down to `min` pixels, to fit the width it is given.
@@ -11,6 +12,7 @@ export function FitText({
   min,
   className,
   color,
+  bot,
   onClip,
 }: {
   text: string;
@@ -19,6 +21,8 @@ export function FitText({
   className?: string;
   /** Overrides the text color. */
   color?: string;
+  /** A bot's name: followed by a grey [BOT]. */
+  bot?: boolean;
   /** Told after every fit whether the text is cut off with "..." at its smallest size. */
   onClip?: (clipped: boolean) => void;
 }) {
@@ -42,11 +46,17 @@ export function FitText({
     const observer = new ResizeObserver(fit);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [text, max, min]);
+  }, [text, max, min, bot]);
 
   return (
     <span ref={ref} className={className} style={color ? { color } : undefined}>
       {text}
+      {bot && (
+        <>
+          {' '}
+          <BotTag />
+        </>
+      )}
     </span>
   );
 }

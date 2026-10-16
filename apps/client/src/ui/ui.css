@@ -3579,13 +3579,11 @@
   color: #e8eaf0;
 }
 
-/* Bots: the tag beside a bot's name, and the way out of a quick game that is short of players */
+/* Bots: the grey [BOT] after a bot's name, in the name's own font */
 
-#ui .bot-tag {
-  background: rgba(79, 157, 255, 0.18);
-  color: #9cc3ff;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+#ui .bot-tag,
+#hud .bot-tag {
+  color: #8a93a8;
 }
 
 /* The card offering a game against bots: at the bottom of the screen, above the page's links */

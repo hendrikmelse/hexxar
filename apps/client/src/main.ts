@@ -153,6 +153,7 @@ function announceOut(before: readonly string[]): void {
     .map((id) => ({
       name: room?.players.find((p) => p.playerId === id)?.name ?? game.names[id] ?? id,
       color: playerColor(game, id),
+      bot: room?.players.find((p) => p.playerId === id)?.bot ?? false,
     }));
   if (players.length === 0) return;
   playSound('player.out');

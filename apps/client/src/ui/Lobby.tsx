@@ -17,6 +17,7 @@ import { playSound } from '../audio/audio.js';
 import { paletteColor } from '../board.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
+import { BotTag } from './BotTag.js';
 import { Chat } from './Chat.js';
 import { FitText } from './FitText.js';
 import { SupportLink } from './Support.js';
@@ -433,9 +434,9 @@ function PlayerBox({
         max={max}
         min={min}
         color={nameColor(player)}
+        bot={player.bot}
         onClip={setClipped}
       />
-      {player.bot && <em className="bot-tag">bot</em>}
       {!player.connected && <em>disconnected</em>}
       {clipped && (
         <span
@@ -454,6 +455,12 @@ function PlayerBox({
           }
         >
           {player.name}
+          {player.bot && (
+            <>
+              {' '}
+              <BotTag />
+            </>
+          )}
         </span>
       )}
     </div>

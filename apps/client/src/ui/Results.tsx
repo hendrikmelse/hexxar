@@ -2,6 +2,7 @@ import type { RoomView } from '@hexxar/shared';
 import { trackChoice } from '../analytics.js';
 import { useApp } from '../store.js';
 import type { Actions } from './App.js';
+import { BotTag } from './BotTag.js';
 import { Chat } from './Chat.js';
 import { Logo } from './Logo.js';
 
@@ -10,7 +11,8 @@ export function Results({ actions }: { actions: Actions }) {
   const app = useApp();
   const room = app.room as RoomView;
   const won = app.winner !== null && app.winner === app.matchPlayerId;
-  const winnerName = room.players.find((p) => p.playerId === app.winner)?.name;
+  const winner = room.players.find((p) => p.playerId === app.winner);
+  const winnerName = winner?.name;
 
   // A win says so; anyone else is told the game is over (being knocked out mid-match is "Defeat").
   const banner = won ? 'Victory!' : 'GAME OVER';
@@ -48,7 +50,15 @@ export function Results({ actions }: { actions: Actions }) {
                       : { background: `#${app.winnerColor.toString(16).padStart(6, '0')}` }
                   }
                 />
-                <strong className="winner-name">{winnerName ?? app.winner}</strong>
+                <strong className="winner-name">
+                  {winnerName ?? app.winner}
+                  {winner?.bot && (
+                    <>
+                      {' '}
+                      <BotTag />
+                    </>
+                  )}
+                </strong>
               </div>
             </div>
           )}

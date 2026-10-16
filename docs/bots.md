@@ -5,7 +5,7 @@ Computer-controlled players, for practice and for games when nobody else is arou
 ## The rules of the product
 
 - **Bots are only available in private games.** Quick play never contains a bot. A public lobby that is short of players offers a **Play against bots** button instead (see [Getting into a bot game](#getting-into-a-bot-game)).
-- **Bots are always labelled.** A bot is named `Bot Ada`, `Bot Bram`, ... and carries a **BOT** tag in the lobby (`RoomPlayer.bot` in the protocol). Nothing in the game ever presents a bot as a person.
+- **Bots are always labelled.** A bot is named `Ada`, `Bram`, ... and wherever its name is shown (lobby, standings, the "is out" notice, the result card, the spectators' chat) a grey **[BOT]** follows it, in the name's own font but not its color (`RoomPlayer.bot` and `ChatMessage.bot` in the protocol). Nothing in the game ever presents a bot as a person.
 - **Bots play by the same rules as people.** They see only what their player may see (fog of war applies), they queue orders into the same append-only queue, and the tick resolves at most one order per player. They get no extra troops, vision, or speed.
 - **People come first.** Bots only fill places nobody else wants: a person who joins a full private room takes a bot's place.
 - **Bots are not people in the numbers.** They are left out of the online counts, the admin panel's player counts and the room's "empty" check. Analytics' `match_start` events carry a `bots` count.
@@ -46,7 +46,7 @@ There are no bot-specific messages.
 ### On the client
 
 - The lobby's host settings have a **Bots** slider (0 to the room size minus one). Everyone else sees the number in the read-only settings.
-- Player boxes show a **BOT** tag.
+- `BotTag` renders the grey [BOT] inside the element that holds the name, so it shrinks and is cut off together with it. The in-match standings (plain DOM) do the same in `hud.ts`.
 - `playWithBots(mode)` in `apps/client/src/main.ts` leaves the quick game, and once the server has let go (the room becomes `null`) it sends `createRoom` with the mode and `BOT_GAME_BOTS[mode]` bots. The host presses **Start game** as in any private game and can still change anything first.
 
 ## Getting into a bot game

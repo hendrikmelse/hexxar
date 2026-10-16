@@ -28,7 +28,7 @@ describe('Bots', () => {
     expect(room.settings.bots).toBe(1);
     expect(room.players.map((p) => [p.name, p.bot])).toEqual([
       ['Hanna', false],
-      [expect.stringMatching(/^Bot /), true],
+      [expect.stringMatching(/^[A-Z][a-z]+$/), true],
     ]);
     host.say({ type: 'startGame' });
     expect(host.room).toMatchObject({ state: 'running' });

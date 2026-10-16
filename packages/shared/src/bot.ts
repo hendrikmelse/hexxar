@@ -19,7 +19,7 @@ export interface BotContext {
 /** Called whenever the bot has nothing queued; returns the orders to append (possibly none). */
 export type Bot = (context: BotContext) => Order[];
 
-/** Names for bots in a room, shown with a "bot" label (no two bots in a room share one). */
+/** Names for bots in a room (no two bots in a room share one). Clients add a [BOT] tag to them. */
 export const BOT_NAMES: readonly string[] = [
   'Ada',
   'Bram',

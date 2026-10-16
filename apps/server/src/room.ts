@@ -529,10 +529,9 @@ export class Room {
 
   private newBot(): Member {
     const taken = new Set(this.members.filter((m) => m.bot).map((m) => m.session.name));
-    const first = BOT_NAMES.find((n) => !taken.has(`Bot ${n}`)) ?? String(this.members.length);
-    const name = `Bot ${first}`;
+    const name = BOT_NAMES.find((n) => !taken.has(n)) ?? String(this.members.length);
     const session: Session = {
-      userId: `bot-${first.toLowerCase()}`,
+      userId: `bot-${name.toLowerCase()}`,
       token: '',
       name,
       // Nobody is listening: bots are told nothing.
@@ -633,6 +632,7 @@ export class Room {
       id: ++this.chatSeq,
       userId: member.session.userId,
       name: member.session.name,
+      ...(member.bot ? { bot: true } : {}),
       text,
       system: true,
       at: Date.now(),
