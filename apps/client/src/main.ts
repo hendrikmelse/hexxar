@@ -1,4 +1,5 @@
 import {
+  BOT_GAME_BOTS,
   CHAT_HISTORY,
   hexEquals,
   hexKey,
@@ -404,9 +405,6 @@ function startQuickPlay(mode: RoomMode): void {
 let playAgainMode: RoomMode | null = null;
 /** Set when leaving a quick game that is short of players for a private one against bots. */
 let botGameMode: RoomMode | null = null;
-
-/** How many bots a game made from the quick play lobby starts with. */
-const BOT_GAME_BOTS: Record<RoomMode, number> = { duel: 1, ffa: 5 };
 
 mountUi(document.getElementById('ui')!, {
   setName(name) {

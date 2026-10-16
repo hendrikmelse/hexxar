@@ -47,12 +47,12 @@ There are no bot-specific messages.
 
 - The lobby's host settings have a **Bots** slider (0 to the room size minus one). Everyone else sees the number in the read-only settings.
 - Player boxes show a **BOT** tag.
-- `playWithBots(mode)` in `apps/client/src/main.ts` leaves the quick game, and once the server has let go (the room becomes `null`) it sends `createRoom` with the mode and a bot count (1 for a duel, 5 for a battle royale). The host presses **Start game** as in any private game and can still change anything first.
+- `playWithBots(mode)` in `apps/client/src/main.ts` leaves the quick game, and once the server has let go (the room becomes `null`) it sends `createRoom` with the mode and `BOT_GAME_BOTS[mode]` bots. The host presses **Start game** as in any private game and can still change anything first.
 
 ## Getting into a bot game
 
 1. **Create game** from the menu, then use the Bots slider.
-2. **From quick play:** a public lobby with too few players to start (a duel with no opponent, a battle royale with fewer than three players) shows **Play against bots**. It takes the player to a new private game of the same mode with bots already added.
+2. **From a lobby that cannot start:** in a lobby with too few players to start (a duel with no opponent, a battle royale with fewer than three players), a card at the bottom of the screen says "Tired of waiting?" with a **Play against bots** button. It fades in after 3 seconds of waiting (any change in who is in the lobby starts the 3 seconds over) and fades out again at once when the match can start. In a public lobby the button takes the player to a new private game of the same mode with bots already added (`BOT_GAME_BOTS`: 1 for a duel, 5 for a battle royale). In a private lobby only the host sees it, and it adds those bots to the room they are in. Spectators never see it.
 
 ## The algorithm (the "easy" bot)
 

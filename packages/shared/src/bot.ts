@@ -34,6 +34,9 @@ export const BOT_NAMES: readonly string[] = [
   'Kai',
 ];
 
+/** How many bots "Play against bots" adds: the one opponent of a duel, or a battle royale's worth. */
+export const BOT_GAME_BOTS = { duel: 1, ffa: 5 } as const;
+
 /** What taking a tile is worth to the easy bot, before the cost of the fight. */
 const TILE_VALUE: Record<TileTypeId, number> = { city: 12, village: 7, farmland: 2 };
 /** Taking a tile from another player is worth this much more than taking a neutral one. */

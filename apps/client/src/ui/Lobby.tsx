@@ -6,7 +6,13 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { type MapSize, type RoomMode, type RoomPlayer, type RoomView } from '@hexxar/shared';
+import {
+  BOT_GAME_BOTS,
+  type MapSize,
+  type RoomMode,
+  type RoomPlayer,
+  type RoomView,
+} from '@hexxar/shared';
 import { playSound } from '../audio/audio.js';
 import { paletteColor } from '../board.js';
 import { useApp } from '../store.js';
@@ -131,19 +137,6 @@ export function Lobby({ actions }: { actions: Actions }) {
             </div>
           )}
 
-          {/* A quick game that is short of players can become a private one against bots. The place stays when it is not needed, so nothing moves. */}
-          {!isPrivate && (
-            <button
-              className="bot-offer"
-              style={canStart ? { visibility: 'hidden' } : undefined}
-              disabled={canStart}
-              onClick={() => actions.playWithBots(mode)}
-            >
-              <strong>Play against bots</strong>
-              <small>Start a private game with {mode === 'duel' ? 'a bot' : 'five bots'}</small>
-            </button>
-          )}
-
           {/* Private games always keep the line's place, empty or not, so nothing moves when someone starts watching. */}
           {isPrivate && (
             <p
@@ -204,6 +197,49 @@ export function Lobby({ actions }: { actions: Actions }) {
         {/* Everyone in the room talks together until the match starts. */}
         {room.canChat && <Chat actions={actions} title="Chat" />}
       </div>
+      <BotOffer
+        // Nothing to offer once the match can start; a private game's guests cannot add bots.
+        show={room.state === 'lobby' && !canStart && !room.spectating && (isHost || !isPrivate)}
+        players={players}
+        onClick={() =>
+          isPrivate ? actions.updateRoom({ bots: BOT_GAME_BOTS[mode] }) : actions.playWithBots(mode)
+        }
+      />
+    </div>
+  );
+}
+
+/** How long a lobby has to stay short of players before bots are offered. */
+const BOT_OFFER_DELAY_MS = 3000;
+
+/**
+ * A card at the bottom of the screen, offering a game against bots to someone whose lobby cannot
+ * start. It fades in after a few quiet seconds (any change in who is here starts the wait over),
+ * and fades out at once when there is no more reason for it.
+ */
+function BotOffer({
+  show,
+  players,
+  onClick,
+}: {
+  show: boolean;
+  players: number;
+  onClick: () => void;
+}) {
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    setWaited(false);
+    if (!show) return;
+    const id = setTimeout(() => setWaited(true), BOT_OFFER_DELAY_MS);
+    return () => clearTimeout(id);
+  }, [show, players]);
+  const visible = show && waited;
+  return (
+    <div className={`card bot-offer ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
+      <strong>Tired of waiting?</strong>
+      <button className="primary" tabIndex={visible ? 0 : -1} disabled={!visible} onClick={onClick}>
+        Play against bots
+      </button>
     </div>
   );
 }

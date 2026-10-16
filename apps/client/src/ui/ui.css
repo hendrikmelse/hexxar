@@ -3588,17 +3588,44 @@
   letter-spacing: 0.06em;
 }
 
+/* The card offering a game against bots: at the bottom of the screen, above the page's links */
 #ui .bot-offer {
-  display: flex;
-  flex-direction: column;
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  z-index: 6;
+  width: auto;
+  max-width: calc(100% - 32px);
+  flex-direction: row;
   align-items: center;
-  gap: 2px;
-  width: 100%;
-  padding: 10px 12px;
+  gap: 16px;
+  padding: 12px 16px 12px 20px;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  /* Going away is quick; arriving is slow and gentle */
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
 }
 
-#ui .bot-offer small {
-  color: #8a93a8;
-  font-size: 12px;
-  font-weight: 500;
+#ui .bot-offer.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+  transition:
+    opacity 0.7s ease-out,
+    transform 0.7s ease-out;
+}
+
+#ui .bot-offer strong {
+  color: #eef5ff;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .bot-offer,
+  #ui .bot-offer.visible {
+    transition: none;
+  }
 }
