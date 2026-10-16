@@ -402,6 +402,11 @@ function startQuickPlay(mode: RoomMode): void {
 
 /** Set when leaving a quick game to play another of this mode: the search starts once the server has let go. */
 let playAgainMode: RoomMode | null = null;
+/** Set when leaving a quick game that is short of players for a private one against bots. */
+let botGameMode: RoomMode | null = null;
+
+/** How many bots a game made from the quick play lobby starts with. */
+const BOT_GAME_BOTS: Record<RoomMode, number> = { duel: 1, ffa: 5 };
 
 mountUi(document.getElementById('ui')!, {
   setName(name) {
@@ -414,6 +419,11 @@ mountUi(document.getElementById('ui')!, {
   },
   playAgain(mode) {
     playAgainMode = mode;
+    connection.send({ type: 'leaveRoom' });
+  },
+  playWithBots(mode) {
+    track('menu_action', { action: 'play_bots', mode });
+    botGameMode = mode;
     connection.send({ type: 'leaveRoom' });
   },
   createRoom() {
@@ -512,6 +522,17 @@ const connection = connect(url, playerName, {
           const mode = playAgainMode;
           playAgainMode = null;
           startQuickPlay(mode);
+        }
+        // Out of the quick game: now open the private one.
+        if (room === null && botGameMode !== null) {
+          const mode = botGameMode;
+          botGameMode = null;
+          appStore.set({ error: null });
+          sendName();
+          connection.send({
+            type: 'createRoom',
+            settings: { mode, bots: BOT_GAME_BOTS[mode] },
+          });
         }
         return;
       }

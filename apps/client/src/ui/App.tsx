@@ -25,6 +25,8 @@ export interface Actions {
   quickPlay(mode: RoomMode): void;
   /** Leave this quick game and look for another of the same mode. */
   playAgain(mode: RoomMode): void;
+  /** Leave this quick game and open a private one of this mode, with bots already added. */
+  playWithBots(mode: RoomMode): void;
   createRoom(): void;
   joinRoom(code: string): void;
   updateRoom(patch: RoomSettingsPatch): void;

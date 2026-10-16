@@ -3578,3 +3578,27 @@
 #ui .phone-notice strong {
   color: #e8eaf0;
 }
+
+/* Bots: the tag beside a bot's name, and the way out of a quick game that is short of players */
+
+#ui .bot-tag {
+  background: rgba(79, 157, 255, 0.18);
+  color: #9cc3ff;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+#ui .bot-offer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+}
+
+#ui .bot-offer small {
+  color: #8a93a8;
+  font-size: 12px;
+  font-weight: 500;
+}

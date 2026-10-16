@@ -59,6 +59,15 @@ export const roomSettingsSchema = z.object({
   size: z.number().int().min(2).max(FFA_MAX_PLAYERS),
   /** How big the map is. A duel's board radius, or a battle royale's tiles per player, follows from it. */
   mapSize: z.enum(MAP_SIZES),
+  /**
+   * How many of the places are played by bots (private games only). Bots only ever take places
+   * nobody else wants: a person joining a full room pushes a bot out.
+   */
+  bots: z
+    .number()
+    .int()
+    .min(0)
+    .max(FFA_MAX_PLAYERS - 1),
   config: matchConfigSchema,
 });
 export type RoomSettings = z.infer<typeof roomSettingsSchema>;
@@ -70,6 +79,12 @@ export type RoomSettings = z.infer<typeof roomSettingsSchema>;
 export const roomSettingsPatchSchema = z.object({
   mode: z.enum(ROOM_MODES).optional(),
   mapSize: z.enum(MAP_SIZES).optional(),
+  bots: z
+    .number()
+    .int()
+    .min(0)
+    .max(FFA_MAX_PLAYERS - 1)
+    .optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type RoomSettingsPatch = z.infer<typeof roomSettingsPatchSchema>;
@@ -93,6 +108,8 @@ export const roomPlayerSchema = z.object({
   playerId: z.string().nullable(),
   /** The player's color (an index into the palette), the same in the lobby and in the match. */
   color: z.number().int().nonnegative().nullable(),
+  /** A computer-controlled player. Always shown as one. */
+  bot: z.boolean(),
 });
 export type RoomPlayer = z.infer<typeof roomPlayerSchema>;
 

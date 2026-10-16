@@ -131,6 +131,19 @@ export function Lobby({ actions }: { actions: Actions }) {
             </div>
           )}
 
+          {/* A quick game that is short of players can become a private one against bots. The place stays when it is not needed, so nothing moves. */}
+          {!isPrivate && (
+            <button
+              className="bot-offer"
+              style={canStart ? { visibility: 'hidden' } : undefined}
+              disabled={canStart}
+              onClick={() => actions.playWithBots(mode)}
+            >
+              <strong>Play against bots</strong>
+              <small>Start a private game with {mode === 'duel' ? 'a bot' : 'five bots'}</small>
+            </button>
+          )}
+
           {/* Private games always keep the line's place, empty or not, so nothing moves when someone starts watching. */}
           {isPrivate && (
             <p
@@ -386,6 +399,7 @@ function PlayerBox({
         color={nameColor(player)}
         onClip={setClipped}
       />
+      {player.bot && <em className="bot-tag">bot</em>}
       {!player.connected && <em>disconnected</em>}
       {clipped && (
         <span
@@ -514,7 +528,7 @@ function Settings({
   editable: boolean;
   onChange: Actions['updateRoom'];
 }) {
-  const { mode, mapSize, config } = room.settings;
+  const { mode, mapSize, bots, size, config } = room.settings;
 
   if (!editable) {
     return (
@@ -523,6 +537,12 @@ function Settings({
         <dd>{MODE_LABELS[mode]}</dd>
         <dt>Map size</dt>
         <dd>{MAP_SIZE_LABELS[mapSize]}</dd>
+        {bots > 0 && (
+          <>
+            <dt>Bots</dt>
+            <dd>{bots}</dd>
+          </>
+        )}
         <dt>Fog of war</dt>
         <dd>{config.fog === 'on' ? 'On' : 'Off'}</dd>
         <dt>Tick length</dt>
@@ -552,6 +572,16 @@ function Settings({
           label: MAP_SIZE_LABELS[value],
         }))}
         onChange={(value) => onChange({ mapSize: value })}
+      />
+      <Slider
+        label="Bots"
+        value={bots}
+        min={0}
+        max={size - 1}
+        limits={{ min: 0, max: size - 1 }}
+        step={1}
+        decimals={0}
+        onCommit={(count) => onChange({ bots: count })}
       />
       <Segmented
         label="Fog of war"
