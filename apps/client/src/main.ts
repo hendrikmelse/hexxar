@@ -504,7 +504,21 @@ const url =
   (import.meta.env.DEV
     ? `ws://${location.hostname}:8080/ws`
     : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+/**
+ * A restart the server announced is expected to take about as long as it usually does. If the
+ * server is not back well after that, something has gone wrong and promising it will be is no
+ * longer honest: the page goes back to plainly reconnecting.
+ */
+let restartTimer: ReturnType<typeof setTimeout> | null = null;
+const endRestartNotice = (): void => {
+  if (restartTimer) clearTimeout(restartTimer);
+  restartTimer = null;
+  appStore.set({ restart: null });
+};
+
 const connection = connect(url, playerName, {
+  // The server is back within a few seconds of an announced restart: look for it more often.
+  retryMs: () => (appStore.get().restart ? 500 : 2000),
   onOpen: () => appStore.set({ connected: true }),
   // The numbers are only known while connected: show "..." rather than stale ones.
   onClose: () => appStore.set({ connected: false, activity: null }),
@@ -512,7 +526,13 @@ const connection = connect(url, playerName, {
     switch (message.type) {
       case 'welcome':
         saveToken(message.token);
+        endRestartNotice();
         appStore.set({ userId: message.userId });
+        return;
+      case 'restarting':
+        appStore.set({ restart: { estimateMs: message.estimateMs } });
+        if (restartTimer) clearTimeout(restartTimer);
+        restartTimer = setTimeout(endRestartNotice, Math.max(30_000, message.estimateMs * 3));
         return;
       case 'room': {
         const previous = appStore.get().room;

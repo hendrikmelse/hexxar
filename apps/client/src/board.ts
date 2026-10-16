@@ -682,6 +682,8 @@ export class Board {
     const duration = Math.min(MOVE_MS, game.config.tickMs * 0.6);
     // A clash needs more time: the armies walk to the middle, fight, and the winner walks on.
     const clashDuration = Math.min(MOVE_MS * 1.7, game.config.tickMs * 0.9);
+    // Everyone fighting for a tile shares its defenders, who lost troops once, not once per attacker.
+    const defendersShown = new Set<string>();
     for (const move of moves) {
       if (move.troops <= 0) continue;
       const color = playerColor(game, move.player) ?? 0xffffff;
@@ -717,24 +719,47 @@ export class Board {
       const target = hexKey(move.to);
       this.held.add(target);
       const winner = move.clash !== undefined && move.clash.survivors > 0;
-      // An army walking onto a tile with troops on it (that is not its own) has a battle to fight.
-      const held = this.views.get(target);
-      const defenders = held && held.label.text !== '' ? Number(held.label.text) : 0;
-      const battle =
-        !move.clash && defenders > 0 && held?.owner !== move.player
-          ? battleOutcome(move.troops, defenders, game.tiles[target], move.player)
-          : undefined;
       const from = hexToPixel(move.from);
       const to = hexToPixel(move.to);
-      if (battle) {
+      const along = (e: number): Point => ({
+        x: from.x + (to.x - from.x) * e,
+        y: from.y + (to.y - from.y) * e,
+      });
+      // How a fight at the destination went comes from the server, which knows who else was
+      // there (reinforcements, other attackers) and what each side lost.
+      const fight = move.fight;
+      const arrived = move.clash ? move.clash.survivors : move.troops;
+      const battle =
+        !move.clash && fight
+          ? {
+              won: arrived - fight.lost > 0,
+              remaining: Math.max(0, arrived - fight.lost),
+              lost: fight.lost,
+              defenderLost: fight.defender?.lost ?? 0,
+            }
+          : undefined;
+      if (move.clash) {
+        // Armies that meet halfway each lose troops there: shown on each one's side of the middle.
+        this.floatLoss(
+          move.troops - move.clash.survivors,
+          color,
+          along(0.4),
+          CLASH_AT * clashDuration,
+        );
+      }
+      if (fight) {
         // What each side lost floats up in its own color when the armies hit: from the army (where
-        // it stops at the tile's edge) and from the number on the tile.
-        const delay = BATTLE_AT * clashDuration;
-        const owner = held?.owner ?? null;
-        const defenderColor = (owner === null ? null : playerColor(game, owner)) ?? NEUTRAL_TROOPS;
-        const stop = { x: from.x + (to.x - from.x) * 0.68, y: from.y + (to.y - from.y) * 0.68 };
-        this.floatLoss(battle.lost, color, stop, delay);
-        this.floatLoss(battle.defenderLost, defenderColor, to, delay);
+        // it stops at the tile's edge) and from the number on the tile. A clash's winner gets there
+        // later than an army that came straight.
+        const delay = (move.clash ? 0.7 : BATTLE_AT) * clashDuration;
+        this.floatLoss(fight.lost, color, along(0.68), delay);
+        if (fight.defender && !defendersShown.has(target)) {
+          defendersShown.add(target);
+          const { owner, lost } = fight.defender;
+          const defenderColor =
+            (owner === null ? null : playerColor(game, owner)) ?? NEUTRAL_TROOPS;
+          this.floatLoss(lost, defenderColor, to, delay);
+        }
       }
       const flight: Flight = {
         token,
@@ -1805,23 +1830,6 @@ function ringSpec(
     filled: Math.floor((Math.min(tile.progress, total) * segments) / total),
     paused: isGenerationPaused(game.config, tile),
   };
-}
-
-/**
- * How a fight turned out for the army that attacked: what is left of it, and how many it lost.
- * Read from the tile afterwards, which holds the winner's survivors.
- */
-function battleOutcome(
-  troops: number,
-  defenders: number,
-  after: Tile | undefined,
-  player: string,
-): { won: boolean; remaining: number; lost: number; defenderLost: number } {
-  const won = after?.owner === player;
-  const remaining = won ? Math.min(troops, after?.troops ?? 0) : 0;
-  // A defender that held keeps what is left on the tile; one that was beaten lost everything.
-  const defenderLost = won ? defenders : Math.max(0, defenders - (after?.troops ?? 0));
-  return { won, remaining, lost: troops - remaining, defenderLost };
 }
 
 /**

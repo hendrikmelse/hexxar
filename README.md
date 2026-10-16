@@ -70,27 +70,29 @@ Open `http://localhost:5173` in two browser tabs (each tab is its own guest) and
 
 Environment variables, or a `.env` file in the repository root (see `.env.example`):
 
-| Variable             | Default                          | Meaning                                                                                          |
-| -------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `PORT`               | 8080                             | Port for the page, health check and WebSocket                                                    |
-| `STATIC_DIR`         | (unset)                          | Folder with the built client to serve (the Docker image sets it)                                 |
-| `PREP_MS`            | 6500                             | From a match being created to its first tick: 1.5s loading screen + 5s of planning               |
-| `EARLY_START_MS`     | 60000                            | How long a public Battle Royale waits for more players once it has 3                             |
-| `JOIN_WAIT_MS`       | 10000                            | A join tops that wait up to at least this                                                        |
-| `FULL_WAIT_MS`       | 5000                             | How long a public room waits after filling up, before the match starts                           |
-| `VOTE_START_MS`      | 5000                             | The wait after a successful vote to start early                                                  |
-| `AFK_MS`             | 120000                           | How long a disconnected player has before surrendering                                           |
-| `FINISHED_LINGER_MS` | 600000                           | How long a finished game's room stays open                                                       |
-| `STATS_MS`           | 2000                             | How often the menu's online counts are refreshed                                                 |
-| `DATABASE_URL`       | (unset)                          | Postgres, for feedback and analytics. Without it feedback is kept in memory and analytics is off |
-| `ADMIN_PASSWORD`     | (unset)                          | Password for the admin panel at `/?admin`. Without it the panel is off                           |
-| `RESEND_API_KEY`     | (unset)                          | Resend API key for the daily feedback email. Without it (or `FEEDBACK_TO`) none                  |
-| `FEEDBACK_TO`        | (unset)                          | The email address the daily email goes to                                                        |
-| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>` | The sender shown on it: an address on a domain verified in Resend                                |
-| `DIGEST_HOUR`        | 7                                | The hour of the day the email goes out                                                           |
-| `DIGEST_TIMEZONE`    | `America/Los_Angeles`            | The time zone `DIGEST_HOUR` is read in                                                           |
-| `PUBLIC_URL`         | `https://hexxar.io`              | The site's address, for the link to the admin panel in the email                                 |
-| `RESEND_API_URL`     | (Resend's)                       | Where to send the email: only for trying it out against a stand-in                               |
+| Variable             | Default                                  | Meaning                                                                                             |
+| -------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `PORT`               | 8080                                     | Port for the page, health check and WebSocket                                                       |
+| `STATIC_DIR`         | (unset)                                  | Folder with the built client to serve (the Docker image sets it)                                    |
+| `PREP_MS`            | 6500                                     | From a match being created to its first tick: 1.5s loading screen + 5s of planning                  |
+| `EARLY_START_MS`     | 60000                                    | How long a public Battle Royale waits for more players once it has 3                                |
+| `JOIN_WAIT_MS`       | 10000                                    | A join tops that wait up to at least this                                                           |
+| `FULL_WAIT_MS`       | 5000                                     | How long a public room waits after filling up, before the match starts                              |
+| `VOTE_START_MS`      | 5000                                     | The wait after a successful vote to start early                                                     |
+| `AFK_MS`             | 120000                                   | How long a disconnected player has before surrendering                                              |
+| `FINISHED_LINGER_MS` | 600000                                   | How long a finished game's room stays open                                                          |
+| `STATS_MS`           | 2000                                     | How often the menu's online counts are refreshed                                                    |
+| `RESUME_MS`          | 5000                                     | After a restart, how long resumed matches wait before ticking again, for players to come back       |
+| `STATE_FILE`         | (unset; `/data/state.json` in the image) | Where running matches are saved on shutdown and resumed from on start. Without it they are not kept |
+| `DATABASE_URL`       | (unset)                                  | Postgres, for feedback and analytics. Without it feedback is kept in memory and analytics is off    |
+| `ADMIN_PASSWORD`     | (unset)                                  | Password for the admin panel at `/?admin`. Without it the panel is off                              |
+| `RESEND_API_KEY`     | (unset)                                  | Resend API key for the daily feedback email. Without it (or `FEEDBACK_TO`) none                     |
+| `FEEDBACK_TO`        | (unset)                                  | The email address the daily email goes to                                                           |
+| `FEEDBACK_FROM`      | `Hexxar <onboarding@resend.dev>`         | The sender shown on it: an address on a domain verified in Resend                                   |
+| `DIGEST_HOUR`        | 7                                        | The hour of the day the email goes out                                                              |
+| `DIGEST_TIMEZONE`    | `America/Los_Angeles`                    | The time zone `DIGEST_HOUR` is read in                                                              |
+| `PUBLIC_URL`         | `https://hexxar.io`                      | The site's address, for the link to the admin panel in the email                                    |
+| `RESEND_API_URL`     | (Resend's)                               | Where to send the email: only for trying it out against a stand-in                                  |
 
 **Feedback and bug reports:** the bug button in the top right opens a page that posts to `POST /api/feedback`. Each message is kept in the `feedback` table (each address can send 5 an hour), and no email is sent for it. Instead, at `DIGEST_HOUR` every day the server emails one list of everything still unresolved through [Resend](https://resend.com), and sends nothing when there is nothing open. A missed email (the server was restarting) is still sent up to 3 hours late.
 

@@ -69,6 +69,12 @@ Because each player has one order per tick, a player's own armies can never arri
 - **Piecemeal attacks fail:** an attack must beat the defender's boosted strength in one go. Many small armies arriving one tick at a time each lose everything and kill nothing.
 - **Third wheels are wasted:** in a three-way fight the weakest attacker is removed without affecting the outcome.
 
+## What the board shows of a battle
+
+The numbers that float up from a battle are the real losses, worked out by the same code that decides the battle: `playTick` returns the new state together with each army's move, and `resolveTick` and `executedMoves` are views of it. An army that fought at its destination carries `fight`: how many troops _it_ lost (everything, unless it won), and `defender`, the tile's garrison together with any reinforcements that arrived the same tick, as one force, with its owner (`null` for neutral) and what it lost. Everyone but the winner of a fight loses everything they had in it, and the winner loses what the runner-up was worth, so with a third army the defenders lose only what the second-strongest cost them (never the sum of all the attackers). Armies that met halfway report their loss as `clash` (what was left of them), and a clash's winner can also have a `fight` at the tile it carries on to. A clash needs no `fight` for the loser, who never arrives.
+
+For fog of war, `fight` is only sent for a player's own armies and for battles on tiles they see in full, since a hidden tile's losses would give away what was there. The client draws what it is told and no longer works the numbers out from the tiles.
+
 ## Surrender
 
 A player may surrender at any time. It is an immediate action, not a queued order (`surrender(state, player)`). Their tiles become neutral and defensive-only, and their armies stay in place exactly as they are. The player is eliminated.

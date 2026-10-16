@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseMatchConfig } from './config.js';
 import { hexKey } from './hex.js';
 import type { Order, OrdersByPlayer } from './orders.js';
-import { executedMoves, resolveTick, surrender } from './resolve.js';
+import { executedMoves, playTick, resolveTick, surrender } from './resolve.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import type { TileTypeId } from './tiles.js';
 
@@ -445,6 +445,176 @@ describe('armies that swap places', () => {
     expect(byPlayer.A).toMatchObject({ troops: 10, clash: { survivors: 4 } });
     expect(byPlayer.B).toMatchObject({ troops: 6, clash: { survivors: 0 } });
     expect(byPlayer.C?.clash).toBeUndefined();
+  });
+});
+
+describe('how battles went, for the numbers shown on the board', () => {
+  const byPlayer = (state: GameState, orders: OrdersByPlayer) =>
+    Object.fromEntries(executedMoves(state, orders, config).map((m) => [m.player, m]));
+
+  it('tells an attacker and the defenders what each lost', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 5 },
+      ],
+      ['A', 'B'],
+    );
+    expect(byPlayer(start, { A: move(0, 1) }).A?.fight).toEqual({
+      lost: 5,
+      defender: { owner: 'B', lost: 5 },
+    });
+  });
+
+  it("counts the defenders' bonus and what a defender who holds loses", () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 4, type: 'city' },
+      ],
+      ['A', 'B'],
+    );
+    // 10 attackers against 4 x 150% = 600: the attackers win, and lose 6 doing it.
+    expect(byPlayer(start, { A: move(0, 1) }).A?.fight).toEqual({
+      lost: 6,
+      defender: { owner: 'B', lost: 4 },
+    });
+    const held = row(
+      [
+        { owner: 'A', troops: 4 },
+        { owner: 'B', troops: 10, type: 'city' },
+      ],
+      ['A', 'B'],
+    );
+    // 3 attackers against 1500: wiped out, and the city loses floor(300 / 150) = 2.
+    expect(byPlayer(held, { A: move(0, 1) }).A?.fight).toEqual({
+      lost: 3,
+      defender: { owner: 'B', lost: 2 },
+    });
+  });
+
+  it('counts reinforcements arriving the same tick as part of the defense', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 5 },
+        { owner: 'B', troops: 9 },
+      ],
+      ['A', 'B'],
+    );
+    const orders = { A: move(0, 1), B: move(2, 1) };
+    // The tile holds 5 + 8 = 13 against 10 attackers: it holds with 3, having lost 10.
+    expect(byPlayer(start, orders).A?.fight).toEqual({
+      lost: 10,
+      defender: { owner: 'B', lost: 10 },
+    });
+    expect(byPlayer(start, orders).B?.fight).toBeUndefined();
+    expect(at(step(start, orders), 1)).toMatchObject({ owner: 'B', troops: 3 });
+  });
+
+  it('meets only the troop left behind when the defender marches out the same tick', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 9 },
+        { owner: null, troops: 1 },
+      ],
+      ['A', 'B'],
+    );
+    expect(byPlayer(start, { A: move(0, 1), B: move(1, 2) }).A?.fight).toEqual({
+      lost: 1,
+      defender: { owner: 'B', lost: 1 },
+    });
+  });
+
+  it('gives each of several attackers, and the defenders, their own losses', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: null, troops: 3 },
+        { owner: 'C', troops: 8 },
+      ],
+      ['A', 'C'],
+    );
+    const orders = { A: move(0, 1), C: move(2, 1) };
+    const moves = byPlayer(start, orders);
+    // 10 against 7 against 3: the strongest loses 7, the others everything.
+    expect(moves.A?.fight).toEqual({ lost: 7, defender: { owner: null, lost: 3 } });
+    expect(moves.C?.fight).toEqual({ lost: 7, defender: { owner: null, lost: 3 } });
+    expect(at(step(start, orders), 1)).toMatchObject({ owner: 'A', troops: 3 });
+  });
+
+  it('has the defenders lose only what the runner-up costs them when attackers are many', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 31 },
+        { owner: 'B', troops: 100 },
+        { owner: 'C', troops: 21 },
+      ],
+      ['A', 'B', 'C'],
+    );
+    const moves = byPlayer(start, { A: move(0, 1), C: move(2, 1) });
+    // 100 hold against 30 and 20: the defenders lose 30 (the runner-up), the attackers everything.
+    expect(moves.A?.fight).toEqual({ lost: 30, defender: { owner: 'B', lost: 30 } });
+    expect(moves.C?.fight).toEqual({ lost: 20, defender: { owner: 'B', lost: 30 } });
+  });
+
+  it('reports attackers fighting each other for an empty tile, and a tie', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 6 },
+        { owner: null, troops: 0 },
+        { owner: 'C', troops: 6 },
+      ],
+      ['A', 'C'],
+    );
+    const moves = byPlayer(start, { A: move(0, 1), C: move(2, 1) });
+    expect(moves.A?.fight).toEqual({ lost: 5 });
+    expect(moves.C?.fight).toEqual({ lost: 5 });
+  });
+
+  it('reports no fight for reinforcing, or for walking onto an empty tile', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 6 },
+        { owner: 'A', troops: 2 },
+        { owner: null, troops: 0 },
+      ],
+      ['A', 'B'],
+    );
+    expect(byPlayer(start, { A: move(0, 1) }).A?.fight).toBeUndefined();
+    expect(byPlayer(start, { A: move(1, 2) }).A?.fight).toBeUndefined();
+  });
+
+  it("also reports the fight a clash's winner has when it arrives", () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 11 },
+        { owner: 'B', troops: 7 },
+      ],
+      ['A', 'B'],
+    );
+    const moves = byPlayer(start, { A: move(0, 1), B: move(1, 0) });
+    // 10 meet 6 halfway and 4 walk on; the tile B left holds one troop, which they beat for 1.
+    expect(moves.A).toMatchObject({
+      clash: { survivors: 4 },
+      fight: { lost: 1, defender: { owner: 'B', lost: 1 } },
+    });
+    expect(moves.B?.clash).toEqual({ survivors: 0 });
+    expect(moves.B?.fight).toBeUndefined();
+  });
+
+  it('does not change what happens to the board', () => {
+    const start = row(
+      [
+        { owner: 'A', troops: 31 },
+        { owner: 'B', troops: 100 },
+        { owner: 'C', troops: 21 },
+      ],
+      ['A', 'B', 'C'],
+    );
+    const orders = { A: move(0, 1), C: move(2, 1) };
+    expect(playTick(start, orders, config).state).toEqual(resolveTick(start, orders, config));
   });
 });
 

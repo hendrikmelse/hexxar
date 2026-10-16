@@ -1,6 +1,6 @@
 import {
-  executedMoves,
-  resolveTick,
+  parseMatchConfig,
+  playTick,
   surrender,
   type ExecutedMove,
   type GameState,
@@ -8,6 +8,7 @@ import {
   type Order,
   type PlayerId,
 } from '@hexxar/shared';
+import type { MatchSnapshot } from './snapshot.js';
 
 /** Anti-abuse limit, not a game rule: the game itself has no queue size limit. */
 export const MAX_QUEUE_LENGTH = 1000;
@@ -27,6 +28,24 @@ export class Match {
   ) {
     this._state = initialState;
     for (const player of initialState.players) this.queues.set(player, []);
+  }
+
+  /** Everything needed to carry on this match later, as plain data. */
+  snapshot(): MatchSnapshot {
+    return {
+      id: this.id,
+      state: this._state,
+      config: this.config,
+      queues: Object.fromEntries([...this.queues].map(([player, queue]) => [player, [...queue]])),
+    };
+  }
+
+  /** A match picked up where `snapshot()` left it. The settings are read afresh, so new ones get their defaults. */
+  static restore(data: MatchSnapshot): Match {
+    const match = new Match(data.id, data.state, parseMatchConfig(data.config));
+    for (const player of data.state.players)
+      match.queues.set(player, [...(data.queues[player] ?? [])]);
+    return match;
   }
 
   get state(): GameState {
@@ -60,8 +79,8 @@ export class Match {
       const order = queue.shift();
       if (order) orders[player] = order;
     }
-    const moves = executedMoves(previous, orders, this.config);
-    this._state = resolveTick(previous, orders, this.config);
+    const { state, moves } = playTick(previous, orders, this.config);
+    this._state = state;
     return { previous, state: this._state, moves };
   }
 

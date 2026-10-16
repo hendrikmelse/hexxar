@@ -36,6 +36,7 @@ import {
 } from '@hexxar/shared';
 import type { Analytics } from './analytics.js';
 import { Match } from './match.js';
+import type { MemberSnapshot, RoomSnapshot } from './snapshot.js';
 import { isConnected, sendTo, type Session } from './types.js';
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -112,7 +113,7 @@ export type JoinVia = 'quickplay' | 'create' | 'code';
 /** Why a match began. */
 type StartReason = 'full' | 'timer' | 'vote' | 'host';
 /** How someone's part in a match ended, if they did not win it. */
-type OutHow = 'eliminated' | 'surrendered' | 'left' | 'afk';
+export type OutHow = 'eliminated' | 'surrendered' | 'left' | 'afk';
 
 interface Member {
   readonly session: Session;
@@ -185,7 +186,7 @@ export class Room {
   readonly id: string;
   readonly code: string;
   readonly visibility: 'public' | 'private';
-  private readonly createdAt = Date.now();
+  private createdAt = Date.now();
   private host: Session;
   private settings: RoomSettings;
   private state: RoomState = 'lobby';
@@ -217,6 +218,8 @@ export class Room {
   /** For analytics: when the running match's first tick is, and how its last player went out. */
   private firstTickAt = 0;
   private lastOutHow: OutHow | null = null;
+  /** The server restarted under this match and it has not ticked since: the clients count down to it. */
+  private resuming = false;
 
   constructor(private readonly options: RoomOptions) {
     this.id = options.id;
@@ -349,17 +352,20 @@ export class Room {
     if (!member || member.left) return;
     // Nothing to keep for a spectator who is gone.
     if (member.spectator || this.state === 'lobby') return this.leave(session, 'disconnected');
-    if (this.state === 'running' && member.afkTimer === null) {
-      // Their queue keeps running; if they stay away this long, their army surrenders.
-      member.afkTimer = setTimeout(() => {
-        member.afkTimer = null;
-        this.surrenderMember(member, 'afk');
-        this.broadcastRoom();
-        this.endIfUnwatched();
-      }, this.options.afkMs);
-    }
+    if (this.state === 'running') this.armAfk(member);
     this.broadcastRoom();
     this.endIfUnwatched();
+  }
+
+  /** Their queue keeps running; if they stay away this long, their army surrenders. */
+  private armAfk(member: Member): void {
+    if (member.afkTimer !== null) return;
+    member.afkTimer = setTimeout(() => {
+      member.afkTimer = null;
+      this.surrenderMember(member, 'afk');
+      this.broadcastRoom();
+      this.endIfUnwatched();
+    }, this.options.afkMs);
   }
 
   /** The player is back on a new connection. */
@@ -436,6 +442,125 @@ export class Room {
       member.outPlace = null;
     }
     this.trackMin();
+  }
+
+  // -- Saving and restoring --------------------------------------------------
+
+  /**
+   * Everything needed to carry on the running match after a restart, or null for a room that is
+   * not running one (those are not kept).
+   */
+  snapshot(): RoomSnapshot | null {
+    if (this.state !== 'running' || !this.match) return null;
+    return {
+      id: this.id,
+      code: this.code,
+      visibility: this.visibility,
+      settings: this.settings,
+      hostUserId: this.host.userId,
+      createdAt: this.createdAt,
+      members: this.members.map((m): MemberSnapshot => ({
+        userId: m.session.userId,
+        token: m.session.token,
+        name: m.session.name,
+        ...(m.session.visitorId ? { visitorId: m.session.visitorId } : {}),
+        ...(m.session.sessionId ? { sessionId: m.session.sessionId } : {}),
+        ...(m.bot ? { bot: true } : {}),
+        playerId: m.playerId,
+        left: m.left,
+        reviewing: m.reviewing,
+        watching: m.watching,
+        spectator: m.spectator,
+        colorSlot: m.colorSlot,
+        joinedAt: m.joinedAt,
+        outHow: m.outHow,
+        outAt: m.outAt,
+        outPlace: m.outPlace,
+        watchSince: m.watchSince,
+      })),
+      match: this.match.snapshot(),
+      nextTickAt: this.nextTickAt,
+      firstTickAt: this.firstTickAt,
+      matchColors: this.matchColors,
+      spectatorChat: this.chatLogs.spectators,
+      chatSeq: this.chatSeq,
+      resultPlayers: this.resultPlayers,
+      lobbyOpenedAt: this.lobbyOpenedAt,
+      belowMinMs: this.belowMinMs,
+      lastOutHow: this.lastOutHow,
+    };
+  }
+
+  /**
+   * Bring a freshly made room back to the running match in `data`. `sessions` holds a session for
+   * each of its members, by user id, none of them connected yet; they come back as their browsers
+   * reconnect. The time the server was away is taken out of the game, and play resumes after a
+   * short countdown, never in a burst of ticks to catch up.
+   */
+  restore(
+    data: RoomSnapshot,
+    sessions: ReadonlyMap<string, Session>,
+    timing: { savedAt: number; now: number; resumeMs: number },
+  ): void {
+    const pausedMs = Math.max(0, timing.now - timing.savedAt);
+    this.createdAt = data.createdAt;
+    this.match = Match.restore(data.match);
+    this.state = 'running';
+    // The clock was stopped while the server was away. The next tick is as far off as it was, but
+    // never sooner than the grace period, so everyone has time to reconnect and see the board.
+    this.nextTickAt =
+      data.nextTickAt === null
+        ? null
+        : timing.now + Math.max(timing.resumeMs, data.nextTickAt - timing.savedAt);
+    this.resuming = this.nextTickAt !== null;
+    this.firstTickAt = data.firstTickAt + pausedMs;
+    this.matchColors = data.matchColors;
+    this.chatLogs = { lobby: [], spectators: data.spectatorChat };
+    this.chatSeq = data.chatSeq;
+    this.resultPlayers = data.resultPlayers;
+    this.lobbyOpenedAt = data.lobbyOpenedAt + pausedMs;
+    this.belowMinMs = data.belowMinMs;
+    this.lastOutHow = data.lastOutHow;
+    const later = (at: number | null) => (at === null ? null : at + pausedMs);
+    for (const saved of data.members) {
+      const session = saved.bot
+        ? this.botSession(saved.userId, saved.name)
+        : sessions.get(saved.userId);
+      if (!session) continue;
+      this.members.push({
+        session,
+        playerId: saved.playerId,
+        left: saved.left,
+        reviewing: saved.reviewing,
+        watching: saved.watching,
+        spectator: saved.spectator,
+        colorSlot: saved.colorSlot,
+        chatSent: null,
+        lastChatAt: 0,
+        afkTimer: null,
+        joinedAt: saved.joinedAt + pausedMs,
+        outHow: saved.outHow,
+        outAt: later(saved.outAt),
+        outPlace: saved.outPlace,
+        watchSince: later(saved.watchSince),
+        bot: saved.bot ? this.botOfLevel() : null,
+      });
+    }
+    this.host = sessions.get(data.hostUserId) ?? this.members[0]!.session;
+    // Nobody is connected yet. Give everyone the usual time to come back before they are counted
+    // as gone: players surrender, and people only watching are let go.
+    for (const member of this.members) {
+      if (member.left || member.bot) continue;
+      if (member.spectator || member.reviewing) {
+        member.afkTimer = setTimeout(() => {
+          member.afkTimer = null;
+          this.leave(member.session, 'disconnected');
+        }, this.options.afkMs);
+      } else {
+        this.armAfk(member);
+      }
+    }
+    this.scheduleTick();
   }
 
   // -- Host controls -------------------------------------------------------
@@ -537,17 +662,20 @@ export class Room {
   private newBot(): Member {
     const taken = new Set(this.members.filter((m) => m.bot).map((m) => m.session.name));
     const name = BOT_NAMES.find((n) => !taken.has(n)) ?? String(this.members.length);
-    const session: Session = {
-      userId: `bot-${name.toLowerCase()}`,
+    const member = newMember(this.botSession(`bot-${name.toLowerCase()}`, name), false);
+    member.bot = this.botOfLevel();
+    return member;
+  }
+
+  private botSession(userId: string, name: string): Session {
+    return {
+      userId,
       token: '',
       name,
       // Nobody is listening: bots are told nothing.
       connections: new Set([{ send: () => undefined, close: () => undefined }]),
       room: this,
     };
-    const member = newMember(session, false);
-    member.bot = this.botOfLevel();
-    return member;
   }
 
   /**
@@ -1185,6 +1313,7 @@ export class Room {
   private runTick(): void {
     const match = this.match;
     if (!match || this.nextTickAt === null) return;
+    this.resuming = false;
     const { previous, state, moves } = match.step();
     const outBefore = previous.eliminated.length;
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
@@ -1301,6 +1430,7 @@ export class Room {
       serverTime: Date.now(),
       scores: scoresOf(match.state, match.config),
       colors: this.matchColors,
+      ...(this.resuming ? { resuming: true } : {}),
     };
   }
   private sendSnapshot(member: Member): void {

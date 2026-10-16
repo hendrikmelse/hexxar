@@ -9,6 +9,8 @@ const CHAT_OPEN_KEY = 'hexxar.chatOpen';
 /** What the menu, lobby and results screens need to know. The match itself lives in `GameView`. */
 export interface AppState {
   connected: boolean;
+  /** The server said it is restarting for an update, until we are connected to it again. */
+  restart: { estimateMs: number } | null;
   /** Which page of the site is showing (the address's path): the game itself, or `/privacy`. */
   path: string;
   /** The feedback and bug report page is open (over whatever else is on screen). */
@@ -92,6 +94,7 @@ export function saveName(name: string): void {
 class Store {
   private state: AppState = {
     connected: false,
+    restart: null,
     userId: null,
     name: loadName(),
     room: null,

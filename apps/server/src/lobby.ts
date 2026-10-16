@@ -13,6 +13,7 @@ import {
 } from '@hexxar/shared';
 import { noAnalytics, type Analytics } from './analytics.js';
 import { Room, applySettingsPatch } from './room.js';
+import { SNAPSHOT_VERSION, type ServerSnapshot } from './snapshot.js';
 import {
   MAX_CONNECTIONS,
   sendTo,
@@ -38,6 +39,8 @@ export interface LobbyOptions {
   afkMs: number;
   /** How long a finished room stays open for people to look at the result. */
   finishedLingerMs: number;
+  /** After a restart, how long matches wait before they tick again, for players to come back (default 5 seconds). */
+  resumeMs?: number;
   /** Where what happens is reported. Without it, nothing is. */
   analytics?: Analytics;
 }
@@ -103,11 +106,74 @@ export class Lobby {
     });
   }
 
+  /** Tell everyone who is connected that the server is about to restart, and how long that takes. */
+  announceRestart(estimateMs: number): void {
+    for (const session of this.sessions.values()) {
+      sendTo(session, { type: 'restarting', estimateMs });
+    }
+  }
+
   /** Stop all timers (for shutdown and tests). */
   stop(): void {
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
     for (const room of this.rooms.values()) room.dispose();
+  }
+
+  /** Every running match, as plain data, to be carried on by `restore` after a restart. */
+  snapshot(): ServerSnapshot {
+    return {
+      version: SNAPSHOT_VERSION,
+      savedAt: Date.now(),
+      rooms: [...this.rooms.values()].flatMap((room) => room.snapshot() ?? []),
+    };
+  }
+
+  /**
+   * Bring back the matches in a snapshot, with nobody connected: their players find them again
+   * when their browsers reconnect with the token they already hold. A room that cannot be
+   * restored is skipped, so one bad room never keeps the others from coming back.
+   */
+  restore(saved: ServerSnapshot, now = Date.now()): number {
+    const timing = { savedAt: saved.savedAt, now, resumeMs: this.options.resumeMs ?? 5000 };
+    let restored = 0;
+    for (const data of saved.rooms) {
+      try {
+        const sessions = new Map<string, Session>();
+        for (const m of data.members) {
+          // Bots are made again by the room; only people have a session to come back to.
+          if (m.bot) continue;
+          sessions.set(m.userId, {
+            userId: m.userId,
+            token: m.token,
+            name: m.name,
+            connections: new Set(),
+            room: null,
+            ...(m.visitorId ? { visitorId: m.visitorId } : {}),
+            ...(m.sessionId ? { sessionId: m.sessionId } : {}),
+          });
+        }
+        const host = sessions.get(data.hostUserId) ?? [...sessions.values()][0];
+        if (!host) continue;
+        const room = this.openRoom(host, data.visibility, data.settings, {
+          id: data.id,
+          code: data.code,
+        });
+        room.restore(data, sessions, timing);
+        // Those who left are only kept for the result, they have no game to come back to.
+        for (const m of data.members) {
+          const session = sessions.get(m.userId)!;
+          if (m.left) continue;
+          session.room = room;
+          this.sessions.set(session.token, session);
+        }
+        restored++;
+      } catch (error) {
+        console.error(`room ${data.id} could not be restored`, error);
+        this.forgetById(data.id, data.code);
+      }
+    }
+    return restored;
   }
 
   private hello(
@@ -301,11 +367,16 @@ export class Lobby {
     };
   }
 
-  private openRoom(host: Session, visibility: 'public' | 'private', settings: RoomSettings): Room {
+  private openRoom(
+    host: Session,
+    visibility: 'public' | 'private',
+    settings: RoomSettings,
+    restored?: { id: string; code: string },
+  ): Room {
     const room = new Room({
       // Random, so ids are never reused, even across restarts. Replays will be saved under it.
-      id: randomUUID(),
-      code: this.newCode(),
+      id: restored?.id ?? randomUUID(),
+      code: restored?.code ?? this.newCode(),
       visibility,
       host,
       settings,
@@ -331,6 +402,13 @@ export class Lobby {
     for (const [token, session] of this.sessions) {
       if (!session.room && session.connections.size === 0) this.sessions.delete(token);
     }
+  }
+
+  /** Drop a room that was only half restored. */
+  private forgetById(id: string, code: string): void {
+    this.rooms.get(id)?.dispose();
+    this.rooms.delete(id);
+    this.codes.delete(code);
   }
 
   private newCode(): string {

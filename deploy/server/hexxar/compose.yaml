@@ -12,6 +12,8 @@ services:
     networks:
       - web # reached by Caddy
       - db # reaches Postgres
+    volumes:
+      - state:/data # running matches, saved on stop and resumed on start
     read_only: true
     tmpfs:
       - /tmp
@@ -23,6 +25,9 @@ services:
       driver: journald
       options:
         tag: '{{.Name}}'
+
+volumes:
+  state:
 
 networks:
   web:

@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { dirname, join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { EventRecorder, noAnalytics } from './analytics.js';
 import { buildReport } from './analyticsReport.js';
@@ -8,6 +9,8 @@ import { MemoryFeedbackStore, PgFeedbackStore } from './feedbackStore.js';
 import { createHttpHandler } from './http.js';
 import { sweep, type Pingable } from './heartbeat.js';
 import { Lobby } from './lobby.js';
+import { DEFAULT_RESTART_MS, markStarted, markStopping } from './restartTiming.js';
+import { takeSnapshot, writeSnapshot } from './snapshot.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
@@ -31,7 +34,18 @@ const lobby = new Lobby({
   statsMs: Number(process.env.STATS_MS ?? 2000),
   afkMs: Number(process.env.AFK_MS ?? 120_000),
   finishedLingerMs: Number(process.env.FINISHED_LINGER_MS ?? 10 * 60_000),
+  resumeMs: Number(process.env.RESUME_MS ?? 5000),
 });
+
+// Running matches survive a restart: they are written to this file when the server is told to
+// stop, and picked up from it when the next one starts. Without a path, they are not kept.
+const stateFile = process.env.STATE_FILE;
+// How long restarts take is kept beside it, to tell players what to expect.
+const timingFile = stateFile ? join(dirname(stateFile), 'restarts.json') : null;
+if (stateFile) {
+  const saved = takeSnapshot(stateFile);
+  if (saved) console.log(`restored ${lobby.restore(saved)} of ${saved.rooms.length} saved matches`);
+}
 
 // One port serves the built client (when STATIC_DIR is set), a health check, the feedback form,
 // the admin panel's API and the game's WebSocket at /ws.
@@ -112,11 +126,30 @@ wss.on('connection', (ws) => {
   ws.on('close', () => handler.onClose());
 });
 
-http.listen(PORT, () => console.log(`hexxar server listening on port ${PORT}`));
+http.listen(PORT, () => {
+  console.log(`hexxar server listening on port ${PORT}`);
+  if (timingFile) markStarted(timingFile);
+});
 
-// A deploy stops the container with SIGTERM: write out the events still waiting first.
+// A deploy stops the container with SIGTERM. First the running matches are saved (everything is
+// stopped and written in one go, so nothing can change in between), everyone is told the server is
+// restarting, then the events still waiting are written out.
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    void (recorder?.stop() ?? Promise.resolve()).finally(() => process.exit(0));
+    const estimateMs = timingFile ? markStopping(timingFile) : DEFAULT_RESTART_MS;
+    if (stateFile) {
+      try {
+        const snapshot = lobby.snapshot();
+        lobby.stop();
+        writeSnapshot(stateFile, snapshot);
+        console.log(`saved ${snapshot.rooms.length} running matches`);
+      } catch (error) {
+        console.error('the running matches could not be saved', error);
+      }
+    }
+    lobby.announceRestart(estimateMs);
+    // A moment for the message to leave before the sockets are cut.
+    const sent = new Promise((resolve) => setTimeout(resolve, 200));
+    void Promise.all([sent, recorder?.stop()]).finally(() => process.exit(0));
   });
 }

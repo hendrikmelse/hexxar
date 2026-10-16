@@ -5,4 +5,7 @@ dist
 .env.*
 !.env.example
 *.tsbuildinfo
+# Saved matches and restart timings when STATE_FILE is set in development
+/apps/server/dev-state.json*
+/apps/server/restarts.json*
 .DS_Store

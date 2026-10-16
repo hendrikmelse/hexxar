@@ -47,6 +47,8 @@ export interface Connection {
 const RECONNECT_MS = 2000;
 
 export interface ConnectionEvents {
+  /** How long to wait before trying again after the connection is lost (default 2 seconds). */
+  retryMs?(): number;
   onOpen(): void;
   onClose(): void;
   onMessage(message: ServerMessage): void;
@@ -84,7 +86,7 @@ export function connect(url: string, name: () => string, events: ConnectionEvent
     ws.onclose = () => {
       if (socket === ws) socket = null;
       events.onClose();
-      setTimeout(open, RECONNECT_MS);
+      setTimeout(open, events.retryMs?.() ?? RECONNECT_MS);
     };
   };
   open();

@@ -27,12 +27,26 @@ internet ─▶ Caddy (80/443, automatic HTTPS) ─▶ hexxar (Node, port 8080)
 
 - The container joins the shared `web` Docker network so Caddy can reach it by name.
   Its port is never published.
-- Games live in the server's memory. **A deploy ends every running match** (players land
-  back in the menu), so prefer deploying when nobody is playing.
+- Games live in the server's memory, but a deploy does not end them. On SIGTERM the server
+  writes every running match to `/data/state.json` (the `state` volume), and the next one
+  reads it back and resumes: players see a few seconds of reconnecting and carry on, with
+  the game clock paused for the time between. Only running matches are kept (lobbies and
+  results are not, so those players land in the menu), a file older than 60 seconds is
+  ignored, and it is used once. A crash saves nothing. The new code runs the old match, so a
+  rule change applies from the next tick; only if the saved data could no longer be read at
+  all is `SNAPSHOT_VERSION` (`apps/server/src/snapshot.ts`) bumped, which drops the games.
+  What players see: as the old server stops it sends every client a `restarting` message, and
+  the page shows "The server is restarting to apply an update" and how long that usually takes,
+  as "less than N seconds", rounded up to 5. That is the median of the last 9 restarts, timed from SIGTERM to
+  the new server listening and kept in `/data/restarts.json`; 10s is assumed until there are some. The new server then holds
+  each resumed match for `RESUME_MS` (5s, or the time left of its old wait if longer) with the
+  "Resumes in" countdown on the timer, and only then ticks.
+  **The first deploy with this feature must be preceded by copying the new `compose.yaml`
+  to the server** (it adds the volume), and the deploy before it still ends its games.
 
 - Feedback and analytics events are kept in the shared Postgres (database `hexxar`, reached
   over the internal `db` network), so they survive deploys, and `/srv/postgres/backup.sh`
-  backs them up with everything else. The container itself writes nothing to disk.
+  backs them up with everything else. The container itself writes nothing to disk but that state file.
 
 Files in `deploy/server/` mirror what lives on the server and are copied there by hand;
 CI does not touch them.

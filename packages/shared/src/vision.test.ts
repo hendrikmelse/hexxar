@@ -112,6 +112,28 @@ describe('visibleMoves', () => {
   });
 });
 
+describe('visibleMoves and how fights went', () => {
+  const before = board([
+    { q: 0, r: 0, owner: 'A' },
+    { q: 5, r: 0, owner: 'B' },
+  ]);
+  const fight = { lost: 4, defender: { owner: 'A', lost: 2 } };
+  const hex = (q: number) => ({ q, r: 0 });
+
+  it("tells it for a battle on a tile in full view, and for the viewer's own armies", () => {
+    const intoView = { player: 'B', from: hex(2), to: hex(1), troops: 6, fight };
+    expect(visibleMoves([intoView], 'A', before, before, fogged)).toEqual([intoView]);
+    const own = { player: 'B', from: hex(5), to: hex(4), troops: 6, fight };
+    expect(visibleMoves([own], 'B', before, before, fogged)).toEqual([own]);
+  });
+
+  it('leaves it out for a battle on a tile that is not in full view', () => {
+    const outOfView = { player: 'B', from: hex(1), to: hex(2), troops: 6, fight };
+    const [seen] = visibleMoves([outOfView], 'A', before, before, fogged);
+    expect(seen).toEqual({ player: 'B', from: hex(1), to: hex(2), troops: 6 });
+  });
+});
+
 describe('scoresOf', () => {
   it('counts tiles, mobile troops and the troops per tick the producers make', () => {
     const state = board([

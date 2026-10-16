@@ -243,7 +243,10 @@ export class Hud {
     let text = '';
     let kind = '';
     if (game.notice) text = game.notice;
-    else if (this.preparing(game)) {
+    else if (game.status === 'playing' && game.resuming && game.nextTickAt !== null) {
+      text = 'The server was updated: your game resumes in a moment';
+      kind = 'prep';
+    } else if (this.preparing(game)) {
       text = 'Plan your opening: drag from your land to queue orders';
       kind = 'prep';
     }
@@ -447,10 +450,11 @@ export class Hud {
       return;
     }
     const remaining = Math.max(0, game.nextTickAt! - (Date.now() + game.clockOffset));
-    if (this.preparing(game)) {
+    // Before the first tick, or after a restart, a countdown drains where the pie would fill.
+    if (this.preparing(game) || game.resuming) {
       this.prepTotal = Math.max(this.prepTotal, remaining);
       this.setRing(this.prepTotal > 0 ? remaining / this.prepTotal : 0);
-      this.showCountdown(Math.ceil(remaining / 1000));
+      this.showCountdown(Math.ceil(remaining / 1000), game.resuming ? 'Resumes in' : 'Starts in');
       return;
     }
     this.prepTotal = 0;
@@ -459,11 +463,11 @@ export class Hud {
   }
 
   /** Words in the middle of the timer: the seconds until the match starts, or nothing once it has. */
-  private showCountdown(seconds: number | null): void {
+  private showCountdown(seconds: number | null, label = 'Starts in'): void {
     this.badge.classList.toggle('prep', seconds !== null);
     // The countdown takes the middle of the dial; the pie comes back once play starts.
     this.pie.hidden = seconds !== null;
-    this.badgeLabel.textContent = seconds === null ? '' : 'Starts in';
+    this.badgeLabel.textContent = seconds === null ? '' : label;
     this.badgeNumber.textContent = seconds === null ? '' : String(seconds);
   }
 

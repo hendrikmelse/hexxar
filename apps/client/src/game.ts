@@ -27,6 +27,8 @@ export interface GameView {
   winner: PlayerId | null;
   tick: number;
   nextTickAt: number | null;
+  /** The server restarted under this match and it has not ticked since: `nextTickAt` ends a pause to come back. */
+  resuming: boolean;
   /** Add to `Date.now()` to get the server's clock. */
   clockOffset: number;
   /** Your queued orders, oldest first. */
@@ -79,6 +81,7 @@ export function emptyGame(): GameView {
     winner: null,
     tick: 0,
     nextTickAt: null,
+    resuming: false,
     clockOffset: 0,
     queue: [],
     queues: {},
@@ -109,6 +112,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
       game.queue = message.queue;
       game.queues = copyQueues(message.queues);
       game.nextTickAt = message.nextTickAt;
+      game.resuming = message.resuming === true;
       game.clockOffset = message.serverTime - Date.now();
       game.scores = message.scores;
       game.colors = { ...message.colors };
@@ -121,6 +125,7 @@ export function applyMessage(game: GameView, message: ServerMessage): Change | n
         ? applyTickDiff(game.tiles, message.changed, game.config)
         : message.changed;
       game.tick = message.tick;
+      game.resuming = false;
       game.nextTickAt = message.nextTickAt;
       game.clockOffset = message.serverTime - Date.now();
       game.eliminated = message.eliminated;

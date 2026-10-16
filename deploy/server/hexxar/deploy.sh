@@ -4,9 +4,10 @@
 #   ./deploy.sh ghcr.io/hendrikmelse/hexxar:<commit-sha>
 #
 # Rolling back by hand is the same command with the previous tag.
-# Matches in progress live in the server's memory, so a deploy ends them: players are
-# reconnected to the menu. The site is one container, so there are also a few seconds
-# of downtime (Caddy answers 502 while it restarts).
+# Matches in progress are saved when the old container stops and resumed by the new one: players
+# see a few seconds of reconnecting, then carry on. (If the new version is not healthy and
+# rolls back, the file was already used by the new one, and those matches are lost.) The site is
+# one container, so there are a few seconds of downtime (Caddy answers 502 while it restarts).
 set -euo pipefail
 cd "$(dirname "$0")"
 

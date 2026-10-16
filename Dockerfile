@@ -31,8 +31,11 @@ COPY packages/shared/src packages/shared/src
 COPY apps/server/src apps/server/src
 COPY --from=build /app/apps/client/dist apps/client/dist
 
-# Nothing is written to disk: feedback and analytics live in Postgres (DATABASE_URL, set by compose).
-ENV PORT=8080 STATIC_DIR=/app/apps/client/dist
+# Feedback and analytics live in Postgres (DATABASE_URL, set by compose). The only thing written to
+# disk is the running matches, saved to STATE_FILE when the server stops so a deploy can resume them.
+# /data is a volume in compose; creating it here owned by node makes a new volume writable by node.
+RUN mkdir /data && chown node /data
+ENV PORT=8080 STATIC_DIR=/app/apps/client/dist STATE_FILE=/data/state.json
 USER node
 EXPOSE 8080
 WORKDIR /app/apps/server

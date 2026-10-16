@@ -193,10 +193,18 @@ function Screen({ actions }: { actions: Actions }) {
   if (app.tutorial) return <Tutorial actions={actions} view={app.tutorial} />;
   if (!app.connected) {
     // Once we have been connected, a dropped connection is a reconnect.
-    return withFooter(<Connecting reconnecting={app.userId !== null} />);
+    return withFooter(
+      <Connecting
+        reconnecting={app.userId !== null}
+        restart={app.restart}
+        inMatch={app.room?.state === 'running'}
+      />,
+    );
   }
   // Wait for the server's welcome before showing the menu.
-  if (app.userId === null) return withFooter(<Connecting reconnecting={false} />);
+  if (app.userId === null) {
+    return withFooter(<Connecting reconnecting={false} restart={null} inMatch={false} />);
+  }
   const room = app.room;
   if (!room) return withFooter(<Menu actions={actions} />);
   if (room.state === 'lobby') return withFooter(<Lobby actions={actions} />);

@@ -1,5 +1,5 @@
 import type { MatchConfig } from './config.js';
-import { hexKey } from './hex.js';
+import { hexKey, type Hex } from './hex.js';
 import type { ExecutedMove } from './resolve.js';
 import type { GameState, PlayerId, Tile } from './state.js';
 import { visionOf } from './vision.js';
@@ -39,7 +39,8 @@ export function visibleState(state: GameState, player: PlayerId, config: MatchCo
 
 /**
  * The moves a player may see happen: those with an end in a tile they see in full, as the tick
- * began or as it ended.
+ * began or as it ended. How a battle went is only told for their own armies and for battles on
+ * tiles they see in full: what a hidden tile's defenders lost would give away what was there.
  */
 export function visibleMoves(
   moves: readonly ExecutedMove[],
@@ -50,7 +51,12 @@ export function visibleMoves(
 ): ExecutedMove[] {
   if (!fogHides(before, player, config) && !fogHides(after, player, config)) return [...moves];
   const seen = [before, after].map((state) => visionOf(state.tiles, player));
-  return moves.filter((move) =>
-    seen.some((vision) => [move.from, move.to].some((hex) => vision.get(hexKey(hex)) === 'full')),
-  );
+  const inFull = (hex: Hex) => seen.some((vision) => vision.get(hexKey(hex)) === 'full');
+  return moves
+    .filter((move) => inFull(move.from) || inFull(move.to))
+    .map((move) => {
+      if (!move.fight || move.player === player || inFull(move.to)) return move;
+      const { player: mover, from, to, troops, clash } = move;
+      return { player: mover, from, to, troops, ...(clash ? { clash } : {}) };
+    });
 }

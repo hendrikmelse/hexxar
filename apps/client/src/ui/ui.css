@@ -669,6 +669,52 @@
   }
 }
 
+/* The server is being restarted for an update */
+
+#ui .restarting {
+  max-width: min(440px, 88vw);
+  text-align: center;
+}
+
+#ui .restart-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: #cfe0ff;
+}
+
+#ui .restart-note,
+#ui .restart-eta {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #8fa7d1;
+}
+
+#ui .restart-eta {
+  font-variant-numeric: tabular-nums;
+}
+
+#ui .restart-eta .dots i {
+  font-style: normal;
+  animation: dot-blink 1.2s ease-in-out infinite;
+}
+
+#ui .restart-eta .dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+#ui .restart-eta .dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .restart-eta .dots i {
+    animation: none;
+  }
+}
+
 /* Title screen: Quick play and Private games sections */
 
 #ui .menu-section {

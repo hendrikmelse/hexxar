@@ -14,9 +14,13 @@ type MutableTile = { -readonly [K in keyof Tile]: Tile[K] };
 interface Arrival {
   readonly player: PlayerId;
   readonly amount: number;
+  /** The army this is the arrival of, which is told how its battle went. */
+  readonly departure: Departure;
 }
 
 interface Participant {
+  /** Set for an attacking army; the defenders (the tile's garrison) have none. */
+  readonly arrival?: Arrival;
   readonly owner: PlayerId | null;
   readonly troops: number;
   /** Strength in percent-troops (troops * percent), keeps the math integer. */
@@ -33,20 +37,34 @@ export function resolveTick(
   orders: OrdersByPlayer,
   config: MatchConfig,
 ): GameState {
-  if (state.winner !== null) return state;
+  return playTick(state, orders, config).state;
+}
+
+/**
+ * `resolveTick`, together with the moves it carried out and how each battle went for the armies
+ * in it, for clients to animate. The state is exactly what `resolveTick` gives.
+ */
+export function playTick(
+  state: GameState,
+  orders: OrdersByPlayer,
+  config: MatchConfig,
+): { state: GameState; moves: ExecutedMove[] } {
+  if (state.winner !== null) return { state, moves: [] };
 
   const tick = state.tick + 1;
   const tiles = generate(state, config);
 
   // Phase 2: every commanded army departs, leaving one troop behind. Armies that march into
   // each other fight halfway, and only the survivors go on to their destination.
+  const departures = depart({ ...state, tiles }, orders);
   const arrivals = new Map<string, Arrival[]>();
-  for (const { player, order, amount, clash } of depart({ ...state, tiles }, orders)) {
+  for (const departure of departures) {
+    const { player, order, amount, clash } = departure;
     const delivered = clash ? clash.survivors : amount;
     if (delivered <= 0) continue;
     const key = hexKey(order.to);
     const list = arrivals.get(key) ?? [];
-    list.push({ player, amount: delivered });
+    list.push({ player, amount: delivered, departure });
     arrivals.set(key, list);
   }
 
@@ -64,11 +82,31 @@ export function resolveTick(
     }
 
     // Phases 4-5: attack and battle.
-    if (hostile.length > 0)
-      resolveBattle(tile, hostile, tileRules(config, tile.type).defensePercent);
+    if (hostile.length === 0) continue;
+    const defenderOwner = tile.owner;
+    const report = resolveBattle(tile, hostile, tileRules(config, tile.type).defensePercent);
+    if (!report) continue;
+    for (const { arrival, lost } of report.attackers) {
+      arrival.departure.fight = {
+        lost,
+        ...(report.defenderLost === null
+          ? {}
+          : { defender: { owner: defenderOwner, lost: report.defenderLost } }),
+      };
+    }
   }
 
-  return settle({ ...state, tick, tiles });
+  return {
+    state: settle({ ...state, tick, tiles }),
+    moves: departures.map(({ player, order, amount, clash, fight }) => ({
+      player,
+      from: order.from,
+      to: order.to,
+      troops: amount,
+      ...(clash ? { clash } : {}),
+      ...(fight ? { fight } : {}),
+    })),
+  };
 }
 
 /** Phase 1: generation, per tile. Troops generated this tick can fight and move this tick. */
@@ -102,7 +140,9 @@ interface Departure {
   readonly order: Move;
   readonly amount: number;
   /** Set when this army and one marching the other way ran into each other (a swap). */
-  readonly clash?: { readonly survivors: number };
+  clash?: { readonly survivors: number };
+  /** Set when what is left of this army fought at the tile it was sent to. */
+  fight?: Fight;
 }
 
 /**
@@ -113,12 +153,7 @@ interface Departure {
  */
 function depart(generated: GameState, orders: OrdersByPlayer): Departure[] {
   const tiles = generated.tiles as Record<string, MutableTile>;
-  const departures: {
-    player: PlayerId;
-    order: Move;
-    amount: number;
-    clash?: { survivors: number };
-  }[] = [];
+  const departures: Departure[] = [];
   for (const { player, order } of validMoves(generated, orders)) {
     const from = tiles[hexKey(order.from)];
     if (!from) continue;
@@ -147,39 +182,54 @@ export interface ExecutedMove {
   readonly troops: number;
   /** Set when it met an army coming the other way: how many of this one were left to go on. */
   readonly clash?: { readonly survivors: number };
+  /** Set when what was left of it fought at its destination (after any clash on the way). */
+  readonly fight?: Fight;
+}
+
+/** How a battle at an army's destination went for it. */
+export interface Fight {
+  /** The troops this army lost; all of those it brought, unless it won. */
+  readonly lost: number;
+  /**
+   * The tile's defenders, if it had any: its garrison together with any reinforcements that
+   * arrived the same tick, as one force. `owner` is whose they were (`null`: neutral).
+   */
+  readonly defender?: { readonly owner: PlayerId | null; readonly lost: number };
 }
 
 /**
  * The moves `resolveTick` will carry out for these orders (invalid ones are left out), with the
- * number of troops each sends. Purely informational: the resulting state comes from `resolveTick`.
+ * number of troops each sends and how its battles went. Purely informational: the resulting state
+ * comes from `resolveTick`.
  */
 export function executedMoves(
   state: GameState,
   orders: OrdersByPlayer,
   config: MatchConfig,
 ): ExecutedMove[] {
-  if (state.winner !== null) return [];
-  const tiles = generate(state, config);
-  return depart({ ...state, tiles }, orders).map(({ player, order, amount, clash }) => ({
-    player,
-    from: order.from,
-    to: order.to,
-    troops: amount,
-    ...(clash ? { clash } : {}),
-  }));
+  return playTick(state, orders, config).moves;
+}
+
+/** What each side lost in a battle. */
+interface BattleReport {
+  readonly attackers: { readonly arrival: Arrival; readonly lost: number }[];
+  /** `null` when the tile had no defenders. */
+  readonly defenderLost: number | null;
 }
 
 /**
  * The strongest participant fights the second strongest and everyone else is
  * removed. A battle needs a survivor to change
  * ownership: if nobody is left standing the tile keeps its owner and is empty.
+ * Returns what everyone lost, or `null` when there was nobody to fight.
  */
 function resolveBattle(
   tile: MutableTile,
   hostile: readonly Arrival[],
   defensePercent: number,
-): void {
+): BattleReport | null {
   const participants: Participant[] = hostile.map((a) => ({
+    arrival: a,
     owner: a.player,
     troops: a.amount,
     strength: a.amount * ATTACKER_PERCENT,
@@ -196,13 +246,13 @@ function resolveBattle(
   participants.sort((a, b) => b.strength - a.strength);
 
   const [top, second] = participants;
-  if (!top) return;
+  if (!top) return null;
   if (!second) {
     // Unopposed: walk onto an empty tile.
     tile.owner = top.owner;
     tile.progress = 0;
     tile.troops = top.strength / ATTACKER_PERCENT;
-    return;
+    return null;
   }
 
   // The loser is wiped out. The winner loses troops worth the loser's strength at the
@@ -220,6 +270,16 @@ function resolveBattle(
     tile.owner = top.owner;
     tile.progress = 0;
   }
+
+  // Everyone but the winner is wiped out; the winner lost what it took to beat the runner-up.
+  const lostBy = (p: Participant) => (p === top && !tied ? Math.min(loss, p.troops) : p.troops);
+  const defenders = participants.find((p) => p.defender);
+  return {
+    attackers: participants.flatMap((p) =>
+      p.arrival ? [{ arrival: p.arrival, lost: lostBy(p) }] : [],
+    ),
+    defenderLost: defenders ? lostBy(defenders) : null,
+  };
 }
 
 /**

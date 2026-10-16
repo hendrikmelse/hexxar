@@ -251,6 +251,11 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
      * match to match; without it, colors go by the order of `state.players`.
      */
     colors: z.record(z.string(), z.number().int().nonnegative()).optional(),
+    /**
+     * The server has just restarted and picked this match up: `nextTickAt` is the end of a short
+     * pause for everyone to come back, shown as a countdown. Gone with the first tick.
+     */
+    resuming: z.boolean().optional(),
   }),
   /** One tick resolved. Only tiles that changed are included. */
   z.object({
@@ -277,6 +282,14 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
           to: z.object({ q: z.number().int(), r: z.number().int() }),
           troops: z.number().int().nonnegative(),
           clash: z.object({ survivors: z.number().int().nonnegative() }).optional(),
+          fight: z
+            .object({
+              lost: z.number().int().nonnegative(),
+              defender: z
+                .object({ owner: z.string().nullable(), lost: z.number().int().nonnegative() })
+                .optional(),
+            })
+            .optional(),
         }),
       )
       .optional(),
@@ -294,5 +307,10 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('queued'), order: orderSchema, player: z.string().optional() }),
   z.object({ type: z.literal('rejected'), reason: z.string() }),
+  /**
+   * The server is stopping to be updated and will be back shortly: connections are about to drop,
+   * and running matches carry on afterwards. `estimateMs` is how long that usually takes.
+   */
+  z.object({ type: z.literal('restarting'), estimateMs: z.number().int().nonnegative() }),
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
