@@ -9,6 +9,7 @@ import {
   createRng,
   createDuelMatch,
   diffTiles,
+  newlyEliminated,
   parseMatchConfig,
   roomCapacity,
   roomMinPlayers,
@@ -784,9 +785,10 @@ export class Room {
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
       youVoted: this.votes.has(session.userId),
-      // Anyone out of the running match is watching it, as much as someone who came to watch.
+      // Anyone out of the running match is watching it, as much as someone who came to watch. (A bot
+      // that is out is not watching anything.)
       spectators: this.members
-        .filter((m) => !m.left && (m.spectator || this.isOut(m)))
+        .filter((m) => !m.left && !m.bot && (m.spectator || this.isOut(m)))
         .map((m) => m.session.name),
       spectating: this.memberOf(session)?.spectator === true,
       canChat: this.canChat(session),
@@ -1185,8 +1187,8 @@ export class Room {
   private runTick(): void {
     const match = this.match;
     if (!match || this.nextTickAt === null) return;
-    const outBefore = match.state.eliminated.length;
     const { previous, state, moves } = match.step();
+    const outBefore = previous.eliminated.length;
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
     const { config } = match;
     const scores = scoresOf(state, config);
@@ -1219,7 +1221,8 @@ export class Room {
     }
 
     // The spectators' chat says who is out, and, if that ends the match, who won.
-    for (const id of state.eliminated.slice(outBefore)) {
+    const newlyOut = newlyEliminated(previous.eliminated, state.eliminated);
+    for (const id of newlyOut) {
       this.markOut(id, 'eliminated', state.players.length - outBefore);
       this.announceOut(id, 'was eliminated');
     }
@@ -1228,7 +1231,7 @@ export class Room {
       this.finish();
     } else {
       // Someone who is out is now a spectator, for everyone to see.
-      if (state.eliminated.length > outBefore) this.broadcastRoom();
+      if (newlyOut.length > 0) this.broadcastRoom();
       this.thinkBots();
       this.scheduleTick();
     }

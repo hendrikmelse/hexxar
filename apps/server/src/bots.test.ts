@@ -263,6 +263,29 @@ describe('Bots', () => {
     });
   });
 
+  it('names each bot that goes out exactly once, and never counts a bot as a spectator', () => {
+    const host = hostWithBots({ mode: 'ffa' });
+    host.say({ type: 'becomeSpectator' });
+    host.say({ type: 'updateRoom', settings: { bots: 6 } });
+    host.say({ type: 'startGame' });
+    const botNames = host.room!.players.map((p) => p.name);
+    expect(botNames).toHaveLength(6);
+
+    const said = new Map<number, { name: string; text: string; system?: boolean }>();
+    const eliminated = () => [...said.values()].filter((m) => m.text === 'was eliminated');
+    for (let minutes = 0; minutes < 70 && eliminated().length < 3; minutes++) {
+      vi.advanceTimersByTime(60 * TICK_MS);
+      // Only the host is watching: a bot that is out is not.
+      expect(host.room!.spectators).toEqual(['Hanna']);
+      for (const chat of host.all('chat')) for (const m of chat.messages) said.set(m.id, m);
+    }
+    const names = eliminated().map((m) => m.name);
+    expect(names.length).toBeGreaterThanOrEqual(3);
+    // Three different bots, not the last one on the list three times.
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of names) expect(botNames).toContain(name);
+  }, 60_000);
+
   it('does not count the bots as players on the admin panel', () => {
     hostWithBots({ mode: 'ffa', bots: 4 });
     expect(lobby.adminStats().rooms[0]).toMatchObject({ players: 1, names: ['Hanna'] });
