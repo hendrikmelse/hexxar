@@ -14,6 +14,7 @@ export * from './resolve.js';
 export * from './royale/index.js';
 export * from './rng.js';
 export * from './scores.js';
+export * from './smartBot.js';
 export * from './state.js';
 export * from './tiles.js';
 export * from './visibility.js';

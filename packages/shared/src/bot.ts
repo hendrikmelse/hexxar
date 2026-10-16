@@ -46,7 +46,7 @@ export const BOT_NAMES: readonly string[] = [
 export const BOT_GAME_BOTS = { duel: 1, ffa: 5 } as const;
 
 /** What taking a tile is worth to the easy bot, before the cost of the fight. */
-const TILE_VALUE: Record<TileTypeId, number> = { city: 12, village: 7, farmland: 2 };
+export const TILE_VALUE: Record<TileTypeId, number> = { city: 12, village: 7, farmland: 2 };
 /** Taking a tile from another player is worth this much more than taking a neutral one. */
 const ENEMY_BONUS = 3;
 /** A farm next to one of the bot's own producers makes that producer faster. */
@@ -73,7 +73,7 @@ interface Target {
  * Troops an army must send to take `tile` with a little to spare. Defenders fight at their tile's
  * bonus, rounding favors them, and another player's tile may make a troop before the army arrives.
  */
-function troopsNeeded(config: MatchConfig, tile: Tile): number {
+export function troopsNeeded(config: MatchConfig, tile: Tile): number {
   const margin = tile.owner === null ? 0 : 1;
   const strength = ((tile.troops + margin) * tileRules(config, tile.type).defensePercent) / 100;
   return Math.ceil(strength) + 1;

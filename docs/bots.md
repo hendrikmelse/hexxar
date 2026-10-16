@@ -25,13 +25,13 @@ type Bot = (context: { view: GameState; me: PlayerId; config: MatchConfig }) => 
 - It has no memory between calls and no randomness: the same view always gives the same answer. Everything it needs is on the board.
 - `packages/shared` has no Node or DOM dependencies, so a bot runs anywhere (a future tutorial opponent, a headless test harness, the server).
 
-`createEasyBot()` returns the one bot there is. `BOT_NAMES` holds the names rooms hand out.
+There are two bots. `createEasyBot()` is the **original** bot, kept unchanged as the one new bots are measured against. `createSmartBot(options)` (`packages/shared/src/smartBot.ts`) is the **improved** bot, the original with a few habits added, each of them a switch; the rooms use it with the settings that measured best (`SMART_BEST`). `BOT_NAMES` holds the names rooms hand out.
 
 ### In a room: `apps/server/src/room.ts`
 
 A bot is a `Member` of the room, like a person, with two differences: `member.bot` holds its decision function, and its `Session` is a stand-in (`userId` like `bot-ada`, no token, a connection that discards everything sent to it). Because it is a member, everything that already works for players works for it: it has a color, a match player id, a place in the player list and the scoreboard, and the chat announces when it is eliminated.
 
-- **`settings.bots`** is the number of bots the host wants (0 to 12; a duel holds at most 2). **`settings.botLevel`** is how good they are (`easy`, `medium` or `hard`, the same for every bot in the room). The levels are only a setting so far: every level plays like the easy bot until the others are written. The room keeps the real number of bots equal to `min(settings.bots, capacity - people)` and writes the result back, in `syncBots()`. It runs whenever the room's makeup changes: someone joins, leaves, spectates, the host changes a setting, or the room goes back to its lobby after a match. So a person arriving in a full room pushes the last bot out, and the setting follows (the bot does not come back by itself when the person leaves). Adding bots never moves anyone: the number is capped by the places people are not playing in, and the lobby's **+** is switched off at that cap. A host who wants all twelve places for bots steps out with **Spectate** first (then watches a 12-bot game); taking a place again with **Join as player** makes the last bot give way.
+- **`settings.bots`** is the number of bots the host wants (0 to 12; a duel holds at most 2). **`settings.botLevel`** is how good they are (`easy`, `medium` or `hard`, the same for every bot in the room). The levels are only a setting so far: every level plays like the improved bot (`SMART_BEST`) until they are told apart. The room keeps the real number of bots equal to `min(settings.bots, capacity - people)` and writes the result back, in `syncBots()`. It runs whenever the room's makeup changes: someone joins, leaves, spectates, the host changes a setting, or the room goes back to its lobby after a match. So a person arriving in a full room pushes the last bot out, and the setting follows (the bot does not come back by itself when the person leaves). Adding bots never moves anyone: the number is capped by the places people are not playing in, and the lobby's **+** is switched off at that cap. A host who wants all twelve places for bots steps out with **Spectate** first (then watches a 12-bot game); taking a place again with **Join as player** makes the last bot give way.
 - **When bots think** (`thinkBots()`): once when the match is created, so they plan their opening during the planning period like everyone else, and after every tick. A bot is asked for orders only when its queue is **empty**, so it queues at most one tick ahead. Its orders go through `queueOrder()`, the same path as a person's orders, so `Match.enqueue` validates them and anyone watching sees them.
 - **Costs.** A bot decision is a pass over the tiles it can see, plus one breadth-first search over its own. Bots are skipped when messages are built and sent (ticks, snapshots, room views), since nobody is there to receive them.
 - **Unwatched games end.** Bots would play on for ever, so a match with bots in it (or its result card) is closed **immediately** once nobody is left to see it: no person playing, and no one watching, whether a spectator or someone who is out of the match, with a live connection (`Room.endIfUnwatched()`). Someone who is still playing but whose connection has dropped counts until their army surrenders for being away (`afkMs`, two minutes), so a page reload does not end the game; as soon as it surrenders, the room closes. A match with a person watching it, even one beaten long ago, goes on.
@@ -55,7 +55,9 @@ There are no bot-specific messages.
 1. **Create game** from the menu, then use the Bots stepper.
 2. **From a lobby that cannot start:** in a lobby with too few players to start (a duel with no opponent, a battle royale with fewer than three players), a card at the bottom of the screen says "Tired of waiting?" with a **Play against bots** button. It is for quick play lobbies only (never a private game, where the host has the Bots setting). It fades in after 3 seconds of waiting (any change in who is in the lobby starts the 3 seconds over) and fades out again at once when the match can start. The button takes the player to a new private game of the same mode with bots already added (`BOT_GAME_BOTS`: 1 for a duel, 5 for a battle royale).
 
-## The algorithm (the "easy" bot)
+## The original algorithm (the "easy" bot)
+
+This is `createEasyBot()` in `bot.ts`, kept exactly as it was, because it is the opponent new bots are tested against. The improved bot below starts from it.
 
 The easy bot is deliberately simple. Each time it is asked, it picks **one** target and takes **one** step toward it: either an attack, or a move that brings troops closer to where an attack could happen. It never plans a route more than one step at a time, and it has no model of its opponents.
 
@@ -130,17 +132,97 @@ These are the known weaknesses of the easy bot, and the first things to improve 
 
 In practice: it expands fast, takes nearby cities and villages, and finishes a passive opponent, but it falls to a player who defends well and counter-attacks.
 
+## The improved bot
+
+`createSmartBot(options)` makes the same kind of decision as the original (one target, one step, every time it is asked; sections 1 to 5 above) and adds habits that a beginner picks up, each a switch in `SmartOptions`. With every switch off it makes **exactly** the original's decisions (a test plays whole games and compares every one), which is what makes the measurements below fair. `SMART_BEST` is the combination that won; the rooms use it.
+
+### Habit 1: finish the ring around cities and villages (`ring`)
+
+The original gives a farm next to one of its producers a flat +1.5 value per producer. The improved bot values a farm by how much faster it would make the producers beside it:
+
+```
+for each of my cities and villages next to the farm, with f farms of mine around it already:
+    value += 60 * (1 / ticksPerTroop(f + 1)  -  1 / ticksPerTroop(f))
+```
+
+(`ticksPerTroop` is the production table in [tick resolution](tick-resolution.md), scaled by the match's production speed.) The gains grow as the ring fills, so the last farms are worth the most, and a city is worth far more than a village:
+
+| Farm number | 1st | 2nd | 3rd | 4th | 5th | 6th |
+| ----------- | --- | --- | --- | --- | --- | --- |
+| City        | 1.1 | 1.4 | 2.0 | 3.0 | 5.0 | 10  |
+| Village     | 0.5 | 0.5 | 0.7 | 0.8 | 1.1 | 1.4 |
+
+Added to the farm's own value of 2 and divided by the fight's cost like any target, the sixth farm of a city outranks a neutral village, and the first one does not.
+
+### Habit 2: never sit on a capped army (`uncap`)
+
+A city or village stops producing while its army is at its cap (50 and 20), so an army parked there is a wasted tile. A producer counts as capped when it holds at least `cap - 1` troops (and at least 2). Before it makes its normal choice, the bot takes the biggest capped army and does the first of these that applies:
+
+1. **Attack from where it stands:** if the army can win a fight with a neighboring tile, it does (the best-scoring one).
+2. **March to the front:** otherwise it walks toward the staging tile of its best target (habit 3 applies on the way).
+3. **Just move off:** otherwise it steps onto its least crowded neighboring tile, so the producer starts producing again.
+
+### Habit 3: pick up armies on the way (`pickup`)
+
+When the original gathers an army, it walks along the first shortest route its search found. The improved bot looks at **every** shortest route from a tile back to the staging tile and takes the one past the most spare troops:
+
+```
+gain(tile)  = troops on the tile - 1         (the army leaves one behind; the staging tile counts for 0)
+carry(tile) = max over neighbors n one step closer:  gain(n) + carry(n)      carry(staging) = 0
+weight(tile) = (troops - 1 + carry(tile)) / (1 + distance to staging)
+```
+
+The tile with the highest weight is the one that moves, and it moves onto the neighbor, one step closer, that has the highest `gain + carry`. A march therefore collects the small armies that are lying around its route, instead of leaving them behind. It is the same single step, asked again next tick, so it still reacts to changes. (An experiment that also let the army step sideways onto a stack, `detour`, made no difference and is off.)
+
+### Habits that did not help (`neutralFirst`, `ignoreEnemyFarms`)
+
+The idea was to put neutral villages and cities ahead of skirmishes with other players. Two ways of doing it were measured, and neither helped:
+
+- `neutralFirst` multiplies a neutral city's or village's value (by 1.25, 1.5 or 2.5 in the tests).
+- `ignoreEnemyFarms` stops valuing another player's farmland above neutral farmland.
+
+Both are still in the code, off. (Taking an enemy's farms is how its production rings are broken and how an army gets to its cities, so the "petty skirmishes" are worth more than they look.)
+
+### How it was measured
+
+`apps/server/src/botExperiment.test.ts` plays a candidate against an opponent and writes the result (see the comment at the top of the file for how to run it; it does nothing unless `BOT_EXPERIMENT` is set). Every game is played with fog of war on and one order per bot per tick.
+
+- **Duels:** the candidate on both sides of every board, 16 boards (32 games), 3000 ticks at most.
+- **Battle royales:** one candidate and three opponents, the candidate taking each of the four starting positions in turn, 40 games.
+
+Results against the original bot (duels: candidate wins - losses; royale: candidate wins out of 40, where chance is 10 and the original against itself got 11):
+
+| Candidate                       | Duels | Average win | Royales |
+| ------------------------------- | ----- | ----------- | ------- |
+| original (as a check)           | 11-11 | 1305 ticks  | 11      |
+| `ring` alone                    | 19-10 | 1498        | 12      |
+| `pickup` alone                  | 31-1  | 1025        | 12      |
+| `uncap` alone                   | 32-0  | 1290        | 14      |
+| `pickup` + `uncap`              | 31-1  | 844         | 16      |
+| **`pickup` + `uncap` + `ring`** | 31-1  | **818**     | **19**  |
+| the above + the two that failed | 29-1  | 1001        | 15      |
+
+Tuning, against `pickup` + `uncap` (32 duels): adding `ring` won 26-5. Of its strength, 30, 60 and 120 won 22-10, 26-5 and 24-8, and 40, 90 and 120 against the finished bot (60) came out 19-13, 19-13 and 18-14, so anything from about 40 to 120 is as good and 60 was kept. Moving the cap margin to 0 or 5, and the `detour` (3 or 6), changed nothing (13-18 for margins 0 and 5, and 13-18 and 12-20 for the detours, against `pickup` + `uncap`). Against the finished bot, the two failed habits lost 12-20 and 13-19 (`neutralFirst`), 9-23 (`ignoreEnemyFarms`) and 10-22 (both).
+
+The numbers are from fixed boards and a few dozen games, so a difference of a few games is noise; the large ones (a win rate of 90% against the original, and `ring` on top of the other two) are not.
+
+### What it still does not do
+
+It still never defends (no home guard, no reinforcing a threatened producer), still queues one order at a time and reacts to the board as it is, and still does not scout. Defending was not tried with this bot (keeping troops home on producers that an enemy next door could take, and reinforcing them); it is the obvious next thing to measure, against `SMART_BEST` now.
+
 ## Testing
 
 - `packages/shared/src/bot.test.ts`: unit tests of single decisions (attack a tile it can beat, wait when everything is out of reach, march toward a fight it cannot win from one tile), and a headless harness that plays bots against each other under fog of war, checking that **every order a bot returns is legal** (`checkOrder`), that a battle royale between bots finishes, and that a bot beats an opponent who never plays.
+- `packages/shared/src/smartBot.test.ts`: the improved bot with every switch off agrees with the original on every decision of whole games; with the best switches on it only gives legal orders; and single boards for each habit (an army at its cap moves, the last farm of a city's ring beats a neutral village, an army takes the route with the troops on it).
+- `apps/server/src/botExperiment.test.ts`: the harness above. Skipped unless `BOT_EXPERIMENT` is set.
 - `apps/server/src/bots.test.ts`: bots in rooms. Labelling, names and colors, the limits on the count, bots yielding to people, no bots in public games, the bot playing a real match through the lobby, a person out of the game seeing its orders, rematches, closing the room, and the admin counts.
 
 ## Adding another bot
 
 A new difficulty is another `Bot` function. To make it available:
 
-1. Write it in `packages/shared/src/` (pure, `visibleState` in, orders out) and test it in the harness against the easy bot.
-2. Make `Room.botOfLevel()` return it for its level (it returns the easy bot for every level for now; the setting and the lobby's difficulty button already exist).
+1. Write it in `packages/shared/src/` (pure, `visibleState` in, orders out), and measure it with `botExperiment.test.ts` against `createEasyBot()` and against `createSmartBot(SMART_BEST)`.
+2. Make `Room.botOfLevel()` return it for its level (it returns the improved bot for every level for now; the setting and the lobby's difficulty button already exist).
 3. Update this page.
 
 A bot that wants to plan further ahead than one step can return several orders; the room appends all of them, and asks again only when its queue has run dry.

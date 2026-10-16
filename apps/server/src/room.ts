@@ -1,7 +1,8 @@
 import {
   BOT_NAMES,
   bowlRadiusFor,
-  createEasyBot,
+  createSmartBot,
+  SMART_BEST,
   createFreeForAllMatch,
   extraSetsFor,
   FAIR_BOWL_RADIUS,
@@ -548,9 +549,12 @@ export class Room {
     return member;
   }
 
-  /** A bot as good as the room's setting says. Every level is the easy bot until the others are written. */
+  /**
+   * A bot as good as the room's setting says. Every level is the improved bot until the levels are
+   * told apart (the original easy bot is still `createEasyBot`, the one new bots are measured against).
+   */
   private botOfLevel(): Bot {
-    return createEasyBot();
+    return createSmartBot(SMART_BEST);
   }
 
   /** Every bot with nothing queued works out what to do next, from what its player can see. */
