@@ -134,7 +134,7 @@ In practice: it expands fast, takes nearby cities and villages, and finishes a p
 
 ## The improved bot
 
-`createSmartBot(options)` makes the same kind of decision as the original (one target, one step, every time it is asked; sections 1 to 5 above) and adds habits that a beginner picks up, each a switch in `SmartOptions`. With every switch off it makes **exactly** the original's decisions (a test plays whole games and compares every one), which is what makes the measurements below fair. `SMART_V1` is the first round's winners (habits 1 to 3), and `SMART_BEST` adds habit 4 on top of it; the rooms use `SMART_BEST`.
+`createSmartBot(options)` makes the same kind of decision as the original (one target, one step, every time it is asked; sections 1 to 5 above) and adds habits that a beginner picks up, each a switch in `SmartOptions`. With every switch off it makes **exactly** the original's decisions (a test plays whole games and compares every one), which is what makes the measurements below fair. `SMART_V1` is the first round's winners (habits 1 to 3), and `SMART_BEST` adds habits 4 and 5 on top of it; the rooms use `SMART_BEST`.
 
 ### Habit 1: finish the ring around cities and villages (`ring`)
 
@@ -182,6 +182,14 @@ A city or village is **threatened** when a tile of another player next to it cou
 - `reinforce`: if an attack that can be made now would hit the tile that threatens a producer, it is made. Otherwise the army nearest to the most valuable threatened producer (counting what it picks up on the way, habit 3) takes a step toward it, ahead of anything else except that.
 
 **Only while two players are left (`defendUntil: 2`).** Defending all the time was a clear win in duels and a loss in battle royales. In a royale a city usually borders several players, so something is always threatened, and the bot spent its one order per tick reinforcing and keeping troops at home instead of expanding: it won 15 royales in 60 where the same bot without defence won 27, and it survived less often. With the limit it defends in every duel and in the endgame of a royale, and plays like `SMART_V1` before that (27 of 60 either way).
+
+### Habit 5: only count troops that can get there (`components`, `componentsUntil`, `idleRepair`)
+
+The bots sometimes sat idle with plenty to do. `Trace` (below) showed why: the bot picks a target, and gathers an army at the target's **staging tile**, the one of its own tiles beside the target that holds the most troops. When that tile is a **cut-off outpost** (one or two tiles of its own land that no longer touch the rest, because the middle was lost or the land is split by water), no troop can walk to it over the bot's own land. The bot still counted its whole army as available for that target, so the target looked like the best thing to do, the gather found nothing to move, and it passed the tick, again and again (a dozen ticks in a row, with 100 to 1200 troops elsewhere).
+
+- `components`: split the bot's land into connected pieces and count, for each target, only the troops in the pieces the target can be attacked from. Gather at a stager in the piece that has the troops. If a gather still finds nothing, try the next best targets.
+- `componentsUntil: 2`: apply that only while two players are left (see below for why).
+- `idleRepair`: when `components` is not in force, change nothing unless the bot is about to pass the tick; then look for the best target its troops can walk to, and do that. Every other decision stays exactly as it was.
 
 ### Habits that did not help (`neutralFirst`, `ignoreEnemyFarms`)
 
@@ -252,10 +260,37 @@ The same harness, this time against `SMART_V1` (and, for each step, against the 
 
 **Cost.** A decision (`SMART_BEST`) takes **0.37 ms on average, and 99% take under 2.4 ms** (the worst, about 20 ms, are the engine warming up). A battle royale of twelve of them costs the server **1.5 ms per tick on average, 5.6 ms at the 99th percentile**, for all twelve bots together, out of the one second a tick lasts. Always-on defence cost about 60% more (0.61 ms per decision) and was worse in royales, which is another reason for `defendUntil`. `sim` costs another 0.2 ms per decision for nothing. Running `BOT_BENCH=1 BOT_EXPERIMENT=1` (see `botExperiment.test.ts`) measures this on any bot.
 
+### Third round: idle ticks and piles of troops
+
+Two things were noticed when watching games: bots that sit idle with things to do, and winning bots that leave big piles of troops around. `botDiagnose.test.ts` plays games and records, for each decision of the candidate, **why** it decided as it did (the bot can say: `createSmartBotWithTrace`), how many troops it had, and where its biggest stack was.
+
+**Idle.** The share of decisions that gave no order, and why:
+
+| Bot                               | Duels | Royales | Reason found                                                                                                 |
+| --------------------------------- | ----- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `SMART_BEST` before this round    | 11%   | 24%     | 3% to 16%: "no troops can reach the staging tile" (the cut-off outpost); the rest: every target out of reach |
+| with `components`, the whole game | 3%    | 5%      |                                                                                                              |
+| **`SMART_BEST` now**              | 3%    | 6%      | what is left is waiting for production                                                                       |
+
+In duels against the previous best (40 games) the fix won **27-12**; against the original, **32-0**, finishing in 630 ticks instead of 737. It matters most when ahead: idle decisions while winning went from 3% to 0.1%.
+
+**In a royale it has a small possible cost.** `components` for the whole game, or `idleRepair`, won fewer royales against three originals than the bot without them: 63 of 160 and 61 of 160, against 74 of 160; on 160 further boards it was 53 against 61, so over 320 boards 116 against 135 (36% against 42%), which is about 1.5 standard errors, so it may be luck. Head to head against the previous best the two are equal (15 and 14 wins of 80, where chance is 20). It stays because the passing was the problem being fixed, and because in duels it clearly helps; `componentsUntil: 2` keeps the whole-game version out of royales.
+
+**Piles.** While a bot was winning (at least 65% of all production), about half of its mobile troops were in stacks of 25 or more, on four to six tiles, and the biggest was usually **at the front** (about one step from it, on farmland, touching an enemy tile in about half the decisions), not parked at home. Five ways of using them were measured, and none made the bot win more, or finish faster (it took about 300 ticks after getting a big lead to win, with or without):
+
+- `deploy` (march piles toward the best city or village): 17-21 on its own, 26-13 with `components` (against 32-8 without `deploy`); at a lower size it stalled the game (6-23).
+- `spendPiles` (a pile that is enough attacks, rather than the smallest army that is enough): 18-21, and 32-8 with `components` (the same as without).
+- `pileFirst` (a pile beside a target it can win takes it, rather than waiting while an army gathers for a better one), at 0.2, 0.35 and 0.5 of the best target's value, and also over an attack that is possible now: 20-20, 20-20, 19-20.
+
+The reason, as far as the data goes: a winning side owns many cities and villages, each making a troop every few ticks, and the game allows **one order per tick**. Production grows faster than one order a tick can spend it, so the surplus piles up wherever it was last left. Moving the pile or spending it first does not change that. It is not a bug in what a bot decides; it is the rule of one order per tick showing.
+
+**Cost.** The final bot: **0.53 ms per decision on average, 99% under 2.0 ms**; twelve of them on one board cost **1.6 ms per tick on average, 4.2 ms at the 99th percentile** (out of the one second a tick lasts). The connected pieces add about 0.2 ms per decision.
+
 ### What it still does not do
 
 - **No defence in a royale until two players are left.** The habit that works in duels hurts when there are several fronts. A defence that picks which threat to answer (the one that is real, not every neighbor) is the open problem.
-- **Idle ticks.** About 12% of its decisions in a duel and 24% in a royale give no order, and filling them (`pool`) did not help: most of them are waiting for production, with nothing worth doing.
+- **Waiting.** About 3% of its decisions in a duel and 6% in a royale give no order now; those are waiting for production, with nothing in reach that is worth doing.
+- **Troops pile up when it is winning.** One order a tick cannot spend a big economy (see above). A bot that took whole stacks along (one army walking through the enemy's land, capturing a tile a tick) rather than one capture at a time might finish sooner; it was not tried.
 - **One order at a time, from the board as it is.** No memory of where enemies were last seen, no scouting beyond the next ring, no plan more than one step ahead.
 - **Ideas not tried:** gathering only when the troops that could arrive in time are enough (`mass`), valuing farms around a neutral producer before it is captured, looking ahead with rollouts (a few milliseconds per decision, which is the cost to weigh), personalities, and reading what the other players are doing in a royale.
 
@@ -264,7 +299,9 @@ The same harness, this time against `SMART_V1` (and, for each step, against the 
 - `packages/shared/src/bot.test.ts`: unit tests of single decisions (attack a tile it can beat, wait when everything is out of reach, march toward a fight it cannot win from one tile), and a headless harness that plays bots against each other under fog of war, checking that **every order a bot returns is legal** (`checkOrder`), that a battle royale between bots finishes, and that a bot beats an opponent who never plays.
 - `packages/shared/src/smartBotHabits.test.ts`: single boards for the second round's habits: a threatened city stays home (and only while two players are left), troops are sent to a producer in danger, the production timer decides whether an attack is enough, spare troops march when nothing can be attacked, and the target stays chosen.
 - `packages/shared/src/smartBot.test.ts`: the improved bot with every switch off agrees with the original on every decision of whole games; with the best switches on it only gives legal orders; and single boards for each habit (an army at its cap moves, the last farm of a city's ring beats a neutral village, an army takes the route with the troops on it).
-- `apps/server/src/botExperiment.test.ts`: the harness above. Skipped unless `BOT_EXPERIMENT` is set.
+- `packages/shared/src/smartBotConnected.test.ts`: the cut-off outpost board: the bot without the fix passes the tick (and the trace says why), with `components` or `idleRepair` it takes the farm that can be taken, and the limit to two players.
+- `apps/server/src/botExperiment.test.ts`: the harness above (also `BOT_SEED_START`, to play boards that an earlier run did not, and `BOT_BENCH`, for the cost of twelve bots). Skipped unless `BOT_EXPERIMENT` is set.
+- `apps/server/src/botDiagnose.test.ts`: plays games and reports why the candidate passed its ticks, where its army was, and what it went for while winning. Skipped unless `BOT_DIAGNOSE` is set.
 - `apps/server/src/bots.test.ts`: bots in rooms. Labelling, names and colors, the limits on the count, bots yielding to people, no bots in public games, the bot playing a real match through the lobby, a person out of the game seeing its orders, rematches, closing the room, and the admin counts.
 
 ## Adding another bot

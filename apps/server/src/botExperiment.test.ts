@@ -27,6 +27,7 @@ import {
  *   BOT_DUELS     boards to play duels on, each played from both sides (default 12)
  *   BOT_FFA       battle royales to play (default 12)
  *   BOT_TICKS     longest a game may go on (default 3000)
+ *   BOT_SEED_START  play boards numbered after this (default 0), to try new ones
  *   BOT_OUT       a file to write the result to, as JSON (default: print it)
  *
  *   BOT_EXPERIMENT=1 BOT_VARIANT='{"ring":true}' pnpm --filter @hexxar/server exec vitest run botExperiment
@@ -98,9 +99,11 @@ describe.skipIf(!enabled)('bot experiment', () => {
     const duelBoards = Number(process.env.BOT_DUELS ?? 12);
     const royales = Number(process.env.BOT_FFA ?? 12);
     const ticks = Number(process.env.BOT_TICKS ?? 3000);
+    // Boards are numbered from here, so a second run can play boards the first never saw.
+    const firstSeed = Number(process.env.BOT_SEED_START ?? 0);
 
     const duels = { won: 0, lost: 0, unfinishedAhead: 0, unfinishedBehind: 0, ticksWon: 0 };
-    for (let seed = 1; seed <= duelBoards; seed++) {
+    for (let seed = firstSeed + 1; seed <= firstSeed + duelBoards; seed++) {
       for (const swap of [false, true]) {
         const { state: start } = createDuelMatch({ players: ['P1', 'P2'], seed, config });
         const us = swap ? 'P2' : 'P1';
@@ -120,7 +123,7 @@ describe.skipIf(!enabled)('bot experiment', () => {
     }
 
     const royale = { won: 0, otherWon: 0, unfinished: 0, ticksWon: 0, surviving: 0 };
-    for (let seed = 1; seed <= royales; seed++) {
+    for (let seed = firstSeed + 1; seed <= firstSeed + royales; seed++) {
       const players = ['P1', 'P2', 'P3', 'P4'];
       const us = players[(seed - 1) % 4]!;
       const { state: start } = createFreeForAllMatch({ players, seed, config });
