@@ -304,40 +304,42 @@ function useExitingList(players: RoomPlayer[]): ShownPlayer[] {
     });
   }, [players]);
 
-  // Once the exit animation has played, forget the people who left.
+  // Each person who left is forgotten once their own exit animation has played, whatever else is
+  // going on: a run of people leaving must not hold every one of the empty places back.
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
-    if (!shown.some((entry) => entry.leaving)) return;
-    const id = setTimeout(() => setShown((all) => all.filter((entry) => !entry.leaving)), EXIT_MS);
-    return () => clearTimeout(id);
+    for (const entry of shown) {
+      const id = entry.player.userId;
+      const waiting = timers.current.get(id);
+      if (entry.leaving && waiting === undefined) {
+        timers.current.set(
+          id,
+          setTimeout(() => {
+            timers.current.delete(id);
+            setShown((all) => all.filter((e) => !(e.leaving && e.player.userId === id)));
+          }, EXIT_MS),
+        );
+      } else if (!entry.leaving && waiting !== undefined) {
+        // Back again before it ran out.
+        clearTimeout(waiting);
+        timers.current.delete(id);
+      }
+    }
   }, [shown]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach((timer) => clearTimeout(timer));
+  }, []);
 
   return shown;
 }
 
-/** False during the first render, true afterwards: only things that appear later animate in. */
-function useArmed(): { current: boolean } {
-  const armed = useRef(false);
-  useEffect(() => {
-    armed.current = true;
-  }, []);
-  return armed;
-}
-
 /**
- * An empty box. If it appears after the lobby is open (someone left), it fades in; the decision
- * is made once, when it first appears, so already-empty boxes never replay the animation.
+ * An empty place. Every place is always drawn like this, and a player's box is laid over it, so
+ * when someone leaves their place is already there, showing, as their box pops away.
  */
-function EmptyBox({
-  base,
-  armed,
-  children,
-}: {
-  base: string;
-  armed: { current: boolean };
-  children?: ReactNode;
-}) {
-  const [fadeIn] = useState(armed.current);
-  return <div className={`${base} open ${fadeIn ? 'appear' : ''}`}>{children}</div>;
+function EmptyBox({ base, children }: { base: string; children?: ReactNode }) {
+  return <div className={`${base} open`}>{children}</div>;
 }
 
 const boxClass = (entry: ShownPlayer, connected: boolean): string =>
@@ -389,12 +391,15 @@ function PlayerBox({
   base,
   max,
   min,
+  place,
 }: {
   room: RoomView;
   entry: ShownPlayer;
   base: 'roster-slot' | 'slot';
   max: number;
   min: number;
+  /** The cell of the grid to sit in (over the empty place that is always there). */
+  place: CSSProperties;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [clipped, setClipped] = useState(false);
@@ -421,7 +426,7 @@ function PlayerBox({
     <div
       ref={box}
       data-flip={player.userId}
-      style={meStyle(room, player)}
+      style={{ ...meStyle(room, player), ...place }}
       className={`${base} name-tip ${boxClass(entry, player.connected)} ${player.userId === room.you ? 'me' : ''}`}
       onMouseEnter={showTip}
       onMouseLeave={() => setTipShown(false)}
@@ -464,72 +469,83 @@ function PlayerBox({
   );
 }
 
-/** A grid of boxes, one per place in the game, filled in as players join and emptied as they leave. */
+/**
+ * A grid of boxes, one per place in the game. Every place is drawn empty, always; players' boxes
+ * sit over their places, so a place someone has left is simply uncovered.
+ */
 function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const grid = useRef<HTMLDivElement>(null);
   useFlip(grid);
-  const armed = useArmed();
+  const cell = (index: number): CSSProperties => ({
+    gridColumn: (index % 3) + 1,
+    gridRow: Math.floor(index / 3) + 1,
+  });
   return (
     <div className="roster" ref={grid}>
       {Array.from({ length: room.settings.size }, (_, index) => {
-        const entry = shown[index];
-        if (!entry) {
-          // An empty box that shows up after the lobby is open (someone left) fades in.
-          // The places that must be filled before the game can start wait with the same dots a
-          // duel shows for its missing opponent; the rest are just empty.
-          const needed = index < room.minPlayers;
-          return (
-            <EmptyBox
-              key={`open-${index}`}
-              base={`roster-slot${needed ? ' waiting' : ''}`}
-              armed={armed}
-            >
-              {needed && <SearchingDots />}
-            </EmptyBox>
-          );
-        }
+        // The places that must be filled before the game can start wait with the same dots a
+        // duel shows for its missing opponent; the rest are just empty.
+        const needed = index < room.minPlayers;
         return (
-          <PlayerBox
-            key={entry.player.userId}
-            room={room}
-            entry={entry}
-            base="roster-slot"
-            max={14}
-            min={10}
-          />
+          <EmptyBox key={`open-${index}`} base={`roster-slot${needed ? ' waiting' : ''}`}>
+            {needed && <SearchingDots />}
+          </EmptyBox>
         );
-      })}
+      }).map((box, index) => (
+        <div key={`cell-${index}`} className="roster-cell" style={cell(index)}>
+          {box}
+        </div>
+      ))}
+      {shown.map((entry, index) => (
+        <PlayerBox
+          key={entry.player.userId}
+          room={room}
+          entry={entry}
+          base="roster-slot"
+          max={14}
+          min={10}
+          place={cell(index)}
+        />
+      ))}
     </div>
   );
 }
 
 /**
  * The two sides of a duel, in the order the players joined (the same for everyone, so each box
- * is always the same person), with your own highlighted. A missing opponent shows dots.
+ * is always the same person), with your own highlighted. A missing opponent shows dots, under
+ * the box of whoever is there.
  */
 function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
-  const armed = useArmed();
-  const side = (entry: ShownPlayer | undefined) =>
-    entry ? (
-      <PlayerBox
-        key={entry.player.userId}
-        room={room}
-        entry={entry}
-        base="slot"
-        max={15}
-        min={11}
-      />
-    ) : (
-      <EmptyBox base="slot" armed={armed}>
-        <SearchingDots />
-      </EmptyBox>
-    );
+  const sides = [1, 3] as const;
   return (
     // In a private game the panels match the roster's height, so switching mode moves nothing.
     <div className={`versus ${room.visibility === 'private' ? 'roster-height' : ''}`}>
-      {side(shown[0])}
-      <div className="vs">VS</div>
-      {side(shown[1])}
+      {sides.map((column) => (
+        <div
+          key={`open-${column}`}
+          className="slot-cell"
+          style={{ gridColumn: column, gridRow: 1 }}
+        >
+          <EmptyBox base="slot">
+            <SearchingDots />
+          </EmptyBox>
+        </div>
+      ))}
+      <div className="vs" style={{ gridColumn: 2, gridRow: 1 }}>
+        VS
+      </div>
+      {shown.slice(0, 2).map((entry, index) => (
+        <PlayerBox
+          key={entry.player.userId}
+          room={room}
+          entry={entry}
+          base="slot"
+          max={15}
+          min={11}
+          place={{ gridColumn: sides[index], gridRow: 1 }}
+        />
+      ))}
     </div>
   );
 }
@@ -609,50 +625,43 @@ function Settings({
   const people = room.players.filter((p) => !p.bot).length;
   return (
     <div className="settings">
-      <div className="settings-row three">
-        <div className="field stack">
-          <span>Game mode</span>
-          <Cycle
-            label="Game mode"
-            value={mode}
-            options={[
-              { value: 'duel', label: 'Duel' },
-              { value: 'ffa', label: 'Battle Royale' },
-            ]}
-            onChange={(value) => onChange({ mode: value })}
-          />
-        </div>
-        <div className="field stack">
-          <span>Fog of war</span>
-          <Cycle
-            label="Fog of war"
-            value={config.fog}
-            options={[
-              { value: 'on', label: 'On' },
-              { value: 'off', label: 'Off' },
-            ]}
-            onChange={(fog) => onChange({ config: { fog } })}
-          />
-        </div>
-        <div className="field stack">
-          <span>Map size</span>
-          <Cycle
-            label="Map size"
-            value={mapSize}
-            options={(Object.keys(MAP_SIZE_LABELS) as MapSize[]).map((value) => ({
-              value,
-              label: MAP_SIZE_LABELS[value],
-            }))}
-            onChange={(value) => onChange({ mapSize: value })}
-          />
-        </div>
-      </div>
-      <div className="field stack">
-        <span>Bots</span>
+      <SettingLine label="Game mode">
+        <Cycle
+          label="Game mode"
+          value={mode}
+          options={[
+            { value: 'duel', label: 'Duel' },
+            { value: 'ffa', label: 'Battle Royale' },
+          ]}
+          onChange={(value) => onChange({ mode: value })}
+        />
+      </SettingLine>
+      <SettingLine label="Fog of war">
+        <Cycle
+          label="Fog of war"
+          value={config.fog}
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+          onChange={(fog) => onChange({ config: { fog } })}
+        />
+      </SettingLine>
+      <SettingLine label="Map size">
+        <Cycle
+          label="Map size"
+          value={mapSize}
+          options={(Object.keys(MAP_SIZE_LABELS) as MapSize[]).map((value) => ({
+            value,
+            label: MAP_SIZE_LABELS[value],
+          }))}
+          onChange={(value) => onChange({ mapSize: value })}
+        />
+      </SettingLine>
+      <SettingLine label="Bots">
         <div className="bots-row">
           <Cycle
             label="Bot difficulty"
-            className="level-button"
             value={botLevel}
             options={levels}
             onChange={(value) => onChange({ botLevel: value })}
@@ -667,37 +676,43 @@ function Settings({
             onChange={(count) => onChange({ bots: count })}
           />
         </div>
-      </div>
-      <div className="settings-row">
-        <div className="field stack">
-          <span>Tick length</span>
-          <Stepper
-            label="Tick length"
-            value={config.tickMs / 1000}
-            min={0.2}
-            max={5}
-            step={0.1}
-            decimals={1}
-            unit="s"
-            typeable
-            onChange={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
-          />
-        </div>
-        <div className="field stack">
-          <span>Starting troops</span>
-          <Stepper
-            label="Starting troops"
-            value={config.startingTroops}
-            min={1}
-            max={100}
-            stops={TROOP_STOPS}
-            step={5}
-            decimals={0}
-            typeable
-            onChange={(startingTroops) => onChange({ config: { startingTroops } })}
-          />
-        </div>
-      </div>
+      </SettingLine>
+      <SettingLine label="Tick length">
+        <Stepper
+          label="Tick length"
+          value={config.tickMs / 1000}
+          min={0.2}
+          max={5}
+          step={0.1}
+          decimals={1}
+          unit="s"
+          typeable
+          onChange={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
+        />
+      </SettingLine>
+      <SettingLine label="Starting troops">
+        <Stepper
+          label="Starting troops"
+          value={config.startingTroops}
+          min={1}
+          max={100}
+          stops={TROOP_STOPS}
+          step={5}
+          decimals={0}
+          typeable
+          onChange={(startingTroops) => onChange({ config: { startingTroops } })}
+        />
+      </SettingLine>
+    </div>
+  );
+}
+
+/** One option on one line: its name on the left, and whatever changes it on the right. */
+function SettingLine({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="setting-line">
+      <span className="setting-name">{label}</span>
+      <div className="setting-control">{children}</div>
     </div>
   );
 }

@@ -3487,22 +3487,25 @@
   }
 }
 
-/* The options list: two to a line where they are short, and "- n +" for numbers */
+/* The options list: one option to a line, its name on the left and what changes it on the right */
 
-#ui .settings-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+#ui .setting-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-#ui .settings-row > .field {
+#ui .setting-name {
+  color: #8a93a8;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+#ui .setting-control {
+  flex: none;
+  width: 196px;
   min-width: 0;
-}
-
-/* Three short options on one line */
-#ui .settings-row.three {
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
 }
 
 /* A button that shows one option and goes on to the next when clicked. Every label sits in the
@@ -3511,11 +3514,15 @@
   display: grid;
   align-items: center;
   justify-items: center;
-  height: 40px;
+  width: 100%;
+  height: 32px;
   min-width: 0;
   padding: 0 8px;
   font-size: 14px;
   white-space: nowrap;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 3px 0 #151922;
 }
 
 #ui button.cycle > span {
@@ -3527,20 +3534,21 @@
   visibility: visible;
 }
 
+/* Bots: the difficulty, then how many */
+#ui .bots-row {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+/* A number with a button on each side. The number stands on its own; the buttons are raised. */
 #ui .stepper {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
   min-width: 0;
-  height: 40px;
-  box-sizing: border-box;
-  padding: 3px;
-  background: #0f1117;
-  border: 1px solid #343a4b;
-  border-radius: 10px;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
+  height: 32px;
 }
 
 /* The plus and minus are drawn, not typed, so they sit exactly in the middle and look the same
@@ -3548,14 +3556,13 @@
 #ui .stepper button {
   position: relative;
   flex: none;
-  width: 40px;
-  height: 100%;
+  width: 34px;
+  height: 32px;
   padding: 0;
-  border-radius: 7px;
   background: linear-gradient(180deg, #4a5269 0%, #343a4f 100%);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.18) inset,
-    0 2px 0 #151922;
+    0 3px 0 #151922;
 }
 
 #ui .stepper button:hover:not(:disabled) {
@@ -3580,7 +3587,7 @@
 }
 
 #ui .stepper button::before {
-  width: 14px;
+  width: 13px;
   height: 3px;
 }
 
@@ -3590,32 +3597,20 @@
 
 #ui .stepper button.stepper-more::after {
   width: 3px;
-  height: 14px;
+  height: 13px;
 }
 
 #ui .stepper .stepper-value {
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #eef5ff;
 }
 
-/* Bots: the difficulty button, then how many */
-#ui .bots-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  align-items: stretch;
-}
-
-#ui .bots-row button.cycle {
-  min-width: 92px;
-}
-
-/* A number that can be typed into: it looks like the others, until it is clicked */
+/* A number that can be typed into: it looks like the others, until it is hovered or clicked */
 #ui .stepper span.stepper-value {
   display: flex;
   align-items: baseline;
@@ -3637,6 +3632,10 @@
   text-align: center;
 }
 
+#ui .stepper input:hover {
+  border-bottom-color: #343a4b;
+}
+
 #ui .stepper input:focus {
   outline: none;
   border-bottom-color: #4f9dff;
@@ -3646,4 +3645,16 @@
   color: #8a93a8;
   font-size: 14px;
   font-weight: 700;
+}
+
+/* The empty places are always there, one to a cell, and the players' boxes are laid over them */
+#ui .roster-cell,
+#ui .slot-cell {
+  display: flex;
+  min-width: 0;
+}
+
+#ui .roster-cell > .roster-slot,
+#ui .slot-cell > .slot {
+  flex: 1;
 }
