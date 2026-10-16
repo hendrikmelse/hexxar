@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  BOT_GAME_BOTS,
   BOT_LEVELS,
   type BotLevel,
   type MapSize,
@@ -198,12 +197,10 @@ export function Lobby({ actions }: { actions: Actions }) {
         {room.canChat && <Chat actions={actions} title="Chat" />}
       </div>
       <BotOffer
-        // Nothing to offer once the match can start; a private game's guests cannot add bots.
-        show={room.state === 'lobby' && !canStart && !room.spectating && (isHost || !isPrivate)}
+        // Only quick play lobbies offer it, and only while they cannot start.
+        show={!isPrivate && room.state === 'lobby' && !canStart && !room.spectating}
         players={players}
-        onClick={() =>
-          isPrivate ? actions.updateRoom({ bots: BOT_GAME_BOTS[mode] }) : actions.playWithBots(mode)
-        }
+        onClick={() => actions.playWithBots(mode)}
       />
     </div>
   );
@@ -291,16 +288,18 @@ function useExitingList(players: RoomPlayer[]): ShownPlayer[] {
 
   useEffect(() => {
     setShown((previous) => {
-      const current = new Map(players.map((p) => [p.userId, p]));
-      const next = previous.map((entry) => {
-        const still = current.get(entry.player.userId);
-        return still ? { ...entry, player: still, leaving: false } : { ...entry, leaving: true };
+      const before = new Map(previous.map((entry) => [entry.player.userId, entry] as const));
+      const current = new Set(players.map((p) => p.userId));
+      // Everyone who is here, in the order the server lists them (people before bots).
+      const next: ShownPlayer[] = players.map((player) => {
+        const old = before.get(player.userId);
+        return old ? { ...old, player, leaving: false } : { player, leaving: false, arrived: true };
       });
-      for (const player of players) {
-        if (!previous.some((entry) => entry.player.userId === player.userId)) {
-          next.push({ player, leaving: false, arrived: true });
-        }
-      }
+      // Someone who has just left keeps their place until their exit animation has played.
+      previous.forEach((entry, index) => {
+        if (current.has(entry.player.userId)) return;
+        next.splice(Math.min(index, next.length), 0, { ...entry, leaving: true });
+      });
       return next;
     });
   }, [players]);
@@ -559,6 +558,9 @@ function InviteCode({ code }: { code: string }) {
   );
 }
 
+/** The numbers the starting troops buttons go through: 1, then every fifth number. A typed number can be anything. */
+const TROOP_STOPS: readonly number[] = [1, ...Array.from({ length: 20 }, (_, i) => (i + 1) * 5)];
+
 const BOT_LEVEL_LABELS: Record<BotLevel, string> = {
   easy: 'Easy',
   medium: 'Medium',
@@ -677,6 +679,7 @@ function Settings({
             step={0.1}
             decimals={1}
             unit="s"
+            typeable
             onChange={(seconds) => onChange({ config: { tickMs: Math.round(seconds * 1000) } })}
           />
         </div>
@@ -685,10 +688,12 @@ function Settings({
           <Stepper
             label="Starting troops"
             value={config.startingTroops}
-            min={5}
+            min={1}
             max={100}
+            stops={TROOP_STOPS}
             step={5}
             decimals={0}
+            typeable
             onChange={(startingTroops) => onChange({ config: { startingTroops } })}
           />
         </div>
@@ -789,7 +794,8 @@ export function Segmented<T extends string | number>({
 /**
  * A number with a "-" button on one side and a "+" on the other. Clicks show at once, and each
  * one goes to the server as the new value (the server's answer settles it). A button is off at
- * the end of its range.
+ * the end of its range. With `stops`, the buttons go through those numbers instead of by `step`.
+ * With `typeable`, the number can also be typed (it is kept within the range when you are done).
  */
 function Stepper({
   label,
@@ -797,8 +803,10 @@ function Stepper({
   min,
   max,
   step,
+  stops,
   decimals,
   unit,
+  typeable,
   onChange,
 }: {
   label: string;
@@ -806,40 +814,85 @@ function Stepper({
   min: number;
   max: number;
   step: number;
+  stops?: readonly number[];
   decimals: number;
   unit?: string;
+  typeable?: boolean;
   onChange: (value: number) => void;
 }) {
   const [shown, setShown] = useState(value);
+  const [draft, setDraft] = useState(value.toFixed(decimals));
   // Follow the server's value whenever it changes.
   useEffect(() => setShown(value), [value]);
+  useEffect(() => setDraft(shown.toFixed(decimals)), [shown, decimals]);
+
   /** Round to the step, so values like 0.30000000000000004 never go anywhere. */
   const clean = (n: number): number => Number((Math.round(n / step) * step).toFixed(6));
-  const go = (direction: 1 | -1): void => {
-    const next = clean(Math.min(max, Math.max(min, shown + direction * step)));
+  const up = stops
+    ? stops.find((stop) => stop > shown + 1e-9)
+    : shown + step <= max + 1e-9
+      ? clean(shown + step)
+      : undefined;
+  const down = stops
+    ? [...stops].reverse().find((stop) => stop < shown - 1e-9)
+    : shown - step >= min - 1e-9
+      ? clean(shown - step)
+      : undefined;
+
+  const set = (next: number): void => {
     if (next === shown) return;
     setShown(next);
     onChange(next);
   };
+  const commit = (): void => {
+    const typed = Number(draft.trim().replace(',', '.'));
+    if (draft.trim() === '' || !Number.isFinite(typed)) {
+      setDraft(shown.toFixed(decimals));
+      return;
+    }
+    const next = Number(Math.min(max, Math.max(min, typed)).toFixed(decimals));
+    setDraft(next.toFixed(decimals));
+    set(next);
+  };
+
   return (
     <div className="stepper" role="group" aria-label={label}>
       <button
         type="button"
         className="stepper-less"
         aria-label={`Less ${label}`}
-        disabled={shown - step < min}
-        onClick={() => go(-1)}
+        disabled={down === undefined}
+        onClick={() => down !== undefined && set(down)}
       />
-      <output className="stepper-value" aria-live="polite">
-        {shown.toFixed(decimals)}
-        {unit}
-      </output>
+      {typeable ? (
+        <span className="stepper-value">
+          <input
+            type="text"
+            inputMode={decimals > 0 ? 'decimal' : 'numeric'}
+            aria-label={label}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            // Selecting everything on focus makes typing a new value a single step.
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+          />
+          {unit && <span className="unit">{unit}</span>}
+        </span>
+      ) : (
+        <output className="stepper-value" aria-live="polite">
+          {shown.toFixed(decimals)}
+          {unit}
+        </output>
+      )}
       <button
         type="button"
         className="stepper-more"
         aria-label={`More ${label}`}
-        disabled={shown + step > max}
-        onClick={() => go(1)}
+        disabled={up === undefined}
+        onClick={() => up !== undefined && set(up)}
       />
     </div>
   );

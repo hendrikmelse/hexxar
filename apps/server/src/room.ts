@@ -763,16 +763,14 @@ export class Room {
       settings: this.settings,
       players: reviewing
         ? this.resultPlayers!
-        : this.members
-            .filter((m) => !m.reviewing && !m.spectator)
-            .map((m) => ({
-              userId: m.session.userId,
-              name: m.session.name,
-              connected: !m.left && m.session.connection !== null,
-              playerId: m.playerId,
-              color: m.colorSlot,
-              bot: m.bot !== null,
-            })),
+        : this.listedPlayers().map((m) => ({
+            userId: m.session.userId,
+            name: m.session.name,
+            connected: !m.left && m.session.connection !== null,
+            playerId: m.playerId,
+            color: m.colorSlot,
+            bot: m.bot !== null,
+          })),
       minPlayers: this.minPlayers,
       // How long the wait on screen starts from: a battle royale's, or a duel's short pause.
       waitMs: this.votesApply ? this.options.earlyStartMs : this.options.fullWaitMs,
@@ -789,6 +787,12 @@ export class Room {
       serverTime: Date.now(),
       you: session.userId,
     };
+  }
+
+  /** The players in the order they are shown in: people first, then the bots (the last one is the first to give way). */
+  private listedPlayers(): Member[] {
+    const players = this.members.filter((m) => !m.reviewing && !m.spectator);
+    return [...players.filter((m) => !m.bot), ...players.filter((m) => m.bot)];
   }
 
   get isOpen(): boolean {

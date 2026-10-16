@@ -3614,3 +3614,36 @@
 #ui .bots-row button.cycle {
   min-width: 92px;
 }
+
+/* A number that can be typed into: it looks like the others, until it is clicked */
+#ui .stepper span.stepper-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+}
+
+#ui .stepper input {
+  box-sizing: content-box;
+  width: 3.4ch;
+  padding: 0 0 1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+#ui .stepper input:focus {
+  outline: none;
+  border-bottom-color: #4f9dff;
+}
+
+#ui .stepper .unit {
+  color: #8a93a8;
+  font-size: 14px;
+  font-weight: 700;
+}

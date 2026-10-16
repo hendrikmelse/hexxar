@@ -45,14 +45,14 @@ There are no bot-specific messages.
 
 ### On the client
 
-- The host's settings list is two to a line where the options are short: game mode beside fog of war, and tick length beside starting troops. Game mode, fog of war and map size are each one button that shows the current option and goes to the next on every click (`Cycle` in `Lobby.tsx`; every label sits in the button, so it never changes size). Numbers are a **−** button, the value and a **+** button (`Stepper`; starting troops moves in fives). Bots has a difficulty `Cycle` (Easy, Medium, Hard) beside a stepper for how many bots (0 up to the places no person is playing in). Everyone else sees the numbers in the read-only settings.
+- The host's settings list is two to a line where the options are short: game mode beside fog of war, and tick length beside starting troops. Game mode, fog of war and map size are each one button that shows the current option and goes to the next on every click (`Cycle` in `Lobby.tsx`; every label sits in the button, so it never changes size). Numbers are a **−** button, the value and a **+** button (`Stepper`; starting troops goes 1, 5, 10, 15 and so on, and tick length and starting troops can also be typed). Bots has a difficulty `Cycle` (Easy, Medium, Hard) beside a stepper for how many bots (0 up to the places no person is playing in). Everyone else sees the numbers in the read-only settings.
 - `BotTag` renders the grey [BOT] inside the element that holds the name, so it shrinks and is cut off together with it. The in-match standings (plain DOM) do the same in `hud.ts`.
 - `playWithBots(mode)` in `apps/client/src/main.ts` leaves the quick game, and once the server has let go (the room becomes `null`) it sends `createRoom` with the mode and `BOT_GAME_BOTS[mode]` bots. The host presses **Start game** as in any private game and can still change anything first.
 
 ## Getting into a bot game
 
 1. **Create game** from the menu, then use the Bots stepper.
-2. **From a lobby that cannot start:** in a lobby with too few players to start (a duel with no opponent, a battle royale with fewer than three players), a card at the bottom of the screen says "Tired of waiting?" with a **Play against bots** button. It fades in after 3 seconds of waiting (any change in who is in the lobby starts the 3 seconds over) and fades out again at once when the match can start. In a public lobby the button takes the player to a new private game of the same mode with bots already added (`BOT_GAME_BOTS`: 1 for a duel, 5 for a battle royale). In a private lobby only the host sees it, and it adds those bots to the room they are in. Spectators never see it.
+2. **From a lobby that cannot start:** in a lobby with too few players to start (a duel with no opponent, a battle royale with fewer than three players), a card at the bottom of the screen says "Tired of waiting?" with a **Play against bots** button. It is for quick play lobbies only (never a private game, where the host has the Bots setting). It fades in after 3 seconds of waiting (any change in who is in the lobby starts the 3 seconds over) and fades out again at once when the match can start. The button takes the player to a new private game of the same mode with bots already added (`BOT_GAME_BOTS`: 1 for a duel, 5 for a battle royale).
 
 ## The algorithm (the "easy" bot)
 

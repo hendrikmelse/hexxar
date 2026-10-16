@@ -142,6 +142,22 @@ describe('Bots', () => {
     expect(host.room!.players).toHaveLength(1);
   });
 
+  it('lists people before bots, and the last bot is the one who gives way', () => {
+    const host = hostWithBots({ mode: 'ffa', bots: 11 });
+    const before = host.room!.players.map((p) => p.name);
+    expect(before).toHaveLength(12);
+    const lastBot = before[11];
+    const guest = new FakeClient(lobby).hello('Gus');
+    guest.say({ type: 'joinRoom', code: host.room!.code });
+    const after = host.room!.players;
+    // Still twelve: Gus came in right after the host, ahead of every bot, and the last bot left.
+    expect(after).toHaveLength(12);
+    expect(after.slice(0, 2).map((p) => p.name)).toEqual(['Hanna', 'Gus']);
+    expect(after.slice(2).every((p) => p.bot)).toBe(true);
+    expect(after.map((p) => p.name)).not.toContain(lastBot);
+    expect(after.slice(2).map((p) => p.name)).toEqual(before.slice(1, 11));
+  });
+
   it('keeps the bots when the host starts a battle royale with fewer than twelve', () => {
     const host = hostWithBots({ mode: 'ffa', bots: 3 });
     const guest = new FakeClient(lobby).hello('Gus');
