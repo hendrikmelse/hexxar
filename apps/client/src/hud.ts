@@ -262,8 +262,8 @@ export class Hud {
       this.standings.replaceChildren();
       return;
     }
-    const names = new Map(
-      (appStore.get().room?.players ?? []).map((p) => [p.playerId ?? '', p.name] as const),
+    const players = new Map(
+      (appStore.get().room?.players ?? []).map((p) => [p.playerId ?? '', p] as const),
     );
     // The server counts everyone's strength itself: under fog the board alone would not tell.
     const scores = new Map(game.scores.map((score) => [score.player, score] as const));
@@ -323,7 +323,11 @@ export class Hud {
       if (!fresh && !calm && change !== 0) floatChange(row.item, change);
       if (!fresh && !calm && row.troops.textContent !== shown) restartAnimation(row.troops, 'bump');
       const you = standing.id === game.playerId;
-      row.label.textContent = game.names[standing.id] ?? names.get(standing.id) ?? standing.id;
+      setPlayerName(
+        row.label,
+        game.names[standing.id] ?? players.get(standing.id)?.name ?? standing.id,
+        players.get(standing.id)?.bot === true,
+      );
       row.troops.textContent = String(standing.mobile);
       row.item.classList.toggle('me', you);
       row.item.classList.toggle('out', standing.out);
@@ -531,6 +535,20 @@ function floatChange(item: HTMLElement, change: number): void {
   note.setAttribute('aria-hidden', 'true');
   note.addEventListener('animationend', () => note.remove());
   item.append(note);
+}
+
+/** A player's name, with a grey [BOT] after it for a bot. Only touches the page when it changes. */
+function setPlayerName(label: HTMLElement, name: string, bot: boolean): void {
+  const key = bot ? `${name}\u0000bot` : name;
+  if (label.dataset.shown === key) return;
+  label.dataset.shown = key;
+  if (!bot) {
+    label.textContent = name;
+    return;
+  }
+  const tag = el('span', 'bot-tag');
+  tag.textContent = '[BOT]';
+  label.replaceChildren(tag, ` ${name}`);
 }
 
 function createRow(): Row {

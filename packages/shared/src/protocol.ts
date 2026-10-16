@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { analyticsIdSchema } from './analytics.js';
+import { BOT_LEVELS } from './bot.js';
 import { matchConfigSchema } from './config.js';
 import { MAP_SIZES } from './params.js';
 import { orderSchema } from './orders.js';
@@ -59,6 +60,13 @@ export const roomSettingsSchema = z.object({
   size: z.number().int().min(2).max(FFA_MAX_PLAYERS),
   /** How big the map is. A duel's board radius, or a battle royale's tiles per player, follows from it. */
   mapSize: z.enum(MAP_SIZES),
+  /**
+   * How many of the places are played by bots (private games only). Bots only ever take places
+   * nobody else wants: a person joining a full room pushes a bot out.
+   */
+  bots: z.number().int().min(0).max(FFA_MAX_PLAYERS),
+  /** How good the bots are (the same for all of them). */
+  botLevel: z.enum(BOT_LEVELS),
   config: matchConfigSchema,
 });
 export type RoomSettings = z.infer<typeof roomSettingsSchema>;
@@ -70,6 +78,8 @@ export type RoomSettings = z.infer<typeof roomSettingsSchema>;
 export const roomSettingsPatchSchema = z.object({
   mode: z.enum(ROOM_MODES).optional(),
   mapSize: z.enum(MAP_SIZES).optional(),
+  bots: z.number().int().min(0).max(FFA_MAX_PLAYERS).optional(),
+  botLevel: z.enum(BOT_LEVELS).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type RoomSettingsPatch = z.infer<typeof roomSettingsPatchSchema>;
@@ -93,6 +103,8 @@ export const roomPlayerSchema = z.object({
   playerId: z.string().nullable(),
   /** The player's color (an index into the palette), the same in the lobby and in the match. */
   color: z.number().int().nonnegative().nullable(),
+  /** A computer-controlled player. Always shown as one. */
+  bot: z.boolean(),
 });
 export type RoomPlayer = z.infer<typeof roomPlayerSchema>;
 
@@ -117,6 +129,8 @@ export const chatMessageSchema = z.object({
   text: z.string(),
   /** News, not something the sender said: "was eliminated", "surrendered" (`userId` is who it is about). */
   system: z.boolean().optional(),
+  /** The message is about a bot (its name is shown with a [BOT] tag). */
+  bot: z.boolean().optional(),
   /** Server time, ms since epoch. */
   at: z.number(),
 });

@@ -1038,84 +1038,11 @@
   font-size: 14px;
 }
 
-/* Tick length slider: a sunken track filled with blue up to a raised round thumb */
-
-#ui input.slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 24px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  cursor: pointer;
-}
-
-#ui input.slider:focus {
-  outline: none;
-}
-
-#ui input.slider::-webkit-slider-runnable-track {
-  height: 8px;
-  border: 1px solid #343a4b;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #3f8cf0 var(--fill), #0f1117 var(--fill));
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#ui input.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  margin-top: -7px;
-  border: 1px solid #7db4ff;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #ffffff 0%, #c9dcff 100%);
-  box-shadow:
-    0 2px 0 #1a3f78,
-    0 4px 8px rgba(0, 0, 0, 0.5);
-}
-
-#ui input.slider:focus-visible::-webkit-slider-thumb {
-  box-shadow:
-    0 0 0 3px rgba(79, 157, 255, 0.45),
-    0 2px 0 #1a3f78;
-}
-
-#ui input.slider::-moz-range-track {
-  height: 8px;
-  border: 1px solid #343a4b;
-  border-radius: 6px;
-  background: #0f1117;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55) inset;
-}
-
-#ui input.slider::-moz-range-progress {
-  height: 8px;
-  border-radius: 6px;
-  background: #3f8cf0;
-}
-
-#ui input.slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #7db4ff;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #ffffff 0%, #c9dcff 100%);
-  box-shadow:
-    0 2px 0 #1a3f78,
-    0 4px 8px rgba(0, 0, 0, 0.5);
-}
-
 /* A player leaving: their box swells a little, then shrinks away to nothing */
 
 #ui .roster-slot.leaving,
 #ui .versus .slot.leaving {
-  animation: pop-out 0.4s ease-in forwards;
+  animation: pop-out 0.25s ease-in forwards;
   pointer-events: none;
 }
 
@@ -1357,69 +1284,6 @@
   #ui .name-full.shown::before {
     transition: none;
   }
-}
-
-/* Slider rows: the slider, with its value large on the right instead of small above it */
-
-#ui .slider-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-#ui .slider-row input.slider {
-  flex: 1;
-  min-width: 0;
-}
-
-#ui .slider-row output {
-  flex: none;
-  min-width: 64px;
-  text-align: right;
-  font-size: 22px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: #eef5ff;
-}
-
-/* The value beside a slider, as a text box you can type into */
-
-#ui .slider-row .value-box {
-  display: flex;
-  flex: none;
-  align-items: baseline;
-  gap: 4px;
-  position: relative;
-  top: -3px;
-}
-
-#ui input.slider-value {
-  box-sizing: border-box;
-  width: 62px;
-  padding: 4px 8px;
-  border: 1px solid #343a4b;
-  border-radius: 8px;
-  background: #0f1117;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.05);
-  color: #eef5ff;
-  font-size: 20px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-#ui input.slider-value:focus {
-  outline: none;
-  border-color: #4f9dff;
-}
-
-#ui .slider-row .value-box .unit {
-  min-width: 12px;
-  color: #8a93a8;
-  font-size: 16px;
-  font-weight: 700;
 }
 
 /* The selected option's blue box is its own element, so it can slide from one option to the next */
@@ -2479,14 +2343,23 @@
   overflow-x: auto;
 }
 
-/* Your own box in the lobby, lit like your row in the player list during a match */
+/* Your own box in the lobby: raised like everyone's, tinted and lit in your color */
 #ui .versus .slot.me:not(.open),
 #ui .roster-slot.me {
-  background: linear-gradient(180deg, #1a2234 0%, #131a2a 100%);
+  background:
+    linear-gradient(
+      180deg,
+      rgb(var(--me, 106 174 255) / 0.24) 0%,
+      rgb(var(--me, 106 174 255) / 0.1) 100%
+    ),
+    linear-gradient(180deg, #313950 0%, #272d40 100%);
   box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 2px 0 #141821,
     0 0 0 1px rgb(var(--me, 106 174 255) / 0.7),
-    0 0 6px rgb(var(--me, 106 174 255) / 0.25);
+    /* The raised edge covers the ring along the bottom, so the ring is carried on below it */ 0 3px
+      0 0 rgb(var(--me, 106 174 255) / 0.7),
+    0 0 8px rgb(var(--me, 106 174 255) / 0.3);
 }
 
 /* The private game's lobby, with its settings, a little tighter from top to bottom */
@@ -2520,11 +2393,6 @@
 #ui .lobby.compact button.segment {
   padding: 6px 8px;
   font-size: 14px;
-}
-
-#ui .lobby.compact input.slider-value {
-  padding: 1px 8px;
-  font-size: 18px;
 }
 
 /* How many are watching, above the lobby's buttons */
@@ -3577,4 +3445,314 @@
 
 #ui .phone-notice strong {
   color: #e8eaf0;
+}
+
+/* Bots: the grey [BOT] after a bot's name, in the name's own font */
+
+#ui .bot-tag,
+#hud .bot-tag {
+  color: #8a93a8;
+}
+
+/* The card offering a game against bots: at the bottom of the screen, above the page's links */
+#ui .bot-offer {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  z-index: 6;
+  width: auto;
+  max-width: calc(100% - 32px);
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px 12px 20px;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  /* Going away is quick; arriving is slow and gentle */
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+#ui .bot-offer.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+  transition:
+    opacity 0.7s ease-out,
+    transform 0.7s ease-out;
+}
+
+#ui .bot-offer strong {
+  color: #eef5ff;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui .bot-offer,
+  #ui .bot-offer.visible {
+    transition: none;
+  }
+}
+
+/* The options list: one option to a line, its name on the left and what changes it on the right */
+
+#ui .setting-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#ui .setting-name {
+  color: #8a93a8;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+#ui .setting-control {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  width: 220px;
+  min-width: 0;
+}
+
+/* A button that shows one option and goes on to the next when clicked. Every label sits in the
+   same cell, with only the current one showing, so the button keeps the size of the longest. */
+#ui button.cycle {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 3px 0 #151922;
+}
+
+#ui button.cycle > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+#ui button.cycle > span.on {
+  visibility: visible;
+}
+
+/* Bots: the difficulty, then how many */
+#ui .bots-row {
+  display: grid;
+  grid-template-columns: 76px 136px;
+  gap: 8px;
+  align-items: center;
+}
+
+/* A number with a button on each side. The number stands on its own; the buttons are raised. */
+#ui .stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Every number is this wide, against the right edge, so all the plus and minus buttons line up */
+  width: 136px;
+  flex: none;
+  min-width: 0;
+  height: 32px;
+}
+
+/* The plus and minus are drawn, not typed, so they sit exactly in the middle and look the same
+   everywhere. */
+#ui .stepper button {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  background: linear-gradient(180deg, #4a5269 0%, #343a4f 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 3px 0 #151922;
+}
+
+#ui .stepper button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5a6482 0%, #3f4764 100%);
+}
+
+#ui .stepper button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
+}
+
+#ui .stepper button::before,
+#ui .stepper button::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 2px;
+  background: #e6efff;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+}
+
+#ui .stepper button::before {
+  width: 13px;
+  height: 3px;
+}
+
+#ui .stepper button.stepper-less::after {
+  display: none;
+}
+
+#ui .stepper button.stepper-more::after {
+  width: 3px;
+  height: 13px;
+}
+
+#ui .stepper .stepper-value {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #eef5ff;
+}
+
+/* A number that can be typed into: it looks like the others, until it is hovered or clicked */
+#ui .stepper span.stepper-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+}
+
+#ui .stepper input {
+  box-sizing: content-box;
+  width: 3.4ch;
+  padding: 0 0 1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+#ui .stepper input:hover {
+  border-bottom-color: #343a4b;
+}
+
+#ui .stepper input:focus {
+  outline: none;
+  border-bottom-color: #4f9dff;
+}
+
+#ui .stepper .unit {
+  color: #8a93a8;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* The empty places are always there, one to a cell, and the players' boxes are laid over them */
+#ui .roster-cell,
+#ui .slot-cell {
+  display: flex;
+  min-width: 0;
+}
+
+#ui .roster-cell > .roster-slot,
+#ui .slot-cell > .slot {
+  flex: 1;
+}
+
+/* A switch: a long track, and a knob that slides along it. The whole track can be clicked. */
+#ui button.switch {
+  position: relative;
+  flex: none;
+  width: 68px;
+  height: 32px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #343a4b;
+  border-radius: 16px;
+  background: #0f1117;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+  text-shadow: none;
+  transition: background 0.2s ease-out;
+}
+
+#ui button.switch:active:not(:disabled) {
+  transform: none;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#ui button.switch.on {
+  background: linear-gradient(180deg, #2f7be6 0%, #1f5fc0 100%);
+}
+
+#ui button.switch .switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 26px;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #5b647d 0%, #414860 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 2px 0 #151922,
+    0 3px 6px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  transition:
+    left 0.2s cubic-bezier(0.3, 1, 0.5, 1),
+    background 0.2s ease-out;
+}
+
+#ui button.switch.on .switch-knob {
+  left: calc(100% - 34px);
+  background: linear-gradient(180deg, #ffffff 0%, #d6e4fb 100%);
+  color: #1a3f78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui button.switch,
+  #ui button.switch .switch-knob {
+    transition: none;
+  }
+}
+
+/* Game mode and map size: as wide as their longest option, and no wider, against the right edge */
+#ui .setting-control > button.cycle {
+  flex: none;
+  width: auto;
+  padding: 0 14px;
+}
+
+/* Someone leaving stays in their old place while they pop away. Players' boxes sit above it, so
+   whoever slides up into that place passes over it; it is only above the empty place beneath. */
+#ui .versus .slot:not(.open) {
+  position: relative;
+  z-index: 1;
+}
+
+#ui .roster-slot.leaving,
+#ui .versus .slot.leaving {
+  z-index: 0;
 }

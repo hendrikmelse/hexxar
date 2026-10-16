@@ -3,6 +3,7 @@ import { playSound } from '../audio/audio.js';
 import type { RoomMode, RoomSettingsPatch } from '@hexxar/shared';
 import { useApp } from '../store.js';
 import { Admin } from './Admin.js';
+import { BotTag } from './BotTag.js';
 import { Connecting } from './Connecting.js';
 import { MapsPage } from './MapsPage.js';
 import { Loading } from './Loading.js';
@@ -25,6 +26,8 @@ export interface Actions {
   quickPlay(mode: RoomMode): void;
   /** Leave this quick game and look for another of the same mode. */
   playAgain(mode: RoomMode): void;
+  /** Leave this quick game and open a private one of this mode, with bots already added. */
+  playWithBots(mode: RoomMode): void;
   createRoom(): void;
   joinRoom(code: string): void;
   updateRoom(patch: RoomSettingsPatch): void;
@@ -64,7 +67,11 @@ function Toast() {
 }
 
 /** Who has just dropped out, each name in their color. */
-function OutText({ players }: { players: { name: string; color: number | null }[] }) {
+function OutText({
+  players,
+}: {
+  players: { name: string; color: number | null; bot?: boolean }[];
+}) {
   return (
     <>
       {players.map((player, index) => (
@@ -78,6 +85,11 @@ function OutText({ players }: { players: { name: string; color: number | null }[
                 : { color: `#${player.color.toString(16).padStart(6, '0')}` }
             }
           >
+            {player.bot && (
+              <>
+                <BotTag />{' '}
+              </>
+            )}
             {player.name}
           </strong>
         </span>

@@ -1,5 +1,6 @@
 export * from './analytics.js';
 export * from './admin.js';
+export * from './bot.js';
 export * from './config.js';
 export * from './duel/index.js';
 export * from './generate.js';
@@ -13,6 +14,7 @@ export * from './resolve.js';
 export * from './royale/index.js';
 export * from './rng.js';
 export * from './scores.js';
+export * from './smartBot.js';
 export * from './state.js';
 export * from './tiles.js';
 export * from './visibility.js';

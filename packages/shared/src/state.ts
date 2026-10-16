@@ -60,6 +60,17 @@ export function settlePlayers(
 }
 
 /**
+ * The players who are out in `after` and were not in `before`. (`GameState.eliminated` is kept in
+ * player order, not in the order players went out, so what is new cannot be told by position.)
+ */
+export function newlyEliminated(
+  before: readonly PlayerId[],
+  after: readonly PlayerId[],
+): PlayerId[] {
+  return after.filter((id) => !before.includes(id));
+}
+
+/**
  * Tiles in `next` that differ from (or are missing in) `previous`. Changes to
  * `progress` alone are ignored: clients predict them with `applyTickDiff`.
  */

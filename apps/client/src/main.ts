@@ -1,4 +1,5 @@
 import {
+  BOT_GAME_BOTS,
   CHAT_HISTORY,
   hexEquals,
   hexKey,
@@ -76,7 +77,10 @@ function drawQueues(): void {
   );
 }
 
-function render(change: ReturnType<typeof applyMessage>): void {
+function render(
+  change: ReturnType<typeof applyMessage>,
+  before: readonly string[] | null = null,
+): void {
   if (!change) return;
   if (change.kind === 'all') {
     board.setAll(game);
@@ -87,7 +91,11 @@ function render(change: ReturnType<typeof applyMessage>): void {
   } else if (change.kind === 'tiles') {
     // Armies set off first, so the tiles they walk onto are held back until they arrive.
     board.playMoves(change.moves, game);
-    board.updateTiles(change.tiles, game);
+    // What a capture does to the board (the land of a player it puts out turning neutral, the fog
+    // lifting because the match is over or you are out) waits for the army that made it.
+    const out = before ? game.eliminated.filter((id) => !before.includes(id)) : [];
+    const lifts = isWatching(game) && !wasWatching;
+    board.updateTiles(board.holdForEnd(change.tiles, out, lifts, game), game);
     board.refreshVision(game);
     // The "you are here" effect is for the planning period only.
     if (game.tick > 0 || game.status !== 'playing') board.stopIntro();
@@ -143,15 +151,16 @@ function introduceStart(): void {
 }
 
 /** Tell a player still in the game that others have just surrendered or been beaten. */
-function announceOut(before: readonly string[]): void {
+function announceOut(ids: readonly string[]): void {
   const { tutorial, room, infoSeq } = appStore.get();
   const me = game.playerId;
   if (tutorial || me === null || game.eliminated.includes(me)) return;
   const players = game.eliminated
-    .filter((id) => !before.includes(id) && id !== me)
+    .filter((id) => ids.includes(id) && id !== me)
     .map((id) => ({
       name: room?.players.find((p) => p.playerId === id)?.name ?? game.names[id] ?? id,
       color: playerColor(game, id),
+      bot: room?.players.find((p) => p.playerId === id)?.bot ?? false,
     }));
   if (players.length === 0) return;
   playSound('player.out');
@@ -402,6 +411,8 @@ function startQuickPlay(mode: RoomMode): void {
 
 /** Set when leaving a quick game to play another of this mode: the search starts once the server has let go. */
 let playAgainMode: RoomMode | null = null;
+/** Set when leaving a quick game that is short of players for a private one against bots. */
+let botGameMode: RoomMode | null = null;
 
 mountUi(document.getElementById('ui')!, {
   setName(name) {
@@ -414,6 +425,11 @@ mountUi(document.getElementById('ui')!, {
   },
   playAgain(mode) {
     playAgainMode = mode;
+    connection.send({ type: 'leaveRoom' });
+  },
+  playWithBots(mode) {
+    track('menu_action', { action: 'play_bots', mode });
+    botGameMode = mode;
     connection.send({ type: 'leaveRoom' });
   },
   createRoom() {
@@ -513,6 +529,17 @@ const connection = connect(url, playerName, {
           playAgainMode = null;
           startQuickPlay(mode);
         }
+        // Out of the quick game: now open the private one.
+        if (room === null && botGameMode !== null) {
+          const mode = botGameMode;
+          botGameMode = null;
+          appStore.set({ error: null });
+          sendName();
+          connection.send({
+            type: 'createRoom',
+            settings: { mode, bots: BOT_GAME_BOTS[mode] },
+          });
+        }
         return;
       }
       case 'chat': {
@@ -540,8 +567,12 @@ const connection = connect(url, playerName, {
           message.type === 'tick' || (message.type === 'snapshot' && game.players.length > 0)
             ? [...game.eliminated]
             : null;
-        render(applyMessage(game, message));
-        if (before) announceOut(before);
+        render(applyMessage(game, message), before);
+        if (before) {
+          // Who is out is settled now; the news comes when the capture that did it has landed.
+          const ids = game.eliminated.filter((id) => !before.includes(id));
+          board.whenLanded(() => announceOut(ids));
+        }
       }
     }
   },

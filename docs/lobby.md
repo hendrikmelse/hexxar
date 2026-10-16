@@ -35,14 +35,14 @@ A duel lobby shows you and your opponent side by side ("VS"), with a pulsing pla
 
 ## Settings
 
-A private room's host can change the game mode (duel or battle royale), the **map size** (small, normal or large), the **tick length** (any value from 0.1 to 60 seconds in steps of 0.1; the slider covers 0.1 to 5), **fog of war** (on or off) and starting troops, while the room is still gathering players. Everyone else sees the same information as plain text, not as disabled controls. Everything is a `MatchConfig` field or a room setting, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults. The troop production speed is no longer offered in the lobby (it is still a match setting).
+A private room's host can change the game mode (duel or battle royale), the **map size** (small, normal or large), the **tick length** (any value from 0.1 to 60 seconds in steps of 0.1; the slider covers 0.1 to 5), **fog of war** (on or off) and starting troops, while the room is still gathering players. The host can also add **bots** to fill places (see [`bots.md`](bots.md)); bots exist in private games only. Everyone else sees the same information as plain text, not as disabled controls. Everything is a `MatchConfig` field or a room setting, validated on the server (`applySettingsPatch`), so more settings are just more fields in the form. Public rooms use fixed defaults. The troop production speed is no longer offered in the lobby (it is still a match setting).
 
 ## Leaving, disconnecting and coming back
 
 - **Leaving a lobby** just removes you. **Leaving a running match** is a surrender.
 - **Disconnecting** during a match keeps your slot and your queue running. If you are still gone after two minutes (`AFK_MS`), your army surrenders. Reconnecting in time puts you back in the match. A disconnect in a lobby removes you straight away.
 - Other players see who is disconnected in the room's player list (`connected` on each player).
-- Your guest token (kept per browser tab for now) is what ties a new connection to your old slot.
+- Your guest token (kept in the browser, shared by all its tabs) is what ties a new connection to your old slot. **Tabs of one browser are one guest**: each has its own connection, everything the server sends goes to all of them, and an order from any of them goes into the same queue (every tab is sent the `queued` confirmation, so each shows the same queue; a refusal goes only to the tab that asked). The guest counts as disconnected only when the last tab has closed. At most six tabs at once. The server pings every connection every 20 seconds (`HEARTBEAT_MS`) and drops one that does not answer, so a dead tab does not keep the guest looking connected. To try two players out on one computer, open the second tab with `?tab` in the address: it keeps a guest of its own. A private window or another browser is another guest.
 
 ## Identity and ids
 
@@ -75,7 +75,7 @@ There is one chat per room, and who may read and write in it depends on where th
 
 ## Not built yet
 
-A public game list, bots, ranked rooms and reconnecting after a server restart.
+A public game list, ranked rooms and reconnecting after a server restart.
 
 ## Map sizes
 

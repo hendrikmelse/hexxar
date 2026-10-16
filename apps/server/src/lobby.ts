@@ -13,7 +13,13 @@ import {
 } from '@hexxar/shared';
 import { noAnalytics, type Analytics } from './analytics.js';
 import { Room, applySettingsPatch } from './room.js';
-import type { Connection, ConnectionHandler, Session } from './types.js';
+import {
+  MAX_CONNECTIONS,
+  sendTo,
+  type Connection,
+  type ConnectionHandler,
+  type Session,
+} from './types.js';
 
 export interface LobbyOptions {
   /** Time between a match being created and its first tick, for planning the opening. */
@@ -70,7 +76,7 @@ export class Lobby {
         const message = parsed.data;
         if (message.type === 'hello') {
           if (session) return;
-          session = this.hello(connection, message);
+          session = this.hello(connection, message) ?? null;
           return;
         }
         if (!session) {
@@ -81,7 +87,7 @@ export class Lobby {
         if (reason !== null) connection.send({ type: 'rejected', reason });
       },
       onClose: () => {
-        if (session && session.connection === connection) this.disconnected(session);
+        if (session && session.connections.has(connection)) this.disconnected(session, connection);
       },
     };
   }
@@ -107,19 +113,24 @@ export class Lobby {
   private hello(
     connection: Connection,
     { name, token, visitorId, sessionId }: Extract<ClientMessage, { type: 'hello' }>,
-  ): Session {
+  ): Session | undefined {
     let session = token ? this.sessions.get(token) : undefined;
-    const returning = session !== undefined;
+    // A guest coming back after being away (not one more tab of a guest who is here).
+    const returning = session !== undefined && session.connections.size === 0;
     if (session) {
-      // A newer connection replaces an older one for the same guest.
-      if (session.connection && session.connection !== connection) session.connection.close();
-      session.connection = connection;
+      if (session.connections.size >= MAX_CONNECTIONS) {
+        connection.send({ type: 'rejected', reason: 'too many tabs are open' });
+        connection.close();
+        return undefined;
+      }
+      // Another tab of the same guest joins the ones already open.
+      session.connections.add(connection);
     } else {
       session = {
         userId: randomBytes(4).toString('hex'),
         token: randomUUID(),
         name,
-        connection,
+        connections: new Set([connection]),
         room: null,
       };
       this.sessions.set(session.token, session);
@@ -156,7 +167,7 @@ export class Lobby {
     let connected = 0;
     let inMenu = 0;
     for (const session of this.sessions.values()) {
-      if (!session.connection) continue;
+      if (session.connections.size === 0) continue;
       connected++;
       if (!session.room) inMenu++;
     }
@@ -170,7 +181,7 @@ export class Lobby {
 
   private sendStats(session: Session, stats: { duel: number; ffa: number }): void {
     session.statsSent = `${stats.duel}/${stats.ffa}`;
-    session.connection?.send({ type: 'stats', ...stats });
+    sendTo(session, { type: 'stats', ...stats });
   }
 
   /**
@@ -182,14 +193,16 @@ export class Lobby {
     const stats = this.stats();
     const key = `${stats.duel}/${stats.ffa}`;
     for (const session of this.sessions.values()) {
-      if (!session.room && session.connection && session.statsSent !== key) {
+      if (!session.room && session.connections.size > 0 && session.statsSent !== key) {
         this.sendStats(session, stats);
       }
     }
   }
 
-  private disconnected(session: Session): void {
-    session.connection = null;
+  private disconnected(session: Session, connection: Connection): void {
+    session.connections.delete(connection);
+    // Another tab is still open: the guest has not gone anywhere.
+    if (session.connections.size > 0) return;
     this.track(session, 'disconnect', {
       inRoom: session.room !== null,
       ...(session.room ? { roomState: session.room.roomState } : {}),
@@ -248,7 +261,8 @@ export class Lobby {
 
   /** Confirm an accepted order to its sender, or pass on the reason it was refused. */
   private reply(session: Session, reason: string | null, order: Order): string | null {
-    if (reason === null) session.connection?.send({ type: 'queued', order });
+    // Every tab hears of it, so each shows the same queue.
+    if (reason === null) sendTo(session, { type: 'queued', order });
     return reason;
   }
 
@@ -281,6 +295,8 @@ export class Lobby {
       mode,
       size: roomCapacity(mode),
       mapSize: 'normal',
+      bots: 0,
+      botLevel: 'easy',
       config: parseMatchConfig(),
     };
   }
@@ -313,7 +329,7 @@ export class Lobby {
     if (this.codes.get(room.code) === room) this.codes.delete(room.code);
     // Guests who were only here for this room have nothing to come back to.
     for (const [token, session] of this.sessions) {
-      if (!session.room && !session.connection) this.sessions.delete(token);
+      if (!session.room && session.connections.size === 0) this.sessions.delete(token);
     }
   }
 

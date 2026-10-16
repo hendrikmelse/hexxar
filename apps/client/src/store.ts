@@ -31,7 +31,10 @@ export interface AppState {
   /** A match is just starting and the loading bar is up, covering the board while it settles. */
   launching: boolean;
   /** Something worth telling the player that is not a refusal (someone left the match). */
-  info: { players?: { name: string; color: number | null }[]; message?: string } | null;
+  info: {
+    players?: { name: string; color: number | null; bot?: boolean }[];
+    message?: string;
+  } | null;
   infoSeq: number;
   /** The match's winner (a match player id) and your own id in it, for the results screen. */
   winner: PlayerId | null;

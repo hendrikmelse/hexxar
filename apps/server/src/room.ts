@@ -1,11 +1,15 @@
 import {
+  BOT_NAMES,
   bowlRadiusFor,
+  createSmartBot,
+  SMART_BEST,
   createFreeForAllMatch,
   extraSetsFor,
   FAIR_BOWL_RADIUS,
   createRng,
   createDuelMatch,
   diffTiles,
+  newlyEliminated,
   parseMatchConfig,
   roomCapacity,
   roomMinPlayers,
@@ -18,6 +22,7 @@ import {
   visibleMoves,
   visibleState,
   type AdminRoom,
+  type Bot,
   type EventProps,
   type ServerEventName,
   type Order,
@@ -31,7 +36,7 @@ import {
 } from '@hexxar/shared';
 import type { Analytics } from './analytics.js';
 import { Match } from './match.js';
-import type { Session } from './types.js';
+import { isConnected, sendTo, type Session } from './types.js';
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -59,13 +64,15 @@ export function applySettingsPatch(
   // The number of players is decided by the kind of game.
   const size = roomCapacity(mode);
   const mapSize = patch.mapSize ?? current.mapSize;
+  const bots = Math.min(patch.bots ?? current.bots, size);
+  const botLevel = patch.botLevel ?? current.botLevel;
   let config;
   try {
     config = parseMatchConfig({ ...current.config, ...patch.config });
   } catch {
     return 'invalid game settings';
   }
-  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, config });
+  const parsed = roomSettingsSchema.safeParse({ mode, size, mapSize, bots, botLevel, config });
   return parsed.success ? parsed.data : 'invalid game settings';
 }
 
@@ -136,6 +143,8 @@ interface Member {
   outPlace: number | null;
   /** Since when they have been watching the running match, if they are. */
   watchSince: number | null;
+  /** Set for a computer-controlled player: what decides its orders. Its session has no connection to send to. */
+  bot: Bot | null;
 }
 
 function newMember(session: Session, spectator: boolean): Member {
@@ -155,6 +164,7 @@ function newMember(session: Session, spectator: boolean): Member {
     outAt: null,
     outPlace: null,
     watchSince: null,
+    bot: null,
   };
 }
 
@@ -223,15 +233,17 @@ export class Room {
     // full does too. (A public lobby that is full, or about to start, just turns people away.)
     if (
       this.state !== 'lobby' ||
-      (this.visibility === 'private' && this.activeMembers().length >= this.capacity)
+      (this.visibility === 'private' && this.humans().length >= this.capacity)
     ) {
       return this.watch(session);
     }
     if (this.lockedIn) return 'that game is about to start';
-    if (this.activeMembers().length >= this.capacity) return 'that game is full';
+    if (this.humans().length >= this.capacity) return 'that game is full';
     this.members.push(newMember(session, false));
     this.claimColor(this.members[this.members.length - 1]!);
     session.room = this;
+    // Bots only keep the places nobody else wants.
+    this.syncBots();
     this.trackMin();
     this.track(session, 'lobby_join', { via, players: this.activeMembers().length });
     // Public games start by themselves as soon as they are full, or after a wait with nobody new.
@@ -285,11 +297,12 @@ export class Room {
       member.watching = true;
       this.votes.delete(session.userId);
     } else {
-      if (this.activeMembers().length >= this.capacity) return 'that game is full';
+      if (this.humans().length >= this.capacity) return 'that game is full';
       member.spectator = false;
       member.watching = false;
       this.claimColor(member);
     }
+    this.syncBots();
     this.trackMin();
     this.broadcastRoom();
     return null;
@@ -313,10 +326,11 @@ export class Room {
       // When the host goes, the next player takes over; with no one left to play, the room is
       // over, whoever is still watching. A host who is only watching keeps the room open.
       if (this.host === session) {
-        const next = this.activeMembers()[0] ?? this.members.find((m) => !m.spectator);
+        const next = this.humans()[0] ?? this.members.find((m) => !m.spectator && !m.bot);
         if (!next) return this.close();
         this.host = next.session;
       }
+      this.syncBots();
       this.scheduleEarlyStart();
       // With one fewer player, the votes already in may now be enough.
       this.checkVotes();
@@ -341,9 +355,11 @@ export class Room {
         member.afkTimer = null;
         this.surrenderMember(member, 'afk');
         this.broadcastRoom();
+        this.endIfUnwatched();
       }, this.options.afkMs);
     }
     this.broadcastRoom();
+    this.endIfUnwatched();
   }
 
   /** The player is back on a new connection. */
@@ -377,7 +393,7 @@ export class Room {
     }
     if (this.state === 'finished') this.resetToLobby();
     // A room that filled up in the meantime takes you back as a spectator.
-    if (!member.spectator && this.activeMembers().length >= this.capacity) {
+    if (!member.spectator && this.humans().length >= this.capacity) {
       member.spectator = true;
       member.watching = true;
     }
@@ -389,8 +405,9 @@ export class Room {
     // gone (back to the menu, or the tab closed).
     const hostMember = this.memberOf(this.host);
     if (!hostMember || hostMember.left) {
-      this.host = (member.spectator ? this.activeMembers()[0]?.session : undefined) ?? session;
+      this.host = (member.spectator ? this.humans()[0]?.session : undefined) ?? session;
     }
+    this.syncBots();
     this.broadcastRoom();
     return null;
   }
@@ -429,8 +446,12 @@ export class Room {
     if (this.state !== 'lobby') return 'the game has already started';
     const next = applySettingsPatch(this.settings, patch);
     if (typeof next === 'string') return next;
+    const levelChanged = next.botLevel !== this.settings.botLevel;
     this.settings = next;
     this.rebalance();
+    if (levelChanged)
+      for (const member of this.members) if (member.bot) member.bot = this.botOfLevel();
+    this.syncBots();
     this.trackMin();
     this.broadcastRoom();
     return null;
@@ -442,7 +463,7 @@ export class Room {
    * empty, for spectators to take if they want them.
    */
   private rebalance(): void {
-    const players = this.activeMembers();
+    const players = this.humans();
     if (players.length <= this.capacity) return;
     const keep = new Set(
       [...players]
@@ -472,16 +493,86 @@ export class Room {
     const member = this.memberOf(session);
     if (!member || member.left || !member.playerId || !this.match)
       return 'the match has not started';
-    const refused = this.match.enqueue(member.playerId, order);
+    return this.queueOrder(member.playerId, order);
+  }
+
+  /** Add an order to a player's queue, and tell everyone watching. Returns a reason if it was refused. */
+  private queueOrder(playerId: string, order: Order): string | null {
+    if (!this.match) return 'the match has not started';
+    const refused = this.match.enqueue(playerId, order);
     if (refused === null) {
       // Anyone watching sees every player's orders as they are given.
       for (const other of this.members) {
-        if (other.watching && !other.left && !other.reviewing) {
-          other.session.connection?.send({ type: 'queued', order, player: member.playerId });
+        if (other.watching && !other.left && !other.reviewing && !other.bot) {
+          sendTo(other.session, { type: 'queued', order, player: playerId });
         }
       }
     }
     return refused;
+  }
+
+  // -- Bots ----------------------------------------------------------------
+
+  /**
+   * Make the bots in a private room match the setting: as many as asked for, but only in places no
+   * person wants, so a person arriving in a full room pushes the last bot out (and the setting
+   * follows, so it does not come back by itself). With nobody playing, every place can be a bot's.
+   */
+  private syncBots(): void {
+    if (this.visibility !== 'private' || this.state !== 'lobby') return;
+    const bots = this.members.filter((m) => m.bot);
+    const want = Math.max(0, Math.min(this.settings.bots, this.capacity - this.humans().length));
+    while (bots.length > want) {
+      this.members.splice(this.members.indexOf(bots.pop()!), 1);
+    }
+    while (bots.length < want) {
+      const bot = this.newBot();
+      this.members.push(bot);
+      this.claimColor(bot);
+      bots.push(bot);
+    }
+    if (this.settings.bots !== want) this.settings = { ...this.settings, bots: want };
+  }
+
+  private newBot(): Member {
+    const taken = new Set(this.members.filter((m) => m.bot).map((m) => m.session.name));
+    const name = BOT_NAMES.find((n) => !taken.has(n)) ?? String(this.members.length);
+    const session: Session = {
+      userId: `bot-${name.toLowerCase()}`,
+      token: '',
+      name,
+      // Nobody is listening: bots are told nothing.
+      connections: new Set([{ send: () => undefined, close: () => undefined }]),
+      room: this,
+    };
+    const member = newMember(session, false);
+    member.bot = this.botOfLevel();
+    return member;
+  }
+
+  /**
+   * A bot as good as the room's setting says. Every level is the improved bot until the levels are
+   * told apart (the original easy bot is still `createEasyBot`, the one new bots are measured against).
+   */
+  private botOfLevel(): Bot {
+    return createSmartBot(SMART_BEST);
+  }
+
+  /** Every bot with nothing queued works out what to do next, from what its player can see. */
+  private thinkBots(): void {
+    const match = this.match;
+    if (!match || match.isOver) return;
+    for (const member of this.members) {
+      const id = member.playerId;
+      if (!member.bot || !id || match.state.eliminated.includes(id)) continue;
+      if (match.queueOf(id).length > 0) continue;
+      const orders = member.bot({
+        view: visibleState(match.state, id, match.config),
+        me: id,
+        config: match.config,
+      });
+      for (const order of orders) this.queueOrder(id, order);
+    }
   }
 
   surrender(session: Session): void {
@@ -538,7 +629,7 @@ export class Room {
       if (this.chatChannelOf(other) !== channel) continue;
       // Someone who has not been sent this chat yet gets all of it, this message included.
       if (other.chatSent !== channel) this.syncChat(other);
-      else other.session.connection?.send({ type: 'chat', messages: [message], replace: false });
+      else sendTo(other.session, { type: 'chat', messages: [message], replace: false });
     }
   }
 
@@ -556,6 +647,7 @@ export class Room {
       id: ++this.chatSeq,
       userId: member.session.userId,
       name: member.session.name,
+      ...(member.bot ? { bot: true } : {}),
       text,
       system: true,
       at: Date.now(),
@@ -572,7 +664,7 @@ export class Room {
     const channel = this.chatChannelOf(member);
     if (channel === member.chatSent) return;
     member.chatSent = channel;
-    member.session.connection?.send({
+    sendTo(member.session, {
       type: 'chat',
       messages: channel ? [...this.chatLogs[channel]] : [],
       replace: true,
@@ -584,8 +676,7 @@ export class Room {
     this.chatLogs = { lobby: [], spectators: [] };
     for (const member of this.members) {
       member.chatSent = this.chatChannelOf(member);
-      if (!member.left)
-        member.session.connection?.send({ type: 'chat', messages: [], replace: true });
+      if (!member.left) sendTo(member.session, { type: 'chat', messages: [], replace: true });
     }
   }
 
@@ -678,15 +769,14 @@ export class Room {
       settings: this.settings,
       players: reviewing
         ? this.resultPlayers!
-        : this.members
-            .filter((m) => !m.reviewing && !m.spectator)
-            .map((m) => ({
-              userId: m.session.userId,
-              name: m.session.name,
-              connected: !m.left && m.session.connection !== null,
-              playerId: m.playerId,
-              color: m.colorSlot,
-            })),
+        : this.listedPlayers().map((m) => ({
+            userId: m.session.userId,
+            name: m.session.name,
+            connected: !m.left && isConnected(m.session),
+            playerId: m.playerId,
+            color: m.colorSlot,
+            bot: m.bot !== null,
+          })),
       minPlayers: this.minPlayers,
       // How long the wait on screen starts from: a battle royale's, or a duel's short pause.
       waitMs: this.votesApply ? this.options.earlyStartMs : this.options.fullWaitMs,
@@ -694,15 +784,22 @@ export class Room {
       startVotes: this.votes.size,
       votesNeeded: this.votesApply ? this.votesNeeded() : 0,
       youVoted: this.votes.has(session.userId),
-      // Anyone out of the running match is watching it, as much as someone who came to watch.
+      // Anyone out of the running match is watching it, as much as someone who came to watch. (A bot
+      // that is out is not watching anything.)
       spectators: this.members
-        .filter((m) => !m.left && (m.spectator || this.isOut(m)))
+        .filter((m) => !m.left && !m.bot && (m.spectator || this.isOut(m)))
         .map((m) => m.session.name),
       spectating: this.memberOf(session)?.spectator === true,
       canChat: this.canChat(session),
       serverTime: Date.now(),
       you: session.userId,
     };
+  }
+
+  /** The players in the order they are shown in: people first, then the bots (the last one is the first to give way). */
+  private listedPlayers(): Member[] {
+    const players = this.members.filter((m) => !m.reviewing && !m.spectator);
+    return [...players.filter((m) => !m.bot), ...players.filter((m) => m.bot)];
   }
 
   get isOpen(): boolean {
@@ -715,7 +812,7 @@ export class Room {
    */
   get activePlayers(): number {
     if (this.state === 'finished') return 0;
-    return this.members.filter((m) => !m.left && !m.spectator && m.session.connection !== null)
+    return this.members.filter((m) => !m.left && !m.spectator && !m.bot && isConnected(m.session))
       .length;
   }
 
@@ -730,7 +827,7 @@ export class Room {
 
   /** What the admin panel shows about this room. */
   summary(): AdminRoom {
-    const here = this.members.filter((m) => !m.left && m.session.connection !== null);
+    const here = this.members.filter((m) => !m.left && !m.bot && isConnected(m.session));
     return {
       code: this.code,
       visibility: this.visibility,
@@ -768,6 +865,11 @@ export class Room {
     return this.members.filter((m) => !m.left && !m.reviewing && !m.spectator);
   }
 
+  /** The people in the room who play (not the bots): the ones who take places from the bots. */
+  private humans(): Member[] {
+    return this.activeMembers().filter((m) => !m.bot);
+  }
+
   private memberOf(session: Session): Member | undefined {
     return this.members.find((m) => m.session === session);
   }
@@ -775,7 +877,7 @@ export class Room {
   /** Take the session out of this room and send it back to the menu. */
   private detach(session: Session): void {
     if (session.room === this) session.room = null;
-    session.connection?.send({ type: 'room', room: null });
+    sendTo(session, { type: 'room', room: null });
   }
 
   private markLeft(member: Member, how: 'left' | 'disconnected'): void {
@@ -787,7 +889,37 @@ export class Room {
   }
 
   private closeIfEmpty(): void {
-    if (this.members.every((m) => m.left || m.spectator)) this.close();
+    // A match with bots in it goes on for as long as anybody is looking at it, spectators included.
+    if (this.state === 'running' && this.hasBots) return this.endIfUnwatched();
+    if (this.members.every((m) => m.left || m.spectator || m.bot)) this.close();
+  }
+
+  private get hasBots(): boolean {
+    return this.members.some((m) => m.bot);
+  }
+
+  /**
+   * Is this person here for a match with bots in it? Someone watching is, if their connection is
+   * up. Someone still playing is too, even while their connection is down, until they have been
+   * away so long that their army surrenders (a page reload must not end the game).
+   */
+  private isPresent(member: Member): boolean {
+    if (member.bot || member.left) return false;
+    // Once the match is over there is only the result to look at.
+    if (this.state === 'finished' || member.spectator || this.isOut(member)) {
+      return isConnected(member.session);
+    }
+    return true;
+  }
+
+  /**
+   * Bots will play on for ever, and nobody needs a game that nobody is watching: once no person is
+   * left to see or play a match that has bots in it (or to look at its result), the room is closed
+   * at once.
+   */
+  private endIfUnwatched(): void {
+    if ((this.state !== 'running' && this.state !== 'finished') || !this.hasBots) return;
+    if (!this.members.some((m) => this.isPresent(m))) this.close();
   }
 
   private close(): void {
@@ -920,7 +1052,7 @@ export class Room {
     if (!board) {
       console.error(`room ${this.id}: no board after ${attempts} attempts`, failure);
       for (const member of this.members) {
-        member.session.connection?.send({
+        sendTo(member.session, {
           type: 'rejected',
           reason: 'the game could not be set up, please try again',
         });
@@ -949,6 +1081,7 @@ export class Room {
         matchId: this.match.id,
         players: order.length,
         spectators,
+        bots: order.filter((m) => m.bot).length,
         mapSize: this.settings.mapSize,
         startReason: reason,
         lobbyMs: Date.now() - this.lobbyOpenedAt,
@@ -959,6 +1092,8 @@ export class Room {
     for (const member of this.members) this.noteWatching(member);
     this.broadcastRoom();
     this.broadcastSnapshots();
+    // The bots get to plan their opening during the planning period, like everyone else.
+    this.thinkBots();
     this.scheduleTick();
   }
 
@@ -1050,15 +1185,16 @@ export class Room {
   private runTick(): void {
     const match = this.match;
     if (!match || this.nextTickAt === null) return;
-    const outBefore = match.state.eliminated.length;
     const { previous, state, moves } = match.step();
+    const outBefore = previous.eliminated.length;
     this.nextTickAt = match.isOver ? null : this.nextTickAt + match.config.tickMs;
     const { config } = match;
     const scores = scoresOf(state, config);
 
     for (const member of this.members) {
       // Players and spectators get the ticks; people who have gone, or are reading a result, do not.
-      if (member.left || member.reviewing || (!member.playerId && !member.spectator)) continue;
+      if (member.left || member.reviewing || member.bot) continue;
+      if (!member.playerId && !member.spectator) continue;
       const id = member.playerId ?? '';
       // Out of the match, or the match over, or only here to watch: this person sees everyone's
       // queue, from now on.
@@ -1066,7 +1202,7 @@ export class Room {
       const firstWatch = watching && !member.watching;
       member.watching = watching;
       this.noteWatching(member);
-      member.session.connection?.send({
+      sendTo(member.session, {
         type: 'tick',
         tick: state.tick,
         nextTickAt: this.nextTickAt,
@@ -1083,7 +1219,8 @@ export class Room {
     }
 
     // The spectators' chat says who is out, and, if that ends the match, who won.
-    for (const id of state.eliminated.slice(outBefore)) {
+    const newlyOut = newlyEliminated(previous.eliminated, state.eliminated);
+    for (const id of newlyOut) {
       this.markOut(id, 'eliminated', state.players.length - outBefore);
       this.announceOut(id, 'was eliminated');
     }
@@ -1092,7 +1229,8 @@ export class Room {
       this.finish();
     } else {
       // Someone who is out is now a spectator, for everyone to see.
-      if (state.eliminated.length > outBefore) this.broadcastRoom();
+      if (newlyOut.length > 0) this.broadcastRoom();
+      this.thinkBots();
       this.scheduleTick();
     }
   }
@@ -1124,7 +1262,7 @@ export class Room {
     this.trackMatchEnd();
     if (this.visibility === 'private') {
       this.resultPlayers = this.view(this.host).players;
-      for (const member of this.members) member.reviewing = !member.left;
+      for (const member of this.members) member.reviewing = !member.left && !member.bot;
     }
     for (const member of this.members) {
       if (member.afkTimer) clearTimeout(member.afkTimer);
@@ -1166,8 +1304,9 @@ export class Room {
     };
   }
   private sendSnapshot(member: Member): void {
+    if (member.bot) return;
     const snapshot = this.snapshotFor(member);
-    if (snapshot) member.session.connection?.send(snapshot);
+    if (snapshot) sendTo(member.session, snapshot);
   }
 
   private broadcastSnapshots(): void {
@@ -1177,8 +1316,8 @@ export class Room {
 
   private broadcastRoom(): void {
     for (const member of this.members) {
-      if (member.left) continue;
-      member.session.connection?.send({ type: 'room', room: this.view(member.session) });
+      if (member.left || member.bot) continue;
+      sendTo(member.session, { type: 'room', room: this.view(member.session) });
       this.syncChat(member);
     }
   }
