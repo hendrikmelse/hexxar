@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { track } from '../analytics.js';
 
 /**
- * The fullscreen button, just left of the sound button in the top right of every screen. Left out
+ * The fullscreen button, just left of the music button in the top right of every screen. Left out
  * where the browser has no fullscreen (iPhones, for one). Escape leaves fullscreen, as always.
  */
 export function FullscreenToggle() {

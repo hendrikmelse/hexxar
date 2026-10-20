@@ -25,7 +25,7 @@ type Bot = (context: { view: GameState; me: PlayerId; config: MatchConfig }) => 
 - It has no memory between calls and no randomness: the same view always gives the same answer. Everything it needs is on the board.
 - `packages/shared` has no Node or DOM dependencies, so a bot runs anywhere (a future tutorial opponent, a headless test harness, the server).
 
-There are two bots. `createEasyBot()` is the **original** bot, kept unchanged as the one new bots are measured against. `createSmartBot(options)` (`packages/shared/src/smartBot.ts`) is the **improved** bot, the original with a few habits added, each of them a switch; the rooms use it with the settings that measured best (`SMART_BEST`). `BOT_NAMES` holds the names rooms hand out.
+There are two bots. `createEasyBot()` is the **original** bot, kept unchanged as the one new bots are measured against. `createSmartBot(options)` (`packages/shared/src/smartBot.ts`) is the **improved** bot, the original with a few habits added, each of them a switch; the rooms use it with the settings that measured best (`SMART_BEST`). `BOT_NAMES` holds the names rooms hand out: a new bot takes one at random, skipping any a bot in the room already has.
 
 ### In a room: `apps/server/src/room.ts`
 

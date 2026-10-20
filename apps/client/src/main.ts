@@ -10,13 +10,13 @@ import {
   type RoomView,
 } from '@hexxar/shared';
 import { track, trackVisit } from './analytics.js';
-import { playSound, preloadSounds } from './audio/audio.js';
+import { playSound, preloadSounds, startMusic } from './audio/audio.js';
 import { Board, playerColor } from './board.js';
 import { applyMessage, emptyGame, isWatching } from './game.js';
 import { Hud } from './hud.js';
 import { connect, saveToken } from './net.js';
 import { PathDraft } from './path.js';
-import { isPreview, PREVIEW_PANEL_WIDTH, setPreviewSink } from './preview.js';
+import { isPreview, isThumbnail, PREVIEW_PANEL_WIDTH, setPreviewSink } from './preview.js';
 import { appStore, saveName } from './store.js';
 import { TutorialRunner } from './tutorial/runner.js';
 import { mountUi } from './ui/mount.js';
@@ -308,15 +308,17 @@ const board = await Board.create(appEl, {
     showDraft();
   },
 });
-// The map previewer (/?maps) shows its boards on this board, next to its own panel.
+// The map previewer (/?maps) shows its boards on this board, next to its own panel; the thumbnail
+// page (/?thumbnail) uses the whole screen.
 if (isPreview()) {
   appEl.style.display = 'block';
-  board.setLeftInset(PREVIEW_PANEL_WIDTH);
+  board.setLeftInset(isThumbnail() ? 0 : PREVIEW_PANEL_WIDTH);
   setPreviewSink({
     show(view) {
       board.setAll(view);
       board.fitToBoard();
     },
+    queues: (entries) => board.drawQueues(entries),
     overlay: (draw) => board.setOverlay(draw),
   });
 }
@@ -324,7 +326,8 @@ if (isPreview()) {
 // Load the sounds in the background once the page has settled, so the first clicks are not late
 // and the game itself is not slowed down getting started.
 function startSoundPreload(): void {
-  const go = (): void => void preloadSounds();
+  // The music comes last: it is a big file, and the sounds are wanted first.
+  const go = (): void => void preloadSounds().then(startMusic);
   if ('requestIdleCallback' in window) window.requestIdleCallback(go, { timeout: 4000 });
   else setTimeout(go, 2000);
 }
@@ -494,7 +497,7 @@ function joinFromUrl(): void {
 }
 
 // The pages that are not the game (the admin panel, the sound and map previews) are not visits.
-if (!['admin', 'sounds', 'maps'].some((page) => new URLSearchParams(location.search).has(page))) {
+if (!['admin', ...(import.meta.env.DEV ? ['sounds', 'maps'] : [])].some((page) => new URLSearchParams(location.search).has(page))) {
   trackVisit(new URLSearchParams(location.search).has('join'));
 }
 

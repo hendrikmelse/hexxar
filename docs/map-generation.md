@@ -286,7 +286,7 @@ Constants that are not settings (blob size, spacing, corridor widths and weights
 
 ## The map previewer
 
-`/?maps` (code in `apps/client/src/ui/MapsPage.tsx`, bridge in `apps/client/src/preview.ts`) draws boards with the game's own `Board`, with a panel of generation settings on the left. It has modes **Duel**, **Trio**, **Quad**, **Sextet** and **Royale**, a map size bar, the options that kind of board has (duel and sextet: symmetry and mirror line; royale: player count and archetype), and a **Generate new map** button (a new random seed).
+`/?maps` (development only: a production build ignores it; code in `apps/client/src/ui/MapsPage.tsx`, bridge in `apps/client/src/preview.ts`) draws boards with the game's own `Board`, with a panel of generation settings on the left. It has modes **Duel**, **Trio**, **Quad**, **Sextet** and **Royale**, a map size bar, the options that kind of board has (duel and sextet: symmetry and mirror line; royale: player count and archetype), and a **Generate new map** button (a new random seed).
 
 - **Show blueprint** draws the chambers and corridors over the board.
 - **Show fog** draws the board as one random player sees it, covered in fog: the viewer is `players[floor(createRng(seed).next() × count)]`.

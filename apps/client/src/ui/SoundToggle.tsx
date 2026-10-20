@@ -8,7 +8,7 @@ import { isMuted, playSound, setMuted, subscribeMuted } from '../audio/audio.js'
  */
 export function SoundToggle() {
   const muted = useSyncExternalStore(subscribeMuted, isMuted);
-  const label = muted ? 'Turn sound on' : 'Turn sound off';
+  const label = muted ? 'Turn sound effects on' : 'Turn sound effects off';
   return (
     <button
       className={`sound-toggle hint ${muted ? 'off' : ''}`}

@@ -1623,7 +1623,7 @@
   position: absolute;
   top: 14px;
   /* Leaves room for the sound, fullscreen and feedback buttons in the corner */
-  right: 156px;
+  right: 202px;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -2227,7 +2227,7 @@
   color: #6f9ad6;
 }
 
-/* The sound on/off button: top right of every screen */
+/* The sound effects on/off button: top right of every screen */
 #ui .sound-toggle {
   position: fixed;
   top: 14px;
@@ -2242,9 +2242,13 @@
   color: #e8eaf0;
 }
 
-/* Just left of the sound button */
-#ui .fullscreen-toggle {
+/* Just left of the sound button is the music button, then this one */
+#ui .music-toggle {
   right: 60px;
+}
+
+#ui .fullscreen-toggle {
+  right: 106px;
 }
 
 #ui .sound-toggle.off {
@@ -2646,7 +2650,7 @@
 
 /* The feedback button: a bug, left of the fullscreen button */
 #ui .feedback-toggle {
-  right: 106px;
+  right: 152px;
 }
 
 #ui .feedback-toggle.on {
@@ -2678,6 +2682,11 @@
 
 #ui .feedback-count {
   align-self: flex-end;
+  font-size: 11px;
+  color: #6f7890;
+}
+
+#ui .feedback-hint {
   font-size: 11px;
   color: #6f7890;
 }
@@ -2850,6 +2859,13 @@
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+/* Keeps the header's actions out from under the corner buttons when the panel reaches them */
+@media (max-width: 1330px) {
+  #ui .admin-head {
+    padding-right: 202px;
+  }
 }
 
 #ui .admin-head-actions a {
@@ -3793,4 +3809,32 @@
 #ui .roster-slot.leaving,
 #ui .versus .slot.leaving {
   z-index: 0;
+}
+
+/* The thumbnail (/?thumbnail, development only): the title, tilted, over the board behind it */
+#ui .thumbnail {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#ui .thumbnail-title {
+  position: relative;
+  transform: scale(1.6);
+}
+
+/* A soft dark pool behind the title, so it stands out from the tiles and arrows */
+#ui .thumbnail-title::before {
+  content: '';
+  position: absolute;
+  inset: -60px -90px;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(8, 11, 18, 0.78), rgba(8, 11, 18, 0));
+}
+
+#ui .thumbnail .logo-hex {
+  animation: none;
 }

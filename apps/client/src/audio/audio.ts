@@ -39,6 +39,57 @@ export function subscribeMuted(listener: () => void): () => void {
   return () => mutedListeners.delete(listener);
 }
 
+const MUSIC_FILE = 'background.wav';
+/** How loud the music is, on its own (it does not go through the sounds' master volume). */
+const MUSIC_VOLUME = 0.25;
+/** How long the music takes to fade when it is switched off or on (a time constant, in seconds). */
+const MUSIC_FADE_S = 0.05;
+const MUSIC_MUTED_KEY = 'hexxar.musicMuted';
+let musicMuted = readMusicMuted();
+const musicListeners = new Set<() => void>();
+let musicGain: GainNode | null = null;
+let musicStarted = false;
+
+function readMusicMuted(): boolean {
+  try {
+    return localStorage.getItem(MUSIC_MUTED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Is the music switched off? (Remembered between visits; the sounds have a switch of their own.) */
+export function isMusicMuted(): boolean {
+  return musicMuted;
+}
+
+export function setMusicMuted(value: boolean): void {
+  if (musicMuted === value) return;
+  musicMuted = value;
+  // The music goes on playing, silently, while it is off: switching it on again picks up where it
+  // is, and it is never started over.
+  if (musicGain && context) {
+    musicGain.gain.setTargetAtTime(
+      musicMuted ? 0 : MUSIC_VOLUME,
+      context.currentTime,
+      MUSIC_FADE_S,
+    );
+  }
+  try {
+    localStorage.setItem(MUSIC_MUTED_KEY, musicMuted ? '1' : '0');
+  } catch {
+    // Not remembering the choice is harmless.
+  }
+  if (!musicMuted) startMusic();
+  for (const listener of musicListeners) listener();
+}
+
+/** For `useSyncExternalStore`: be told when the music is switched on or off. */
+export function subscribeMusicMuted(listener: () => void): () => void {
+  musicListeners.add(listener);
+  return () => musicListeners.delete(listener);
+}
+
 /**
  * Sounds are decoded ahead of time into memory and played from there, so they start at once (a
  * file that has to be fetched and decoded first is what makes the first few clicks late).
@@ -142,4 +193,31 @@ export function playSound(id: string, options: { volume?: number } = {}): boolea
     if (loaded) start(loaded, volume);
   });
   return true;
+}
+
+/**
+ * Start the background music, once: one buffer looped by the audio hardware itself, so it never
+ * gaps, skips or restarts, whatever the page does (a game starting, the menu coming back). It is
+ * only fetched if the music is on, and it is heard as soon as the browser lets the page play
+ * (after the first click or key press).
+ */
+export function startMusic(): void {
+  if (musicStarted || musicMuted) return;
+  musicStarted = true;
+  void load(MUSIC_FILE).then((buffer) => {
+    const ctx = audioContext();
+    if (!buffer || !ctx) {
+      musicStarted = false;
+      return;
+    }
+    musicGain = ctx.createGain();
+    musicGain.gain.value = musicMuted ? 0 : MUSIC_VOLUME;
+    musicGain.connect(ctx.destination);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(musicGain);
+    source.start();
+    void ctx.resume().catch(() => undefined);
+  });
 }

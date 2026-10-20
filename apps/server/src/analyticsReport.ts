@@ -165,7 +165,7 @@ export async function buildReport(db: Db, days: number): Promise<AnalyticsReport
        ${events} AND name = 'spectator_join' GROUP BY 1`),
     q(`SELECT name || coalesce(':' || (props->>'what'), '') AS key, count(*)::int AS n
        ${events} AND name IN ('feedback_open', 'feedback_submit', 'support_click', 'sound_toggle',
-                              'fullscreen_toggle', 'chat_toggle', 'vote_start', 'invite_link_open')
+                              'music_toggle', 'fullscreen_toggle', 'chat_toggle', 'vote_start', 'invite_link_open')
        GROUP BY 1`),
   ]);
 

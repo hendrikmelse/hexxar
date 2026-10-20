@@ -141,7 +141,7 @@ export function Feedback() {
             </label>
 
             <label className="field">
-              <span>Email (optional, so I can reply)</span>
+              <span>Email (optional)</span>
               <input
                 type="email"
                 value={email}
@@ -149,6 +149,9 @@ export function Feedback() {
                 autoComplete="email"
                 onChange={(event) => setEmail(event.target.value)}
               />
+              <small className="feedback-hint">
+                Only provide this if you would like me to contact you once I have addressed your feedback.
+              </small>
             </label>
 
             {/* A trap for bots: people never see it, scripts fill it in. */}
@@ -169,8 +172,7 @@ export function Feedback() {
 
             {/* Said plainly, where they send it: what goes along with the message. */}
             <p className="feedback-note">
-              Your message is sent with some technical details: your browser, window size and where
-              you are in the game.{' '}
+              Your message is sent with some technical details: your browser, window size, etc.{' '}
               <a
                 href={PRIVACY_PATH}
                 onClick={(event) => {

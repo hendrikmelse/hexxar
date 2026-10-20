@@ -31,16 +31,30 @@ export function FitText({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Whether the text is wider than its box, to a fraction of a pixel (scrollWidth and
+    // clientWidth are whole numbers, so a name that is a hair too wide, and gets its "...", can
+    // pass for fitting).
+    const range = document.createRange();
+    const overflows = (): boolean => {
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect().width > el.getBoundingClientRect().width + 0.01;
+    };
     const fit = () => {
       // Measure at full size, then scale down in half-pixel steps by how far it overflows.
       el.style.fontSize = `${max}px`;
       const available = el.clientWidth;
       const needed = el.scrollWidth;
+      let size = max;
       if (available > 0 && needed > available) {
-        const scaled = Math.floor(((max * available) / needed) * 2) / 2;
-        el.style.fontSize = `${Math.max(min, scaled)}px`;
+        size = Math.max(min, Math.floor(((max * available) / needed) * 2) / 2);
+        el.style.fontSize = `${size}px`;
       }
-      onClip?.(el.scrollWidth > el.clientWidth);
+      // Text does not shrink exactly in step with its size: go on down until it fits, if it can.
+      while (available > 0 && size > min && overflows()) {
+        size = Math.max(min, size - 0.5);
+        el.style.fontSize = `${size}px`;
+      }
+      onClip?.(available > 0 && overflows());
     };
     fit();
     const observer = new ResizeObserver(fit);

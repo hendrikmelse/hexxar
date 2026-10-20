@@ -43,6 +43,8 @@ export type RoomMode = (typeof ROOM_MODES)[number];
 
 /** A battle royale never has more than this many players, in any kind of game. */
 export const FFA_MAX_PLAYERS = 12;
+/** A quick play battle royale (a public room) holds this many players; a private one up to `FFA_MAX_PLAYERS`. */
+export const QUICK_PLAY_FFA_PLAYERS = 8;
 /** The fewest players a battle royale can start with. */
 export const FFA_MIN_PLAYERS = 3;
 

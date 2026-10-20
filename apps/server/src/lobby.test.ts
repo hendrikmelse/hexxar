@@ -181,13 +181,13 @@ describe('Lobby', () => {
       expect(host.last('rejected').reason).toMatch(/invalid/);
       host.say({ type: 'updateRoom', settings: { config: { tickMs: 1 } } });
       expect(host.last('rejected').reason).toMatch(/invalid/);
-      // The limits the settings screen offers: tick length 0.2 to 5 seconds, starting troops 1 to 100.
-      for (const config of [{ tickMs: 100 }, { tickMs: 5001 }, { startingTroops: 101 }]) {
+      // The limits the settings screen offers: tick length 0.4 to 5 seconds, starting troops 1 to 100.
+      for (const config of [{ tickMs: 399 }, { tickMs: 5001 }, { startingTroops: 101 }]) {
         host.say({ type: 'updateRoom', settings: { config } });
         expect(host.last('rejected').reason).toMatch(/invalid/);
       }
-      host.say({ type: 'updateRoom', settings: { config: { tickMs: 200, startingTroops: 100 } } });
-      expect(host.room?.settings.config).toMatchObject({ tickMs: 200, startingTroops: 100 });
+      host.say({ type: 'updateRoom', settings: { config: { tickMs: 400, startingTroops: 100 } } });
+      expect(host.room?.settings.config).toMatchObject({ tickMs: 400, startingTroops: 100 });
       host.say({ type: 'updateRoom', settings: { config: { tickMs: 5000, startingTroops: 1 } } });
       expect(host.room?.settings.config).toMatchObject({ tickMs: 5000, startingTroops: 1 });
       expect(host.room?.settings.mapSize).toBe('large');
@@ -198,11 +198,11 @@ describe('Lobby', () => {
         const { host } = hostWithGuest();
         host.say({
           type: 'updateRoom',
-          settings: { mapSize, config: { tickMs: 250, startingTroops: 17 } },
+          settings: { mapSize, config: { tickMs: 450, startingTroops: 17 } },
         });
         host.say({ type: 'startGame' });
         const snapshot = host.last('snapshot');
-        expect(snapshot.config).toMatchObject({ tickMs: 250, startingTroops: 17 });
+        expect(snapshot.config).toMatchObject({ tickMs: 450, startingTroops: 17 });
         host.say({ type: 'leaveRoom' });
         return Object.keys(snapshot.state.tiles).length;
       };
@@ -561,20 +561,20 @@ describe('Lobby battle royale', () => {
   }
 
   describe('public rooms', () => {
-    it('holds 12 players and starts as soon as it is full', () => {
-      const clients = joinPublic(12);
+    it('holds 8 players and starts as soon as it is full', () => {
+      const clients = joinPublic(8);
       expect(clients[0]!.room).toMatchObject({ state: 'running' });
       expect(clients[0]!.room?.state).toBe('running');
-      expect(clients[0]!.last('snapshot').state.players).toHaveLength(12);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(8);
       const ids = clients.map((c) => c.last('snapshot').you);
-      expect(new Set(ids).size).toBe(12);
+      expect(new Set(ids).size).toBe(8);
     });
 
-    it('never puts a 13th player in the room', () => {
-      const clients = joinPublic(13);
-      expect(clients[12]!.room?.id).not.toBe(clients[0]!.room?.id);
-      expect(clients[12]!.room?.state).toBe('lobby');
-      expect(clients[0]!.room?.players).toHaveLength(12);
+    it('never puts a 9th player in the room', () => {
+      const clients = joinPublic(9);
+      expect(clients[8]!.room?.id).not.toBe(clients[0]!.room?.id);
+      expect(clients[8]!.room?.state).toBe('lobby');
+      expect(clients[0]!.room?.players).toHaveLength(8);
     });
 
     it('does not start with fewer than 3 players, however long they wait', () => {
@@ -652,7 +652,7 @@ describe('Lobby battle royale', () => {
     });
 
     it('turns away late joiners once the match has begun', () => {
-      const clients = joinPublic(12);
+      const clients = joinPublic(8);
       expect(clients[0]!.room?.state).toBe('running');
       const late = new FakeClient(lobby).hello('Late');
       late.say({ type: 'quickPlay', mode: 'ffa' });
@@ -660,14 +660,14 @@ describe('Lobby battle royale', () => {
     });
 
     it('takes anyone who joins by code after the match has begun as a spectator', () => {
-      const clients = joinPublic(12);
+      const clients = joinPublic(8);
       const code = clients[0]!.room!.code;
       const late = new FakeClient(lobby).hello('Late');
       late.say({ type: 'joinRoom', code });
       expect(late.room).toMatchObject({ id: clients[0]!.room?.id, spectating: true });
       expect(late.last('snapshot').you).toBeNull();
       expect(clients[0]!.room?.spectators).toEqual(['Late']);
-      expect(clients[0]!.room?.players).toHaveLength(12);
+      expect(clients[0]!.room?.players).toHaveLength(8);
       // They cannot play, or change anything.
       late.say({ type: 'startGame' });
       expect(late.last('rejected').reason).toMatch(/host/);
@@ -681,7 +681,7 @@ describe('Lobby battle royale', () => {
     });
 
     it('still takes someone who joins an open public lobby by code as a player', () => {
-      const clients = joinPublic(12);
+      const clients = joinPublic(8);
       expect(clients[0]!.room?.state).toBe('running');
       const [first] = joinPublic(1);
       const joiner = new FakeClient(lobby).hello('Jo');
@@ -690,19 +690,19 @@ describe('Lobby battle royale', () => {
     });
 
     it('does not count spectators among the players in the menu', () => {
-      const clients = joinPublic(12);
+      const clients = joinPublic(8);
       const watcher = new FakeClient(lobby).hello('Wes');
       watcher.say({ type: 'joinRoom', code: clients[0]!.room!.code });
       expect(watcher.room?.spectating).toBe(true);
       const menu = new FakeClient(lobby).hello('Menu');
-      expect(menu.last('stats')).toMatchObject({ ffa: 12 });
+      expect(menu.last('stats')).toMatchObject({ ffa: 8 });
     });
 
     it('plays on when someone leaves a match that started with a full room', () => {
-      const clients = joinPublic(12);
-      clients[11]!.say({ type: 'leaveRoom' });
+      const clients = joinPublic(8);
+      clients[7]!.say({ type: 'leaveRoom' });
       expect(clients[0]!.room?.state).toBe('running');
-      expect(clients[0]!.last('snapshot').state.players).toHaveLength(12);
+      expect(clients[0]!.last('snapshot').state.players).toHaveLength(8);
     });
 
     it('does not mix duels and battle royales', () => {
@@ -847,9 +847,10 @@ describe('Lobby battle royale', () => {
       for (const [players, needed] of [
         [3, 2],
         [4, 3],
+        [5, 4],
         [6, 4],
         [7, 5],
-        [11, 8],
+        [8, 6],
       ] as const) {
         lobby.stop();
         lobby = new Lobby(options);
@@ -1039,21 +1040,21 @@ describe('Lobby battle royale', () => {
 
   describe('fog of war', () => {
     it('shows a player their own surroundings only, and everybody the scoreboard', () => {
-      const clients = joinPublic(12);
+      const clients = joinPublic(8);
       const snapshot = clients[0]!.last('snapshot');
       const tiles = Object.values(snapshot.state.tiles);
       const mine = tiles.filter((t) => t.owner === snapshot.you);
       expect(mine).toHaveLength(1);
       expect(mine[0]).toMatchObject({ type: 'city', troops: 10 });
-      // The other eleven cities are somewhere out of sight (some may be two steps away).
+      // The other seven cities are somewhere out of sight (some may be two steps away).
       const seenCities = tiles.filter((t) => t.type === 'city');
-      expect(seenCities.length).toBeLessThan(12);
+      expect(seenCities.length).toBeLessThan(8);
       // Out of sight means blank: the board is known, its contents are not.
       expect(tiles.filter((t) => t.owner === null && t.troops === 0).length).toBeGreaterThan(
         tiles.length / 2,
       );
-      // The scoreboard is not fogged: all twelve players, each with their production.
-      expect(snapshot.scores).toHaveLength(12);
+      // The scoreboard is not fogged: all eight players, each with their production.
+      expect(snapshot.scores).toHaveLength(8);
       for (const score of snapshot.scores) {
         // 10 troops on the starting city, one of which stays behind.
         expect(score).toMatchObject({ tiles: 1, mobile: 9 });

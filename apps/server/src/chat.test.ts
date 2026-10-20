@@ -143,16 +143,16 @@ describe('chat', () => {
       expect(ann.room).toMatchObject({ state: 'running', canChat: false });
       bob.say({ type: 'chat', text: 'psst' });
       expect(bob.last('rejected').reason).toMatch(/cannot chat/);
-      // Their lobby chat is taken away, too.
+      // Their lobby chat is taken away from them, too.
       expect(readable(ann)).toEqual([]);
     });
 
-    it('is open to the spectators, among themselves, without the lobby talk', () => {
+    it('is open to the spectators, among themselves, carrying on from the lobby talk', () => {
       const { cy, dee } = startedRoom();
       expect(cy.room).toMatchObject({ state: 'running', spectating: true, canChat: true });
-      expect(readable(cy)).toEqual([]);
+      expect(readable(cy)).toEqual(['lobby talk']);
       cy.say({ type: 'chat', text: 'who will win?' });
-      expect(readable(dee)).toEqual(['who will win?']);
+      expect(readable(dee)).toEqual(['lobby talk', 'who will win?']);
     });
 
     it('never reaches the players', () => {
@@ -164,16 +164,16 @@ describe('chat', () => {
       expect(readable(bob)).toEqual([]);
     });
 
-    it('is caught up on by a spectator who joins mid-match, but not what the lobby said', () => {
+    it('is caught up on by a spectator who joins mid-match, and what the lobby said', () => {
       const { cy, ann } = startedRoom();
       cy.say({ type: 'chat', text: 'spectator talk' });
       const late = new FakeClient(lobby).hello('Late');
       late.say({ type: 'joinRoom', code: ann.room!.code });
       expect(late.room).toMatchObject({ spectating: true, canChat: true });
-      expect(readable(late)).toEqual(['spectator talk']);
+      expect(readable(late)).toEqual(['lobby talk', 'spectator talk']);
     });
 
-    it('is open to everyone when the match is over, and starts afresh in the next lobby', () => {
+    it('is open to everyone when the match is over, and goes on in the next lobby', () => {
       const { ann, bob, cy } = startedRoom();
       cy.say({ type: 'chat', text: 'spectator talk' });
       bob.say({ type: 'surrender' });
@@ -182,7 +182,7 @@ describe('chat', () => {
         expect(client.room).toMatchObject({ state: 'finished', canChat: true });
       }
       const texts = readable(ann);
-      expect(texts).toEqual(['spectator talk', 'surrendered', 'won the match']);
+      expect(texts).toEqual(['lobby talk', 'spectator talk', 'surrendered', 'won the match']);
       wait();
       ann.say({ type: 'chat', text: 'good game' });
       expect(readable(cy).at(-1)).toBe('good game');
@@ -190,10 +190,10 @@ describe('chat', () => {
       ann.say({ type: 'returnToRoom' });
       cy.say({ type: 'returnToRoom' });
       expect(cy.room).toMatchObject({ state: 'lobby', canChat: true });
-      expect(readable(cy)).toEqual([]);
+      expect(readable(cy)).toEqual([...texts, 'good game']);
       wait();
       ann.say({ type: 'chat', text: 'round two' });
-      expect(readable(cy)).toEqual(['round two']);
+      expect(readable(cy).at(-1)).toBe('round two');
     });
   });
 });

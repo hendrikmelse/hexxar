@@ -423,7 +423,7 @@ export class Room {
     this.lingerTimer = null;
     this.resetEarlyStart();
     this.state = 'lobby';
-    this.clearChat();
+    this.carryChat('spectators', 'lobby');
     this.match = null;
     this.nextTickAt = null;
     for (const member of this.members) this.endWatch(member, 'room_reset');
@@ -657,7 +657,8 @@ export class Room {
 
   private newBot(): Member {
     const taken = new Set(this.members.filter((m) => m.bot).map((m) => m.session.name));
-    const name = BOT_NAMES.find((n) => !taken.has(n)) ?? String(this.members.length);
+    const free = BOT_NAMES.filter((n) => !taken.has(n));
+    const name = free[Math.floor(Math.random() * free.length)] ?? String(this.members.length);
     const member = newMember(this.botSession(`bot-${name.toLowerCase()}`, name), false);
     member.bot = this.makeBot();
     return member;
@@ -795,12 +796,23 @@ export class Room {
     });
   }
 
-  /** Forget everything said, and tell everyone to empty their chat (whatever they may read now). */
-  private clearChat(): void {
+  /**
+   * Carry one chat on as the other (the lobby's into the spectators' when the match starts, and
+   * back again when the room returns to the lobby), and send everyone what they may read of it now.
+   */
+  private carryChat(from: ChatChannel, to: ChatChannel): void {
+    const carried = this.chatLogs[from];
     this.chatLogs = { lobby: [], spectators: [] };
+    this.chatLogs[to] = carried;
     for (const member of this.members) {
-      member.chatSent = this.chatChannelOf(member);
-      if (!member.left) sendTo(member.session, { type: 'chat', messages: [], replace: true });
+      const channel = this.chatChannelOf(member);
+      member.chatSent = channel;
+      if (member.left) continue;
+      sendTo(member.session, {
+        type: 'chat',
+        messages: channel ? [...this.chatLogs[channel]] : [],
+        replace: true,
+      });
     }
   }
 
@@ -1194,9 +1206,9 @@ export class Room {
       member.outAt = null;
       member.outPlace = null;
     }
-    // What was said while gathering stays behind: the players must not read it again, and the
-    // spectators start their own chat.
-    this.clearChat();
+    // What was said while gathering goes on as the spectators' chat: the players, who are silent
+    // from here on, no longer see it, but whoever is knocked out finds it where they left it.
+    this.carryChat('lobby', 'spectators');
     this.nextTickAt = Date.now() + this.options.prepMs;
     this.firstTickAt = this.nextTickAt;
     const spectators = this.members.filter((m) => !m.left && m.spectator).length;

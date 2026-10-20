@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import {
   clientMessageSchema,
   parseMatchConfig,
+  QUICK_PLAY_FFA_PLAYERS,
   roomCapacity,
   type AdminStats,
   type EventProps,
@@ -338,7 +339,7 @@ export class Lobby {
       (room) => room.visibility === 'public' && room.mode === mode && room.isOpen,
     );
     if (open) return open.join(session, 'quickplay');
-    const room = this.openRoom(session, 'public', this.defaultSettings(mode));
+    const room = this.openRoom(session, 'public', this.defaultSettings(mode, 'public'));
     return room.join(session, 'quickplay');
   }
 
@@ -356,10 +357,14 @@ export class Lobby {
     return room.join(session);
   }
 
-  private defaultSettings(mode: RoomMode): RoomSettings {
+  private defaultSettings(
+    mode: RoomMode,
+    visibility: 'public' | 'private' = 'private',
+  ): RoomSettings {
     return {
       mode,
-      size: roomCapacity(mode),
+      // Quick play battle royales are smaller than the private ones a host can fill.
+      size: mode === 'ffa' && visibility === 'public' ? QUICK_PLAY_FFA_PLAYERS : roomCapacity(mode),
       mapSize: 'normal',
       bots: 0,
       config: parseMatchConfig(),

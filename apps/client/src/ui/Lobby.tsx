@@ -673,7 +673,7 @@ function Settings({
         <Stepper
           label="Tick length"
           value={config.tickMs / 1000}
-          min={0.2}
+          min={0.4}
           max={5}
           step={0.1}
           decimals={1}

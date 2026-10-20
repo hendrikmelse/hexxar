@@ -6,6 +6,7 @@ import { Admin } from './Admin.js';
 import { BotTag } from './BotTag.js';
 import { Connecting } from './Connecting.js';
 import { MapsPage } from './MapsPage.js';
+import { isPreview, isThumbnail } from '../preview.js';
 import { Loading } from './Loading.js';
 import { Lobby } from './Lobby.js';
 import { Menu } from './Menu.js';
@@ -16,6 +17,8 @@ import { Results } from './Results.js';
 import { Feedback } from './Feedback.js';
 import { FeedbackToggle } from './FeedbackToggle.js';
 import { FullscreenToggle } from './FullscreenToggle.js';
+import { ThumbnailPage } from './ThumbnailPage.js';
+import { MusicToggle } from './MusicToggle.js';
 import { SoundToggle } from './SoundToggle.js';
 import { SoundPage } from './SoundPage.js';
 import { Tutorial } from './Tutorial.js';
@@ -158,10 +161,12 @@ export function App({ actions }: { actions: Actions }) {
     <>
       <Screen actions={actions} />
       <Toast />
-      {!isAdminPage() && (
+      {/* The thumbnail is for a screenshot: nothing of the page's own in the way. */}
+      {!(import.meta.env.DEV && isThumbnail()) && (
         <>
           <FeedbackToggle />
           <FullscreenToggle />
+          <MusicToggle />
           <SoundToggle />
         </>
       )}
@@ -179,15 +184,19 @@ const withFooter = (page: ReactNode) => (
 
 function Screen({ actions }: { actions: Actions }) {
   const app = useApp();
-  // The dev sound list, at /?sounds.
-  if (new URLSearchParams(location.search).has('sounds')) return <SoundPage />;
+  // The feedback page, opened from the button in the corner, takes the whole screen (over the
+  // privacy policy and the /? pages too: Back goes to whichever page it was opened from).
+  if (app.feedbackOpen) return withFooter(<Feedback />);
+  // The thumbnail, at /?thumbnail (development only).
+  if (import.meta.env.DEV && isThumbnail()) return <ThumbnailPage />;
+  // The dev sound list, at /?sounds (development only).
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('sounds')) {
+    return <SoundPage />;
+  }
   // The admin panel, at /?admin (it asks for a password).
   if (isAdminPage()) return <Admin />;
-  // The dev map previewer, at /?maps.
-  if (new URLSearchParams(location.search).has('maps')) return <MapsPage />;
-  // The feedback page, opened from the button in the corner, takes the whole screen (over the
-  // privacy policy too: Back goes to whichever page it was opened from).
-  if (app.feedbackOpen) return withFooter(<Feedback />);
+  // The dev map previewer, at /?maps (development only).
+  if (import.meta.env.DEV && isPreview()) return <MapsPage />;
   // The privacy policy is a page of its own, at /privacy.
   if (app.path.replace(/\/+$/, '') === PRIVACY_PATH) return withFooter(<Privacy />);
   if (app.tutorial) return <Tutorial actions={actions} view={app.tutorial} />;

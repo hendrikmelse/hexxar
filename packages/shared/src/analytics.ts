@@ -38,6 +38,7 @@ export const CLIENT_EVENTS = [
   'feedback_submit',
   'support_click',
   'sound_toggle',
+  'music_toggle',
   'fullscreen_toggle',
   'chat_toggle',
 ] as const;
