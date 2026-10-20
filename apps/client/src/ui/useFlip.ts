@@ -22,13 +22,20 @@ function layoutPosition(node: HTMLElement): { x: number; y: number } {
  * see where it ended up, and animate the difference.) Positions are measured relative to the
  * container, so the container itself moving does not make everything slide, and they are layout
  * positions, so animations still running from the last change do not throw the measuring off.
+ * When `scope` changes (another room, say), the children are new arrivals in a new layout, not
+ * moved ones: nothing slides.
  */
-export function useFlip(container: RefObject<HTMLElement | null>): void {
+export function useFlip(container: RefObject<HTMLElement | null>, scope?: string): void {
   const previous = useRef(new Map<string, { x: number; y: number }>());
+  const lastScope = useRef(scope);
 
   useLayoutEffect(() => {
     const root = container.current;
     if (!root) return;
+    if (lastScope.current !== scope) {
+      lastScope.current = scope;
+      previous.current = new Map();
+    }
     const origin = layoutPosition(root);
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const next = new Map<string, { x: number; y: number }>();

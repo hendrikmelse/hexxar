@@ -416,6 +416,8 @@ function startQuickPlay(mode: RoomMode): void {
 let playAgainMode: RoomMode | null = null;
 /** Set when leaving a quick game that is short of players for a private one against bots. */
 let botGameMode: RoomMode | null = null;
+/** True while the server has let go of the old room and the next one has not arrived yet. */
+let handingOver = false;
 
 mountUi(document.getElementById('ui')!, {
   setName(name) {
@@ -549,7 +551,14 @@ const connection = connect(url, playerName, {
           appStore.set({ room });
           return;
         }
-        applyRoom(room, previous);
+        // Between one game and the next the old room stays on screen, so the title screen
+        // does not flash up while the server answers.
+        if (room === null && (playAgainMode !== null || botGameMode !== null)) {
+          handingOver = true;
+        } else {
+          handingOver = false;
+          applyRoom(room, previous);
+        }
         // Out of the old game: now look for the next one.
         if (room === null && playAgainMode !== null) {
           const mode = playAgainMode;
@@ -582,6 +591,11 @@ const connection = connect(url, playerName, {
         appStore.set({ activity: { duel: message.duel, ffa: message.ffa } });
         return;
       case 'rejected':
+        // The next game was refused: the old room is gone, so show the menu with the reason.
+        if (handingOver) {
+          handingOver = false;
+          applyRoom(null, appStore.get().room);
+        }
         if (inMatch()) render(applyMessage(game, message));
         else {
           appStore.set({ error: message.reason, errorSeq: appStore.get().errorSeq + 1 });

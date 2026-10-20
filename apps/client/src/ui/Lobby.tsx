@@ -474,7 +474,7 @@ function PlayerBox({
  */
 function Roster({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const grid = useRef<HTMLDivElement>(null);
-  useFlip(grid);
+  useFlip(grid, room.id);
   const cell = (index: number): CSSProperties => ({
     gridColumn: (index % 3) + 1,
     gridRow: Math.floor(index / 3) + 1,
@@ -528,7 +528,7 @@ function Versus({ room, shown }: { room: RoomView; shown: ShownPlayer[] }) {
   const sides = [1, 3] as const;
   const area = useRef<HTMLDivElement>(null);
   // A name that has to move (the other player left, or a person took the place of a bot) slides.
-  useFlip(area);
+  useFlip(area, room.id);
   return (
     // In a private game the panels match the roster's height, so switching mode moves nothing.
     <div ref={area} className={`versus ${room.visibility === 'private' ? 'roster-height' : ''}`}>
