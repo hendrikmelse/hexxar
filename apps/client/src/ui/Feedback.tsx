@@ -150,7 +150,8 @@ export function Feedback() {
                 onChange={(event) => setEmail(event.target.value)}
               />
               <small className="feedback-hint">
-                Only provide this if you would like me to contact you once I have addressed your feedback.
+                Only provide this if you would like me to contact you once I have addressed your
+                feedback.
               </small>
             </label>
 

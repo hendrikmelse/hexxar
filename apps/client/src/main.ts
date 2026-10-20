@@ -497,7 +497,11 @@ function joinFromUrl(): void {
 }
 
 // The pages that are not the game (the admin panel, the sound and map previews) are not visits.
-if (!['admin', ...(import.meta.env.DEV ? ['sounds', 'maps'] : [])].some((page) => new URLSearchParams(location.search).has(page))) {
+if (
+  !['admin', ...(import.meta.env.DEV ? ['sounds', 'maps'] : [])].some((page) =>
+    new URLSearchParams(location.search).has(page),
+  )
+) {
   trackVisit(new URLSearchParams(location.search).has('join'));
 }
 
